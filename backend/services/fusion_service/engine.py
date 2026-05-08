@@ -58,7 +58,7 @@ class FusionEngine:
         self.scorer = ScoringEngine()
         self.min_confidence = min_confidence
         self.last_signal_time: Optional[datetime] = None
-        self.signal_cooldown_seconds: int = 30
+        self.signal_cooldown_seconds: int = 10
 
     def add_event(self, event: Any) -> None:
         if isinstance(event, dict):
@@ -68,6 +68,13 @@ class FusionEngine:
     def process(self, price_change: float = 0.0) -> list[FusionSignal]:
         if self.buffer.is_empty:
             return []
+
+        # 冷却检查：避免短时间内重复生成信号
+        now = datetime.utcnow()
+        if self.last_signal_time:
+            elapsed = (now - self.last_signal_time).total_seconds()
+            if elapsed < self.signal_cooldown_seconds:
+                return []
 
         valid_events = self.buffer.get_valid()
         if not valid_events:
@@ -81,8 +88,10 @@ class FusionEngine:
             if signal:
                 signals.append(signal)
 
-        if self.last_signal_time:
-            self._cleanup_old_signals()
+        if signals:
+            self.last_signal_time = now
+            # 生成信号后清空 buffer，避免重复处理
+            self.buffer.clear()
 
         return signals
 
