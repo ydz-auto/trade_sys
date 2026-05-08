@@ -1,0 +1,155 @@
+version: '3.8'
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - kafka-network
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+    networks:
+      - kafka-network
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - kafka-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - kafka-network
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # data-service 是一次性生产者：发布 5 条新闻后退出
+  # 使用 restart: "no" 避免重复发布
+  data-service:
+    build:
+      context: ..
+      dockerfile: services/data_service/Dockerfile
+    container_name: data-service
+    command: python -m services.data_service.main_kafka
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - kafka-network
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_URL: redis://redis:6379/0
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: /app
+    restart: "no"
+
+  # event-service 是消费者：持续运行，处理 raw_data -> events
+  event-service:
+    build:
+      context: ..
+      dockerfile: services/event_service/Dockerfile
+    container_name: event-service
+    command: python -m services.event_service.main_kafka
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - kafka-network
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: /app
+    restart: unless-stopped
+
+  # fusion-service 是消费者：持续运行，处理 events -> signals
+  fusion-service:
+    build:
+      context: ..
+      dockerfile: services/fusion_service/Dockerfile
+    container_name: fusion-service
+    command: python -m services.fusion_service.main_kafka
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - kafka-network
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: /app
+    restart: unless-stopped
+
+  # strategy-service 是消费者：持续运行，处理 signals -> decisions
+  strategy-service:
+    build:
+      context: ..
+      dockerfile: services/strategy_service/Dockerfile
+    container_name: strategy-service
+    command: python -m services.strategy_service.main_kafka
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - kafka-network
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: /app
+    restart: unless-stopped
+
+networks:
+  kafka-network:
+    driver: bridge
+
+volumes:
+  zookeeper_data:
+  kafka_data:
+  redis_data:

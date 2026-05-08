@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TradeAgent Factor Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#F59E0B',
+            secondary: '#FBBF24',
+            accent: '#8B5CF6',
+            background: '#0F172A',
+            surface: '#1E293B',
+            border: '#334155',
+            'text-primary': '#F8FAFC',
+            'text-secondary': '#94A3B8',
+            bullish: '#10B981',
+            bearish: '#EF4444',
+            warning: '#F97316',
+            neutral: '#3B82F6'
+          },
+          fontFamily: {
+            heading: ['Fira Code', 'monospace'],
+            body: ['Fira Sans', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Fira Sans', sans-serif;
+      background-color: #0F172A;
+      color: #F8FAFC;
+    }
+    .font-heading {
+      font-family: 'Fira Code', monospace;
+    }
+    .factor-card {
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    .factor-card:hover {
+      border-color: rgba(245, 158, 11, 0.5);
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.1);
+      transform: translateY(-2px);
+    }
+    .animate-value-up {
+      animation: pulse-up 0.5s ease-out;
+      color: #10B981;
+    }
+    .animate-value-down {
+      animation: pulse-down 0.5s ease-out;
+      color: #EF4444;
+    }
+    @keyframes pulse-up {
+      0% { transform: translateY(0); }
+      50% { transform: translateY(-4px); }
+      100% { transform: translateY(0); }
+    }
+    @keyframes pulse-down {
+      0% { transform: translateY(0); }
+      50% { transform: translateY(4px); }
+      100% { transform: translateY(0); }
+    }
+    .live-dot {
+      animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+    }
+    @keyframes ping {
+      75%, 100% {
+        transform: scale(2);
+        opacity: 0;
+      }
+    }
+    .scrollbar-hide::-webkit-scrollbar {
+      display: none;
+    }
+    .scrollbar-hide {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 8px;
+      background: #334155;
+      border-radius: 4px;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #F59E0B;
+      margin-top: -4px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      background: #FBBF24;
+    }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div class="flex flex-col h-screen">
+    <!-- Header -->
+    <header class="h-16 bg-surface border-b border-border flex items-center justify-between px-6 flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+          <svg class="w-5 h-5 text-background" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+          </svg>
+        </div>
+        <span class="font-heading font-bold text-lg">TradeAgent</span>
+        <span class="text-text-secondary text-sm">Factor Dashboard</span>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2">
+          <span class="relative flex h-2.5 w-2.5">
+            <span class="live-dot absolute inline-flex h-full w-full rounded-full bg-bullish opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-bullish"></span>
+          </span>
+          <span class="text-sm text-text-secondary">WebSocket 已连接</span>
+        </div>
+        <button class="p-2 hover:bg-border/50 rounded-lg transition-colors cursor-pointer">
+          <svg class="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden">
+      <!-- Sidebar -->
+      <aside class="w-60 bg-surface border-r border-border flex-shrink-0 overflow-y-auto scrollbar-hide">
+        <nav class="p-4 space-y-1">
+          <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-primary/10 text-primary border border-primary/30">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+            </svg>
+            <span class="font-medium">概览</span>
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-secondary hover:bg-border/50 hover:text-text-primary transition-colors cursor-pointer">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+            <span>因子详情</span>
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-secondary hover:bg-border/50 hover:text-text-primary transition-colors cursor-pointer">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+            </svg>
+            <span>权重配置</span>
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-secondary hover:bg-border/50 hover:text-text-primary transition-colors cursor-pointer">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+            </svg>
+            <span>系统状态</span>
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-secondary hover:bg-border/50 hover:text-text-primary transition-colors cursor-pointer">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span>历史分析</span>
+          </a>
+        </nav>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="flex-1 overflow-y-auto p-6 scrollbar-hide">
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-4 gap-4 mb-6">
+          <!-- Price Card -->
+          <div class="bg-surface border border-border rounded-xl p-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-text-secondary text-sm">BTC/USDT</span>
+              <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+              </svg>
+            </div>
+            <div class="text-2xl font-heading font-bold text-text-primary mb-1">$67,234</div>
+            <div class="flex items-center gap-1 text-bullish text-sm">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+              </svg>
+              <span>+2.3%</span>
+            </div>
+          </div>
+
+          <!-- Composite Score Card -->
+          <div class="bg-surface border border-border rounded-xl p-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-text-secondary text-sm">综合得分</span>
+              <svg class="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+              </svg>
+            </div>
+            <div class="text-2xl font-heading font-bold text-bullish mb-1" id="composite-score">+0.18</div>
+            <div class="flex items-center gap-1 text-bullish text-sm">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+              </svg>
+              <span>▲ +18%</span>
+            </div>
+          </div>
+
+          <!-- Regime Card -->
+          <div class="bg-surface border border-border rounded-xl p-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-text-secondary text-sm">市场状态</span>
+              <svg class="w-5 h-5 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+              </svg>
+            </div>
+            <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-bearish/20 border border-bearish/30 mb-1">
+              <span class="w-2 h-2 rounded-full bg-bearish"></span>
+              <span class="text-sm font-medium text-bearish">RISK_OFF</span>
+            </div>
+            <div class="text-sm text-text-secondary">风险回避</div>
+          </div>
+
+          <!-- Confidence Card -->
+          <div class="bg-surface border border-border rounded-xl p-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-text-secondary text-sm">置信度</span>
+              <svg class="w-5 h-5 text-neutral" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+              </svg>
+            </div>
+            <div class="text-2xl font-heading font-bold text-text-primary mb-1">85%</div>
+            <div class="w-full bg-border rounded-full h-1.5">
+              <div class="bg-neutral h-1.5 rounded-full" style="width: 85%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid grid-cols-3 gap-4 mb-6">
+          <!-- Radar Chart -->
+          <div class="col-span-1 bg-surface border border-border rounded-xl p-4">
+            <h3 class="font-heading text-sm text-text-secondary mb-4">因子雷达图</h3>
+            <div class="aspect-square">
+              <canvas id="radarChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Trend Chart -->
+          <div class="col-span-2 bg-surface border border-border rounded-xl p-4">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-heading text-sm text-text-secondary">因子趋势</h3>
+              <div class="flex gap-2">
+                <button class="px-3 py-1 text-xs bg-primary/20 text-primary rounded-md cursor-pointer border border-primary/30">1H</button>
+                <button class="px-3 py-1 text-xs bg-border/50 text-text-secondary rounded-md hover:bg-border cursor-pointer">4H</button>
+                <button class="px-3 py-1 text-xs bg-border/50 text-text-secondary rounded-md hover:bg-border cursor-pointer">1D</button>
+              </div>
+            </div>
+            <div class="h-64">
+              <canvas id="trendChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Factor Cards -->
+        <div class="mb-6">
+          <h3 class="font-heading text-sm text-text-secondary mb-4">因子详情</h3>
+          <div class="grid grid-cols-3 gap-4">
+            <!-- Trend Factor -->
+            <div class="factor-card bg-surface/50 border border-border rounded-xl p-4">
+              <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2">
+                  <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                  </svg>
+                  <span class="font-heading text-sm text-text-primary">趋势因子</span>
+                </div>
+                <span class="text-xs text-text-secondary">权重 30%</span>
+              </div>
+              <div class="flex items-end gap-3">
+                <span class="text-3xl font-heading font-bold text-bullish factor-value" id="trend-value">+0.55</span>
+                <span class="text-sm text-text-secondary mb-1">conf: 100%</span>
+              </div>
+              <div class="mt-3 h-10 bg-background/50 rounded flex items-center px-2">
+                <svg class="w-full h-full" viewBox="0 0 100 20" preserveAspectRatio="none">
+                  <polyline fill="none" stroke="#10B981" stroke-width="1.5" points="0,15 15,14 30,12 45,10 60,8 75,9 90,5 100,5"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- Flow Factor -->
+            <div class="factor-card bg-surface/50 border border-border rounded-xl p-4">
+              <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2">
+                  <svg class="w-5 h-5 text-neutral" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
+                  </svg>
+                  <span class="font-heading text-sm text-text-primary">资金流因子</span>
+                </div>
+                <span class="text-xs text-text-secondary">权重 25%</span>
+              </div>
+              <div class="flex items-end gap-3">
+                <span class="text-3xl font-heading font-bold text-bearish factor-value" id="flow-value">-0.20</span>
+                <span class="text-sm text-text-secondary mb-1">conf: 80%</span>
+              </div>
+              <div class="mt-3 h-10 bg-background/50 rounded flex items-center px-2">
+                <svg class="w-full h-full" viewBox="0 0 100 20" preserveAspectRatio="none">
+                  <polyline fill="none" stroke="#EF4444" stroke-width="1.5" points="0,8 15,10 30,12 45,11 60,13 75,14 90,15 100,15"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- Sentiment Factor -->
+            <div class="factor-card bg-surface/50 border border-border rounded-xl p-4">
+              <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2">
+                  <svg class="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  <span class="font-heading text-sm text-text-primary">情绪因子</span>
+                </div>
+                <span class="text-xs text-text-secondary">权重 20%</span>
+              </div>
+              <div class="flex items-end gap-3">
+                <span class="text-3xl font-heading font-bold text-bearish factor-value" id="sentiment-value">-0.60</span>
+                <span class="text-sm text-text-secondary mb-1">conf: 70%</span>
+              </div>
+              <div class="mt-3 h-10 bg-background/50 rounded flex items-center px-2">
+                <svg class="w-full h-full" viewBox="0 0 100 20" preserveAspectRatio="none">
+                  <polyline fill="none" stroke="#EF4444" stroke-width="1.5" points="0,5 15,6 30,8 45,10 60,12 75,14 90,16 100,16"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- Macro Factor -->
+            <div class="factor-card bg-surface/50 border border-border rounded-xl p-4">
+              <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2">
+                  <svg class="w-5 h-5 text-bullish" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  <span class="font-heading text-sm text-text-primary">宏观因子</span>
+                </div>
+                <span class="text-xs text-text-secondary">权重 15%</span>
+              </div>
+              <div class="flex items-end gap-3">
+                <span class="text-3xl font-heading font-bold text-bullish factor-value" id="macro-value">+0.30</span>
+                <span class="text-sm text-text-secondary mb-1">conf: 80%</span>
+              </div>
+              <div class="mt-3 h-10 bg-background/50 rounded flex items-center px-2">
+                <svg class="w-full h-full" viewBox="0 0 100 20" preserveAspectRatio="none">
+                  <polyline fill="none" stroke="#10B981" stroke-width="1.5" points="0,12 15,11 30,10 45,9 60,8 75,7 90,6 100,5"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- Behavioral Factor -->
+            <div class="factor-card bg-surface/50 border border-border rounded-xl p-4">
+              <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2">
+                  <svg class="w-5 h-5 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                  </svg>
+                  <span class="font-heading text-sm text-text-primary">行为因子</span>
+                </div>
+                <span class="text-xs text-text-secondary">权重 10%</span>
+              </div>
+              <div class="flex items-end gap-3">
+                <span class="text-3xl font-heading font-bold text-bullish factor-value" id="behavioral-value">+0.40</span>
+                <span class="text-sm text-text-secondary mb-1">conf: 65%</span>
+              </div>
+              <div class="mt-3 h-10 bg-background/50 rounded flex items-center px-2">
+                <svg class="w-full h-full" viewBox="0 0 100 20" preserveAspectRatio="none">
+                  <polyline fill="none" stroke="#10B981" stroke-width="1.5" points="0,10 15,9 30,8 45,7 60,6 75,6 90,5 100,5"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- Historical Factor -->
+            <div class="factor-card bg-surface/50 border border-border rounded-xl p-4">
+              <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2">
+                  <svg class="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  <span class="font-heading text-sm text-text-primary">历史因子</span>
+                </div>
+                <span class="text-xs text-text-secondary">权重 5%</span>
+              </div>
+              <div class="flex items-end gap-3">
+                <span class="text-3xl font-heading font-bold text-bearish factor-value" id="historical-value">-0.10</span>
+                <span class="text-sm text-text-secondary mb-1">conf: 45%</span>
+              </div>
+              <div class="mt-3 h-10 bg-background/50 rounded flex items-center px-2">
+                <svg class="w-full h-full" viewBox="0 0 100 20" preserveAspectRatio="none">
+                  <polyline fill="none" stroke="#EF4444" stroke-width="1.5" points="0,10 15,10 30,11 45,10 60,10 75,11 90,10 100,10"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Weight Distribution -->
+        <div class="grid grid-cols-2 gap-4">
+          <!-- Weight Config -->
+          <div class="bg-surface border border-border rounded-xl p-4">
+            <h3 class="font-heading text-sm text-text-secondary mb-4">权重配置</h3>
+            <div class="space-y-4">
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm text-text-primary">趋势因子</span>
+                  <span class="text-sm font-heading text-primary">30%</span>
+                </div>
+                <input type="range" min="0" max="100" value="30" class="w-full">
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm text-text-primary">资金流因子</span>
+                  <span class="text-sm font-heading text-primary">25%</span>
+                </div>
+                <input type="range" min="0" max="100" value="25" class="w-full">
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm text-text-primary">情绪因子</span>
+                  <span class="text-sm font-heading text-primary">20%</span>
+                </div>
+                <input type="range" min="0" max="100" value="20" class="w-full">
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm text-text-primary">宏观因子</span>
+                  <span class="text-sm font-heading text-primary">15%</span>
+                </div>
+                <input type="range" min="0" max="100" value="15" class="w-full">
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm text-text-primary">行为因子</span>
+                  <span class="text-sm font-heading text-primary">10%</span>
+                </div>
+                <input type="range" min="0" max="100" value="10" class="w-full">
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm text-text-primary">历史因子</span>
+                  <span class="text-sm font-heading text-primary">5%</span>
+                </div>
+                <input type="range" min="0" max="100" value="5" class="w-full">
+              </div>
+            </div>
+          </div>
+
+          <!-- Weight Pie Chart -->
+          <div class="bg-surface border border-border rounded-xl p-4">
+            <h3 class="font-heading text-sm text-text-secondary mb-4">权重分布</h3>
+            <div class="h-64 flex items-center justify-center">
+              <canvas id="weightChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Footer -->
+    <footer class="h-12 bg-surface border-t border-border flex items-center justify-between px-6 flex-shrink-0">
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2">
+          <span class="relative flex h-2 w-2">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-bullish opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-bullish"></span>
+          </span>
+          <span class="text-sm text-text-secondary">实时数据流</span>
+        </div>
+      </div>
+      <div class="text-sm text-text-secondary">
+        最后更新: <span id="last-update">12:34:56</span>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    // Radar Chart
+    const radarCtx = document.getElementById('radarChart').getContext('2d');
+    new Chart(radarCtx, {
+      type: 'radar',
+      data: {
+        labels: ['Trend', 'Flow', 'Sentiment', 'Macro', 'Behavioral', 'Historical'],
+        datasets: [{
+          label: '当前',
+          data: [0.55, -0.20, -0.60, 0.30, 0.40, -0.10],
+          backgroundColor: 'rgba(245, 158, 11, 0.2)',
+          borderColor: '#F59E0B',
+          borderWidth: 2,
+          pointBackgroundColor: '#F59E0B',
+          pointBorderColor: '#F59E0B',
+          pointRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        scales: {
+          r: {
+            min: -1,
+            max: 1,
+            grid: { color: '#334155' },
+            angleLines: { color: '#334155' },
+            pointLabels: { color: '#94A3B8', font: { family: 'Fira Code', size: 10 } },
+            ticks: { display: false }
+          }
+        },
+        plugins: {
+          legend: { display: false }
+        }
+      }
+    });
+
+    // Trend Chart
+    const trendCtx = document.getElementById('trendChart').getContext('2d');
+    new Chart(trendCtx, {
+      type: 'line',
+      data: {
+        labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '现在'],
+        datasets: [
+          {
+            label: 'Trend',
+            data: [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.55],
+            borderColor: '#F59E0B',
+            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+            fill: true,
+            tension: 0.4
+          },
+          {
+            label: 'Flow',
+            data: [-0.1, -0.15, -0.2, -0.18, -0.2, -0.2, -0.2],
+            borderColor: '#3B82F6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            fill: true,
+            tension: 0.4
+          },
+          {
+            label: 'Sentiment',
+            data: [-0.3, -0.35, -0.4, -0.45, -0.5, -0.55, -0.60],
+            borderColor: '#8B5CF6',
+            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+            fill: true,
+            tension: 0.4
+          },
+          {
+            label: 'Macro',
+            data: [0.1, 0.15, 0.2, 0.22, 0.25, 0.28, 0.30],
+            borderColor: '#10B981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            fill: true,
+            tension: 0.4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { color: '#94A3B8', font: { family: 'Fira Sans' }, padding: 20 }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: '#334155' },
+            ticks: { color: '#94A3B8' }
+          },
+          y: {
+            grid: { color: '#334155' },
+            ticks: { color: '#94A3B8' },
+            min: -1,
+            max: 1
+          }
+        }
+      }
+    });
+
+    // Weight Chart
+    const weightCtx = document.getElementById('weightChart').getContext('2d');
+    new Chart(weightCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Trend 30%', 'Flow 25%', 'Sentiment 20%', 'Macro 15%', 'Behavioral 10%', 'Historical 5%'],
+        datasets: [{
+          data: [30, 25, 20, 15, 10, 5],
+          backgroundColor: [
+            '#F59E0B', '#3B82F6', '#8B5CF6', '#10B981', '#F97316', '#64748B'
+          ],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '60%',
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: { color: '#94A3B8', font: { family: 'Fira Sans', size: 11 }, padding: 10 }
+          }
+        }
+      }
+    });
+
+    // Simulate real-time updates
+    function updateTimestamp() {
+      const now = new Date();
+      const time = now.toLocaleTimeString('zh-CN', { hour12: false });
+      document.getElementById('last-update').textContent = time;
+    }
+
+    setInterval(updateTimestamp, 1000);
+    updateTimestamp();
+  </script>
+</body>
+</html>

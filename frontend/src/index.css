@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: #0F172A;
+  color: #F8FAFC;
+}
+
+.font-heading {
+  font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-weight: 600;
+}

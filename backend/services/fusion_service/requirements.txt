@@ -1,0 +1,4 @@
+pydantic==2.5.0
+pydantic-settings==2.1.0
+faststream[kafka]==0.5.0
+python-dotenv==1.0.0

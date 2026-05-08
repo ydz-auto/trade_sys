@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TradeAgent 交易系统 - 完整UX原型</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#F59E0B',
+            secondary: '#FBBF24',
+            accent: '#8B5CF6',
+            background: '#0F172A',
+            surface: '#1E293B',
+            border: '#334155',
+            'text-primary': '#F8FAFC',
+            'text-secondary': '#94A3B8',
+            bullish: '#10B981',
+            bearish: '#EF4444',
+            warning: '#F97316',
+            neutral: '#3B82F6'
+          },
+          fontFamily: {
+            heading: ['Fira Code', 'monospace'],
+            body: ['Fira Sans', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Fira Sans', sans-serif; background-color: #0F172A; color: #F8FAFC; }
+    .font-heading { font-family: 'Fira Code', monospace; }
+    .card { transition: all 0.2s ease; cursor: pointer; }
+    .card:hover { border-color: rgba(245, 158, 11, 0.5); box-shadow: 0 0 20px rgba(245, 158, 11, 0.1); transform: translateY(-2px); }
+    .live-dot { animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite; }
+    @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    .nav-item { transition: all 0.15s ease; }
+    .nav-item:hover { background-color: rgba(51, 65, 85, 0.5); }
+    .nav-item.active { background-color: rgba(245, 158, 11, 0.1); color: #F59E0B; border-color: rgba(245, 158, 11, 0.3); }
+    .pulse-green { animation: pulse-green 2s ease-in-out infinite; }
+    @keyframes pulse-green { 0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); } 50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); } }
+    .pulse-red { animation: pulse-red 2s ease-in-out infinite; }
+    @keyframes pulse-red { 0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); } }
+    .regime-badge { font-size: 10px; padding: 2px 8px; }
+    .signal-badge { font-size: 12px; font-weight: 600; padding: 4px 12px; }
+    input[type="range"] { -webkit-appearance: none; background: transparent; }
+    input[type="range"]::-webkit-slider-runnable-track { height: 6px; background: #334155; border-radius: 3px; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #F59E0B; margin-top: -4px; cursor: pointer; }
+    .progress-bar { height: 4px; border-radius: 2px; transition: width 0.3s ease; }
+    .tooltip { position: relative; }
+    .tooltip:hover::after { content: attr(data-tip); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #1E293B; border: 1px solid #334155; padding: 4px 8px; border-radius: 4px; font-size: 12px; white-space: nowrap; z-index: 100; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div class="flex h-screen overflow-hidden">
+    
+    <!-- Left Sidebar - Navigation -->
+    <aside class="w-56 bg-surface border-r border-border flex flex-col flex-shrink-0">
+      <!-- Logo -->
+      <div class="h-16 flex items-center gap-3 px-4 border-b border-border">
+        <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+          <svg class="w-5 h-5 text-background" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+          </svg>
+        </div>
+        <div>
+          <span class="font-heading font-bold text-sm">TradeAgent</span>
+          <span class="block text-xs text-text-secondary">Trading System</span>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <nav class="flex-1 p-3 space-y-1 overflow-y-auto scrollbar-hide">
+        <div class="text-xs text-text-secondary uppercase tracking-wider px-3 py-2">数据层</div>
+        <a href="#" class="nav-item active flex items-center gap-3 px-3 py-2.5 rounded-lg border border-transparent">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          <span class="text-sm">数据大盘</span>
+          <span class="ml-auto w-2 h-2 rounded-full bg-bullish"></span>
+        </a>
+        <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg border border-transparent text-text-secondary">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+          <span class="text-sm">特征预览</span>
+        </a>
+
+        <div class="text-xs text-text-secondary uppercase tracking-wider px-3 py-2 mt-4">分析层</div>
+        <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg border border-transparent text-text-secondary">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/></svg>
+          <span class="text-sm">因子面板</span>
+        </a>
+        <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg border border-transparent text-text-secondary">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          <span class="text-sm">Regime状态</span>
+        </a>
+        <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg border border-transparent text-text-secondary">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          <span class="text-sm">风险引擎</span>
+          <span class="ml-auto px-1.5 py-0.5 bg-warning/20 text-warning text-xs rounded regime-badge">中等</span>
+        </a>
+
+        <div class="text-xs text-text-secondary uppercase tracking-wider px-3 py-2 mt-4">决策层</div>
+        <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg border border-transparent text-text-secondary">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+          <span class="text-sm">决策信号</span>
+          <span class="ml-auto px-1.5 py-0.5 bg-bullish/20 text-bullish text-xs rounded regime-badge">买入</span>
+        </a>
+        <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg border border-transparent text-text-secondary">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+          <span class="text-sm">仓位管理</span>
+        </a>
+        <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg border border-transparent text-text-secondary">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          <span class="text-sm">执行追踪</span>
+        </a>
+
+        <div class="text-xs text-text-secondary uppercase tracking-wider px-3 py-2 mt-4">反馈层</div>
+        <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg border border-transparent text-text-secondary">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          <span class="text-sm">反馈闭环</span>
+        </a>
+        <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg border border-transparent text-text-secondary">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          <span class="text-sm">历史分析</span>
+        </a>
+      </nav>
+
+      <!-- System Status -->
+      <div class="p-4 border-t border-border">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="relative flex h-2 w-2">
+            <span class="live-dot absolute inline-flex h-full w-full rounded-full bg-bullish opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-bullish"></span>
+          </span>
+          <span class="text-xs text-text-secondary">系统正常</span>
+        </div>
+        <div class="text-xs text-text-secondary">版本: v1.0.0</div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-y-auto">
+      <!-- Header -->
+      <header class="h-14 bg-surface border-b border-border flex items-center justify-between px-6 sticky top-0 z-50">
+        <div class="flex items-center gap-4">
+          <h1 class="font-heading text-lg">数据大盘</h1>
+          <span class="text-text-secondary text-sm">实时监控 · BTC/ETH</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 px-3 py-1.5 bg-border/30 rounded-lg">
+            <span class="text-xs text-text-secondary">最后更新:</span>
+            <span class="text-xs font-heading text-primary" id="last-update">12:34:56</span>
+          </div>
+          <button class="p-2 hover:bg-border/50 rounded-lg cursor-pointer transition-colors">
+            <svg class="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          </button>
+          <button class="p-2 hover:bg-border/50 rounded-lg cursor-pointer transition-colors">
+            <svg class="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="p-6 space-y-6">
+        <!-- Row 1: Market Prices + Key Metrics -->
+        <div class="grid grid-cols-4 gap-4">
+          <!-- BTC Price -->
+          <div class="card bg-surface border border-border rounded-xl p-4">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 bg-primary/20 rounded flex items-center justify-center">
+                  <span class="text-xs font-bold text-primary">B</span>
+                </div>
+                <span class="text-sm text-text-secondary">BTC/USDT</span>
+              </div>
+              <span class="text-xs text-text-secondary">Binance</span>
+            </div>
+            <div class="text-2xl font-heading font-bold mb-1">$67,234</div>
+            <div class="flex items-center gap-1 text-bullish text-sm">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+              <span>+2.3%</span>
+            </div>
+          </div>
+
+          <!-- ETH Price -->
+          <div class="card bg-surface border border-border rounded-xl p-4">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 bg-neutral/20 rounded flex items-center justify-center">
+                  <span class="text-xs font-bold text-neutral">E</span>
+                </div>
+                <span class="text-sm text-text-secondary">ETH/USDT</span>
+              </div>
+              <span class="text-xs text-text-secondary">Binance</span>
+            </div>
+            <div class="text-2xl font-heading font-bold mb-1">$3,842</div>
+            <div class="flex items-center gap-1 text-bullish text-sm">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+              <span>+1.8%</span>
+            </div>
+          </div>
+
+          <!-- Composite Score -->
+          <div class="card bg-surface border border-border rounded-xl p-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm text-text-secondary">综合得分</span>
+              <svg class="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            </div>
+            <div class="text-2xl font-heading font-bold text-bullish mb-1">+0.18</div>
+            <div class="text-xs text-text-secondary">confidence: 85%</div>
+          </div>
+
+          <!-- Risk Index -->
+          <div class="card bg-surface border border-border rounded-xl p-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm text-text-secondary">风险指数</span>
+              <svg class="w-5 h-5 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            </div>
+            <div class="text-2xl font-heading font-bold text-warning mb-1">58</div>
+            <div class="w-full bg-border rounded-full h-1.5 mt-2">
+              <div class="bg-warning h-1.5 rounded-full" style="width: 58%"></div>
+            </div>
+            <div class="text-xs text-text-secondary mt-1">中等风险</div>
+          </div>
+        </div>
+
+        <!-- Row 2: ETF + Macro + Sentiment -->
+        <div class="grid grid-cols-3 gap-4">
+          <!-- ETF Flow -->
+          <div class="card bg-surface border border-border rounded-xl p-4">
+            <h3 class="font-heading text-sm text-text-secondary mb-4 flex items-center gap-2">
+              <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              ETF资金流
+            </h3>
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-text-secondary">BTC ETF 今日净流入</span>
+                <span class="text-sm font-heading text-bullish">+$150M</span>
+              </div>
+              <div class="h-12 bg-background/50 rounded flex items-center justify-center">
+                <canvas id="etfChart" height="40"></canvas>
+              </div>
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-text-secondary">7日趋势</span>
+                <span class="text-bullish">持续流入 ↑</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Macro Data -->
+          <div class="card bg-surface border border-border rounded-xl p-4">
+            <h3 class="font-heading text-sm text-text-secondary mb-4 flex items-center gap-2">
+              <svg class="w-4 h-4 text-bullish" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              宏观数据
+            </h3>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="bg-background/50 rounded-lg p-3">
+                <div class="text-xs text-text-secondary mb-1">黄金 (USD/oz)</div>
+                <div class="font-heading text-sm">$2,020</div>
+                <div class="text-xs text-bullish">▲ +0.5%</div>
+              </div>
+              <div class="bg-background/50 rounded-lg p-3">
+                <div class="text-xs text-text-secondary mb-1">原油 (USD/bbl)</div>
+                <div class="font-heading text-sm">$78.3</div>
+                <div class="text-xs text-bearish">▼ -0.3%</div>
+              </div>
+              <div class="bg-background/50 rounded-lg p-3">
+                <div class="text-xs text-text-secondary mb-1">美元指数</div>
+                <div class="font-heading text-sm">104.2</div>
+                <div class="text-xs text-neutral">▲ +0.1%</div>
+              </div>
+              <div class="bg-background/50 rounded-lg p-3">
+                <div class="text-xs text-text-secondary mb-1">MSTR</div>
+                <div class="font-heading text-sm">$1,520</div>
+                <div class="text-xs text-bullish">▲ +3.2%</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sentiment -->
+          <div class="card bg-surface border border-border rounded-xl p-4">
+            <h3 class="font-heading text-sm text-text-secondary mb-4 flex items-center gap-2">
+              <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              情绪指数
+            </h3>
+            <div class="space-y-3">
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs text-text-secondary">恐慌贪婪指数</span>
+                  <span class="text-xs font-heading text-bullish">72 [贪婪]</span>
+                </div>
+                <div class="h-2 bg-gradient-to-r from-bearish via-warning to-bullish rounded-full relative">
+                  <div class="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full shadow" style="left: 72%"></div>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="bg-background/50 rounded-lg p-2 text-center">
+                  <div class="text-xs text-text-secondary">新闻情绪</div>
+                  <div class="font-heading text-sm text-bullish">+0.35</div>
+                </div>
+                <div class="bg-background/50 rounded-lg p-2 text-center">
+                  <div class="text-xs text-text-secondary">社交情绪</div>
+                  <div class="font-heading text-sm text-bullish">+0.52</div>
+                </div>
+              </div>
+              <div class="text-center">
+                <span class="inline-block px-3 py-1 bg-bullish/20 text-bullish text-xs rounded-full">综合情绪: 偏多</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 3: Factors + Regime -->
+        <div class="grid grid-cols-3 gap-4">
+          <!-- Factor Radar -->
+          <div class="card bg-surface border border-border rounded-xl p-4">
+            <h3 class="font-heading text-sm text-text-secondary mb-4">因子雷达图</h3>
+            <div class="aspect-square">
+              <canvas id="radarChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Regime Detection -->
+          <div class="card bg-surface border border-border rounded-xl p-4">
+            <h3 class="font-heading text-sm text-text-secondary mb-4">市场状态检测</h3>
+            <div class="space-y-4">
+              <div class="flex items-center gap-4">
+                <div class="relative w-24 h-24">
+                  <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="#334155" stroke-width="8"/>
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="#EF4444" stroke-width="8" stroke-linecap="round"
+                            stroke-dasharray="150 252" class="transition-all duration-500"/>
+                  </svg>
+                  <div class="absolute inset-0 flex flex-col items-center justify-center">
+                    <span class="font-heading font-bold text-lg text-bearish">RISK</span>
+                    <span class="font-heading font-bold text-lg text-bearish">OFF</span>
+                  </div>
+                </div>
+                <div class="flex-1">
+                  <div class="text-sm text-text-primary mb-2">当前状态</div>
+                  <div class="space-y-1 text-xs text-text-secondary">
+                    <div>• 波动率: <span class="text-warning">高</span></div>
+                    <div>• ETF流出: <span class="text-bullish">是</span></div>
+                    <div>• 黄金上涨: <span class="text-warning">是</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-text-secondary">状态置信度</span>
+                  <span class="font-heading text-primary">85%</span>
+                </div>
+                <div class="flex gap-1">
+                  <div class="flex-1 h-6 bg-border/50 rounded flex items-center justify-center text-xs" title="TRENDING">Trend</div>
+                  <div class="flex-1 h-6 bg-border/50 rounded flex items-center justify-center text-xs" title="RANGE">Range</div>
+                  <div class="flex-1 h-6 bg-bearish/30 border border-bearish/50 rounded flex items-center justify-center text-xs text-bearish" title="PANIC">Panic</div>
+                  <div class="flex-1 h-6 bg-border/50 rounded flex items-center justify-center text-xs" title="EUPHORIA">Euph</div>
+                  <div class="flex-1 h-6 bg-border/50 rounded flex items-center justify-center text-xs" title="RISK_OFF">ROff</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Decision Signal -->
+          <div class="card bg-surface border border-border rounded-xl p-4">
+            <h3 class="font-heading text-sm text-text-secondary mb-4">决策信号</h3>
+            <div class="space-y-4">
+              <div class="text-center">
+                <div class="inline-flex items-center gap-2 px-4 py-2 bg-bullish/20 border border-bullish/30 rounded-xl mb-4">
+                  <svg class="w-5 h-5 text-bullish" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+                  <span class="font-heading font-bold text-bullish text-lg">BUY SIGNAL</span>
+                </div>
+                <div class="grid grid-cols-2 gap-3 text-xs">
+                  <div class="bg-background/50 rounded-lg p-2">
+                    <div class="text-text-secondary mb-1">置信度</div>
+                    <div class="font-heading text-primary">78%</div>
+                  </div>
+                  <div class="bg-background/50 rounded-lg p-2">
+                    <div class="text-text-secondary mb-1">风险等级</div>
+                    <div class="font-heading text-warning">MEDIUM</div>
+                  </div>
+                </div>
+              </div>
+              <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-text-secondary">信号理由</span>
+                </div>
+                <div class="bg-background/50 rounded-lg p-2 text-xs text-text-secondary">
+                  ETF持续流入 + 宏观风险偏好上升
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <button class="flex-1 py-2 bg-primary/20 text-primary text-sm rounded-lg hover:bg-primary/30 transition-colors cursor-pointer">查看详情</button>
+                <button class="flex-1 py-2 bg-bullish/20 text-bullish text-sm rounded-lg hover:bg-bullish/30 transition-colors cursor-pointer">执行信号</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 4: Positions + Risk Details -->
+        <div class="grid grid-cols-2 gap-4">
+          <!-- Position Management -->
+          <div class="card bg-surface border border-border rounded-xl p-4">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-heading text-sm text-text-secondary">仓位管理</h3>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 bg-bullish/20 text-bullish text-xs rounded regime-badge">做多</span>
+                <span class="text-xs text-text-secondary">总仓位: 18%</span>
+              </div>
+            </div>
+            <div class="space-y-3">
+              <!-- BTC Position -->
+              <div class="bg-background/50 rounded-lg p-3">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="flex items-center gap-2">
+                    <div class="w-6 h-6 bg-primary/20 rounded flex items-center justify-center">
+                      <span class="text-xs font-bold text-primary">B</span>
+                    </div>
+                    <span class="text-sm font-medium">BTC/USDT</span>
+                  </div>
+                  <span class="px-2 py-0.5 bg-bullish/20 text-bullish text-xs rounded regime-badge">LONG</span>
+                </div>
+                <div class="grid grid-cols-4 gap-2 text-xs">
+                  <div>
+                    <div class="text-text-secondary">仓位</div>
+                    <div class="font-heading">0.18 BTC</div>
+                  </div>
+                  <div>
+                    <div class="text-text-secondary">杠杆</div>
+                    <div class="font-heading">3x</div>
+                  </div>
+                  <div>
+                    <div class="text-text-secondary">入场价</div>
+                    <div class="font-heading">$66,500</div>
+                  </div>
+                  <div>
+                    <div class="text-text-secondary">浮盈</div>
+                    <div class="font-heading text-bullish">+$132</div>
+                  </div>
+                </div>
+                <div class="mt-2 flex gap-2">
+                  <span class="text-xs text-bullish">SL: $64,000</span>
+                  <span class="text-xs text-bullish">TP: $70,000</span>
+                </div>
+              </div>
+              <!-- ETH Position -->
+              <div class="bg-background/50 rounded-lg p-3">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="flex items-center gap-2">
+                    <div class="w-6 h-6 bg-neutral/20 rounded flex items-center justify-center">
+                      <span class="text-xs font-bold text-neutral">E</span>
+                    </div>
+                    <span class="text-sm font-medium">ETH/USDT</span>
+                  </div>
+                  <span class="px-2 py-0.5 bg-border/50 text-text-secondary text-xs rounded regime-badge">无仓位</span>
+                </div>
+                <div class="text-xs text-text-secondary">等待买入信号...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Risk Engine Details -->
+          <div class="card bg-surface border border-border rounded-xl p-4">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-heading text-sm text-text-secondary">风险引擎</h3>
+              <span class="px-2 py-0.5 bg-warning/20 text-warning text-xs rounded regime-badge">中等风险</span>
+            </div>
+            <div class="space-y-3">
+              <!-- Risk Breakdown -->
+              <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-text-secondary">波动风险</span>
+                  <span class="font-heading text-warning">0.65</span>
+                </div>
+                <div class="h-1.5 bg-border/50 rounded-full overflow-hidden">
+                  <div class="h-full bg-warning rounded-full" style="width: 65%"></div>
+                </div>
+              </div>
+              <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-text-secondary">资金流风险</span>
+                  <span class="font-heading text-bullish">0.30</span>
+                </div>
+                <div class="h-1.5 bg-border/50 rounded-full overflow-hidden">
+                  <div class="h-full bg-bullish rounded-full" style="width: 30%"></div>
+                </div>
+              </div>
+              <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-text-secondary">情绪风险</span>
+                  <span class="font-heading text-bearish">0.75</span>
+                </div>
+                <div class="h-1.5 bg-border/50 rounded-full overflow-hidden">
+                  <div class="h-full bg-bearish rounded-full" style="width: 75%"></div>
+                </div>
+              </div>
+              <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-text-secondary">宏观风险</span>
+                  <span class="font-heading text-neutral">0.50</span>
+                </div>
+                <div class="h-1.5 bg-border/50 rounded-full overflow-hidden">
+                  <div class="h-full bg-neutral rounded-full" style="width: 50%"></div>
+                </div>
+              </div>
+              <div class="pt-2 border-t border-border">
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-text-secondary">总风险指数</span>
+                  <span class="font-heading font-bold text-warning">58</span>
+                </div>
+                <div class="flex items-center justify-between text-xs mt-1">
+                  <span class="text-text-secondary">允许交易: <span class="text-bullish">是</span></span>
+                  <span class="text-text-secondary">最大仓位: <span class="text-primary">30%</span></span>
+                  <span class="text-text-secondary">最大杠杆: <span class="text-primary">2x</span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 5: News + Data Status -->
+        <div class="grid grid-cols-3 gap-4">
+          <!-- News Feed -->
+          <div class="col-span-2 card bg-surface border border-border rounded-xl p-4">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-heading text-sm text-text-secondary flex items-center gap-2">
+                <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/></svg>
+                新闻资讯
+              </h3>
+              <div class="flex gap-2">
+                <button class="px-2 py-1 bg-primary/20 text-primary text-xs rounded cursor-pointer">全部</button>
+                <button class="px-2 py-1 bg-border/50 text-text-secondary text-xs rounded hover:bg-border cursor-pointer">中文</button>
+                <button class="px-2 py-1 bg-border/50 text-text-secondary text-xs rounded hover:bg-border cursor-pointer">英文</button>
+              </div>
+            </div>
+            <div class="space-y-2 max-h-48 overflow-y-auto scrollbar-hide">
+              <div class="bg-background/50 rounded-lg p-3 hover:bg-background/70 transition-colors cursor-pointer">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-xs text-text-secondary">10分钟前</span>
+                  <span class="px-1.5 py-0.5 bg-primary/20 text-primary text-xs rounded">[CoinDesk]</span>
+                  <span class="px-1.5 py-0.5 bg-bullish/20 text-bullish text-xs rounded">+0.85</span>
+                </div>
+                <div class="text-sm">BTC ETF净流入创历史新高，单日流入超10亿美元</div>
+              </div>
+              <div class="bg-background/50 rounded-lg p-3 hover:bg-background/70 transition-colors cursor-pointer">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-xs text-text-secondary">25分钟前</span>
+                  <span class="px-1.5 py-0.5 bg-accent/20 text-accent text-xs rounded">[金十数据]</span>
+                  <span class="px-1.5 py-0.5 bg-bearish/20 text-bearish text-xs rounded">-0.15</span>
+                </div>
+                <div class="text-sm">美联储宣布维持利率不变，符合市场预期</div>
+              </div>
+              <div class="bg-background/50 rounded-lg p-3 hover:bg-background/70 transition-colors cursor-pointer">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-xs text-text-secondary">32分钟前</span>
+                  <span class="px-1.5 py-0.5 bg-primary/20 text-primary text-xs rounded">[CoinTelegraph]</span>
+                  <span class="px-1.5 py-0.5 bg-bullish/20 text-bullish text-xs rounded">+0.72</span>
+                </div>
+                <div class="text-sm">以太坊ETF获批预期升温，ETH突破新高</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Data Status -->
+          <div class="card bg-surface border border-border rounded-xl p-4">
+            <h3 class="font-heading text-sm text-text-secondary mb-4 flex items-center gap-2">
+              <svg class="w-4 h-4 text-bullish" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              数据采集状态
+            </h3>
+            <div class="space-y-2 text-xs">
+              <div class="flex items-center justify-between">
+                <span class="text-text-secondary">Binance价格</span>
+                <span class="flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-bullish"></span>
+                  <span class="text-bullish">正常</span>
+                </span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-text-secondary">OKX价格</span>
+                <span class="flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-bullish"></span>
+                  <span class="text-bullish">正常</span>
+                </span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-text-secondary">ETF资金流</span>
+                <span class="flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-warning"></span>
+                  <span class="text-warning">延迟2h</span>
+                </span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-text-secondary">黄金价格</span>
+                <span class="flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-bullish"></span>
+                  <span class="text-bullish">正常</span>
+                </span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-text-secondary">CoinDesk RSS</span>
+                <span class="flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-bullish"></span>
+                  <span class="text-bullish">正常</span>
+                </span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-text-secondary">Twitter KOL</span>
+                <span class="flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-bearish"></span>
+                  <span class="text-bearish">异常</span>
+                </span>
+              </div>
+              <div class="pt-2 border-t border-border mt-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-text-secondary">采集成功率</span>
+                  <span class="font-heading text-primary">92%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 6: Feedback Loop + Execution -->
+        <div class="grid grid-cols-2 gap-4">
+          <!-- Feedback Loop -->
+          <div class="card bg-surface border border-border rounded-xl p-4">
+            <h3 class="font-heading text-sm text-text-secondary mb-4 flex items-center gap-2">
+              <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              反馈闭环
+            </h3>
+            <div class="grid grid-cols-4 gap-3">
+              <div class="bg-background/50 rounded-lg p-3 text-center">
+                <div class="text-xs text-text-secondary mb-1">今日盈亏</div>
+                <div class="font-heading text-bullish">+2.5%</div>
+              </div>
+              <div class="bg-background/50 rounded-lg p-3 text-center">
+                <div class="text-xs text-text-secondary mb-1">胜率</div>
+                <div class="font-heading text-primary">67%</div>
+              </div>
+              <div class="bg-background/50 rounded-lg p-3 text-center">
+                <div class="text-xs text-text-secondary mb-1">连续亏损</div>
+                <div class="font-heading text-bullish">0</div>
+              </div>
+              <div class="bg-background/50 rounded-lg p-3 text-center">
+                <div class="text-xs text-text-secondary mb-1">盈亏比</div>
+                <div class="font-heading text-primary">2.1</div>
+              </div>
+            </div>
+            <div class="mt-3 space-y-2">
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-text-secondary">当前暴露倍数</span>
+                <span class="font-heading text-primary">1.0x</span>
+              </div>
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-text-secondary">质量阈值</span>
+                <span class="font-heading text-primary">0.65</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Execution Tracking -->
+          <div class="card bg-surface border border-border rounded-xl p-4">
+            <h3 class="font-heading text-sm text-text-secondary mb-4 flex items-center gap-2">
+              <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              执行追踪
+            </h3>
+            <div class="space-y-2">
+              <div class="flex items-center gap-3 bg-background/50 rounded-lg p-2">
+                <div class="w-8 h-8 bg-bullish/20 rounded-full flex items-center justify-center">
+                  <svg class="w-4 h-4 text-bullish" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                </div>
+                <div class="flex-1">
+                  <div class="text-sm">市价开多 BTC</div>
+                  <div class="text-xs text-text-secondary">订单ID: binance_123456</div>
+                </div>
+                <div class="text-xs text-bullish">已成交</div>
+              </div>
+              <div class="flex items-center gap-3 bg-background/50 rounded-lg p-2">
+                <div class="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center">
+                  <svg class="w-4 h-4 text-primary animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                </div>
+                <div class="flex-1">
+                  <div class="text-sm">限价开多 ETH</div>
+                  <div class="text-xs text-text-secondary">订单ID: binance_123457</div>
+                </div>
+                <div class="text-xs text-primary">处理中</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 7: Factor Cards -->
+        <div>
+          <h3 class="font-heading text-sm text-text-secondary mb-4">因子详情</h3>
+          <div class="grid grid-cols-6 gap-3">
+            <div class="card bg-surface/50 border border-border rounded-xl p-3">
+              <div class="flex items-center gap-2 mb-2">
+                <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                <span class="text-xs text-text-secondary">趋势</span>
+              </div>
+              <div class="text-xl font-heading font-bold text-bullish">+0.55</div>
+              <div class="text-xs text-text-secondary mt-1">权重 30%</div>
+            </div>
+            <div class="card bg-surface/50 border border-border rounded-xl p-3">
+              <div class="flex items-center gap-2 mb-2">
+                <svg class="w-4 h-4 text-neutral" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
+                <span class="text-xs text-text-secondary">资金流</span>
+              </div>
+              <div class="text-xl font-heading font-bold text-bearish">-0.20</div>
+              <div class="text-xs text-text-secondary mt-1">权重 25%</div>
+            </div>
+            <div class="card bg-surface/50 border border-border rounded-xl p-3">
+              <div class="flex items-center gap-2 mb-2">
+                <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span class="text-xs text-text-secondary">情绪</span>
+              </div>
+              <div class="text-xl font-heading font-bold text-bearish">-0.60</div>
+              <div class="text-xs text-text-secondary mt-1">权重 20%</div>
+            </div>
+            <div class="card bg-surface/50 border border-border rounded-xl p-3">
+              <div class="flex items-center gap-2 mb-2">
+                <svg class="w-4 h-4 text-bullish" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span class="text-xs text-text-secondary">宏观</span>
+              </div>
+              <div class="text-xl font-heading font-bold text-bullish">+0.30</div>
+              <div class="text-xs text-text-secondary mt-1">权重 15%</div>
+            </div>
+            <div class="card bg-surface/50 border border-border rounded-xl p-3">
+              <div class="flex items-center gap-2 mb-2">
+                <svg class="w-4 h-4 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                <span class="text-xs text-text-secondary">行为</span>
+              </div>
+              <div class="text-xl font-heading font-bold text-bullish">+0.40</div>
+              <div class="text-xs text-text-secondary mt-1">权重 10%</div>
+            </div>
+            <div class="card bg-surface/50 border border-border rounded-xl p-3">
+              <div class="flex items-center gap-2 mb-2">
+                <svg class="w-4 h-4 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span class="text-xs text-text-secondary">历史</span>
+              </div>
+              <div class="text-xl font-heading font-bold text-bearish">-0.10</div>
+              <div class="text-xs text-text-secondary mt-1">权重 5%</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 8: Trend Chart -->
+        <div class="card bg-surface border border-border rounded-xl p-4">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-heading text-sm text-text-secondary">因子趋势</h3>
+            <div class="flex gap-2">
+              <button class="px-3 py-1 text-xs bg-primary/20 text-primary rounded-md cursor-pointer border border-primary/30">1H</button>
+              <button class="px-3 py-1 text-xs bg-border/50 text-text-secondary rounded-md hover:bg-border cursor-pointer">4H</button>
+              <button class="px-3 py-1 text-xs bg-border/50 text-text-secondary rounded-md hover:bg-border cursor-pointer">1D</button>
+            </div>
+          </div>
+          <div class="h-48">
+            <canvas id="trendChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ETF Chart
+    const etfCtx = document.getElementById('etfChart').getContext('2d');
+    new Chart(etfCtx, {
+      type: 'line',
+      data: {
+        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+        datasets: [{
+          data: [120, 80, 95, 110, 130, 145, 150],
+          borderColor: '#10B981',
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: { display: false }
+        }
+      }
+    });
+
+    // Radar Chart
+    const radarCtx = document.getElementById('radarChart').getContext('2d');
+    new Chart(radarCtx, {
+      type: 'radar',
+      data: {
+        labels: ['Trend', 'Flow', 'Sentiment', 'Macro', 'Behavioral', 'Historical'],
+        datasets: [{
+          label: '当前',
+          data: [0.55, -0.20, -0.60, 0.30, 0.40, -0.10],
+          backgroundColor: 'rgba(245, 158, 11, 0.2)',
+          borderColor: '#F59E0B',
+          borderWidth: 2,
+          pointBackgroundColor: '#F59E0B'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        scales: {
+          r: {
+            min: -1, max: 1,
+            grid: { color: '#334155' },
+            angleLines: { color: '#334155' },
+            pointLabels: { color: '#94A3B8', font: { family: 'Fira Code', size: 9 } },
+            ticks: { display: false }
+          }
+        },
+        plugins: { legend: { display: false } }
+      }
+    });
+
+    // Trend Chart
+    const trendCtx = document.getElementById('trendChart').getContext('2d');
+    new Chart(trendCtx, {
+      type: 'line',
+      data: {
+        labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '现在'],
+        datasets: [
+          { label: 'Trend', data: [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.55], borderColor: '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.1)', fill: true, tension: 0.4 },
+          { label: 'Flow', data: [-0.1, -0.15, -0.2, -0.18, -0.2, -0.2, -0.2], borderColor: '#3B82F6', backgroundColor: 'rgba(59, 130, 246, 0.1)', fill: true, tension: 0.4 },
+          { label: 'Sentiment', data: [-0.3, -0.35, -0.4, -0.45, -0.5, -0.55, -0.60], borderColor: '#8B5CF6', backgroundColor: 'rgba(139, 92, 246, 0.1)', fill: true, tension: 0.4 },
+          { label: 'Macro', data: [0.1, 0.15, 0.2, 0.22, 0.25, 0.28, 0.30], borderColor: '#10B981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.4 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { color: '#94A3B8', font: { family: 'Fira Sans' }, padding: 20 } }
+        },
+        scales: {
+          x: { grid: { color: '#334155' }, ticks: { color: '#94A3B8' } },
+          y: { grid: { color: '#334155' }, ticks: { color: '#94A3B8' }, min: -1, max: 1 }
+        }
+      }
+    });
+
+    // Update timestamp
+    function updateTimestamp() {
+      const now = new Date();
+      const time = now.toLocaleTimeString('zh-CN', { hour12: false });
+      document.getElementById('last-update').textContent = time;
+    }
+    setInterval(updateTimestamp, 1000);
+    updateTimestamp();
+  </script>
+</body>
+</html>

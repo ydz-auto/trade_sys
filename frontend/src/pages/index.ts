@@ -1,0 +1,8 @@
+export { DashboardPage } from './DashboardPage'
+export { WeightConfigPage } from './WeightConfigPage'
+export { RegimePage } from './RegimePage'
+export { RiskPage } from './RiskPage'
+export { DecisionPage } from './DecisionPage'
+export { ControlPage } from './ControlPage'
+export { PositionsPage } from './PositionsPage'
+export { ExecutionPage } from './ExecutionPage'
