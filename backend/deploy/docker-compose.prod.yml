@@ -72,7 +72,7 @@ services:
     restart: unless-stopped
 
   data-service:
-    image: ${DOCKER_USERNAME}/trade_sys-data-service:latest
+    image: ghcr.io/ydz-auto/trade_sys-data-service:latest
     container_name: trade_data_service
     command: python -m services.data_service.main_kafka
     depends_on:
@@ -103,7 +103,7 @@ services:
     restart: unless-stopped
 
   fusion-service:
-    image: ${DOCKER_USERNAME}/trade_sys-fusion-service:latest
+    image: ghcr.io/ydz-auto/trade_sys-fusion-service:latest
     container_name: trade_fusion_service
     command: python -m services.fusion_service.main_kafka
     depends_on:
@@ -118,7 +118,7 @@ services:
     restart: unless-stopped
 
   strategy-service:
-    image: ${DOCKER_USERNAME}/trade_sys-strategy-service:latest
+    image: ghcr.io/ydz-auto/trade_sys-strategy-service:latest
     container_name: trade_strategy_service
     command: python -m services.strategy_service.main_kafka
     depends_on:
