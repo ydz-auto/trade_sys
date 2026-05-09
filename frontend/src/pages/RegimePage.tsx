@@ -18,7 +18,7 @@ export function RegimePage() {
                   percent={confidence}
                   strokeColor="#EF4444"
                   trailColor="#334155"
-                  format={(percent) => (
+                  format={() => (
                     <div className="text-center">
                       <div className="font-mono text-lg font-bold text-[#EF4444]">RISK</div>
                       <div className="font-mono text-lg font-bold text-[#EF4444]">OFF</div>

@@ -18,11 +18,6 @@ export interface TradingData {
   socialPosts: SocialPost[]
 }
 
-async function fetchMock<T>(data: T): Promise<T> {
-  await new Promise(resolve => setTimeout(resolve, 100))
-  return data
-}
-
 async function fetchReal<T>(endpoint: string): Promise<T> {
   const response = await fetch(`${API_BASE}${endpoint}`)
   if (!response.ok) {
@@ -34,17 +29,17 @@ async function fetchReal<T>(endpoint: string): Promise<T> {
 export async function fetchAllTradingData(): Promise<TradingData> {
   if (USE_MOCK) {
     return {
-      prices: await fetchMock(mockData.mockPrices),
-      compositeScore: await fetchMock(mockData.mockCompositeScore),
-      regime: await fetchMock(mockData.mockRegime),
-      risk: await fetchMock(mockData.mockRisk),
-      signal: await fetchMock(mockData.mockSignal),
-      factors: await fetchMock(mockData.mockFactors),
-      positions: await fetchMock(mockData.mockPositions),
-      weightVersions: await fetchMock(mockData.mockWeightVersions),
-      dataSources: await fetchMock(mockData.mockDataSources),
-      traders: await fetchMock(mockData.mockTraders),
-      socialPosts: await fetchMock(mockData.mockSocialPosts),
+      prices: mockData.mockPrices as PriceData[],
+      compositeScore: mockData.mockCompositeScore,
+      regime: mockData.mockRegime as RegimeState,
+      risk: mockData.mockRisk as RiskIndex,
+      signal: mockData.mockSignal as Signal,
+      factors: mockData.mockFactors as Factor[],
+      positions: mockData.mockPositions as Position[],
+      weightVersions: mockData.mockWeightVersions as WeightVersion[],
+      dataSources: mockData.mockDataSources as DataSourceStatus[],
+      traders: mockData.mockTraders as Trader[],
+      socialPosts: mockData.mockSocialPosts as SocialPost[],
     }
   }
 
@@ -56,56 +51,55 @@ export async function fetchAllTradingData(): Promise<TradingData> {
 
 export async function fetchPrices(): Promise<PriceData[]> {
   if (USE_MOCK) {
-    return fetchMock(mockData.mockPrices)
+    return mockData.mockPrices as PriceData[]
   }
   return fetchReal<PriceData[]>('/prices')
 }
 
 export async function fetchFactors(): Promise<Factor[]> {
   if (USE_MOCK) {
-    return fetchMock(mockData.mockFactors)
+    return mockData.mockFactors as Factor[]
   }
   return fetchReal<Factor[]>('/factors')
 }
 
 export async function fetchRegime(): Promise<RegimeState> {
   if (USE_MOCK) {
-    return fetchMock(mockData.mockRegime)
+    return mockData.mockRegime as RegimeState
   }
   return fetchReal<RegimeState>('/regime')
 }
 
 export async function fetchRisk(): Promise<RiskIndex> {
   if (USE_MOCK) {
-    return fetchMock(mockData.mockRisk)
+    return mockData.mockRisk as RiskIndex
   }
   return fetchReal<RiskIndex>('/risk')
 }
 
 export async function fetchSignal(): Promise<Signal> {
   if (USE_MOCK) {
-    return fetchMock(mockData.mockSignal)
+    return mockData.mockSignal as Signal
   }
   return fetchReal<Signal>('/signal')
 }
 
 export async function fetchPositions(): Promise<Position[]> {
   if (USE_MOCK) {
-    return fetchMock(mockData.mockPositions)
+    return mockData.mockPositions as Position[]
   }
   return fetchReal<Position[]>('/positions')
 }
 
 export async function fetchWeightVersions(): Promise<WeightVersion[]> {
   if (USE_MOCK) {
-    return fetchMock(mockData.mockWeightVersions)
+    return mockData.mockWeightVersions as WeightVersion[]
   }
   return fetchReal<WeightVersion[]>('/weights/versions')
 }
 
 export async function updateFactorWeight(type: string, weight: number): Promise<void> {
   if (USE_MOCK) {
-    await fetchMock(null)
     return
   }
   await fetch(`${API_BASE}/factors/${type}/weight`, {

@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { useTradingStore } from '../../store/tradingStore'
 import clsx from 'clsx'
 

@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, Activity, Globe, Users, Clock } from 'lucide-react'
+import { TrendingUp, Activity, Globe, Users, Clock } from 'lucide-react'
 import clsx from 'clsx'
 import type { Factor } from '../types'
 
@@ -11,7 +11,7 @@ const iconMap = {
   historical: Clock,
 }
 
-const colorMap = {
+const colorMap: Record<string, string> = {
   primary: 'text-primary bg-primary/20',
   neutral: 'text-neutral bg-neutral/20',
   accent: 'text-accent bg-accent/20',

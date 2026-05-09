@@ -56,7 +56,7 @@ export const useTradingStore = create<TradingState>((set) => ({
   compositeScore: 0,
   setCompositeScore: (compositeScore) => set({ compositeScore }),
 
-  regime: { state: 'UNKNOWN', confidence: 0 },
+  regime: { state: 'UNCERTAIN' as const, confidence: 0 },
   setRegime: (regime) => set({ regime }),
 
   risk: {

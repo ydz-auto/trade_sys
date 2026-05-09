@@ -12,7 +12,7 @@ import { AppSidebar } from './components/AppSidebar'
 import { AppHeader } from './components/AppHeader'
 import { useDataLoader } from './hooks'
 
-const { Sider, Header, Content } = Layout
+const { Content } = Layout
 
 function AppContent() {
   const { loading, error } = useDataLoader()
