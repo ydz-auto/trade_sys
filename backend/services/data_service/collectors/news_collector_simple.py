@@ -70,16 +70,35 @@ class NewsItem:
         }
 
 class Deduplicator:
-    def __init__(self):
-        self.seen_titles = set()
-        self.seen_ids = set()
-
+    """带时间窗口的去重器 - 24小时内的新闻不重复"""
+    
+    def __init__(self, expire_hours: int = 24):
+        self.expire_hours = expire_hours
+        self.seen: Dict[str, float] = {}  # title_hash -> timestamp
+    
+    def _clean_expired(self):
+        """清理过期条目"""
+        now = datetime.now().timestamp()
+        expired_keys = [
+            key for key, ts in self.seen.items()
+            if now - ts > self.expire_hours * 3600
+        ]
+        for key in expired_keys:
+            del self.seen[key]
+    
     def is_duplicate(self, title: str) -> bool:
-        title_lower = title.lower()
-        for seen in self.seen_titles:
-            if seen in title_lower or title_lower in seen:
-                return True
-        self.seen_titles.add(title_lower)
+        """检查是否重复，自动清理过期"""
+        self._clean_expired()
+        
+        title_lower = title.lower().strip()
+        title_hash = hashlib.md5(title_lower.encode()).hexdigest()
+        
+        if title_hash in self.seen:
+            # 更新时间戳，延长生命周期
+            self.seen[title_hash] = datetime.now().timestamp()
+            return True
+        
+        self.seen[title_hash] = datetime.now().timestamp()
         return False
 
 class BlackSwanDetector:
@@ -104,20 +123,11 @@ class NewsCollector:
 
     def _init_sources(self) -> Dict[str, str]:
         return {
-            # 英文媒体
-            "coindesk": "https://www.coindesk.com/arc/outboundfeeds/rss/",
             "cointelegraph": "https://cointelegraph.com/rss",
             "cryptonews": "https://cryptonews.com/news/feed/",
-            "blockworks": "https://blockworks.co/news/feed",
             "decrypt": "https://decrypt.co/feed",
             "theblock": "https://www.theblock.co/rss.xml",
-
-            # 中文媒体
-            "jinse": "https://jinse.cc/rss",
-            "odaily": "https://www.odaily.com/feed",
-
-            # CryptoPanic API
-            "cryptopanic_api": "https://cryptopanic.com/api/v1/posts/?auth_token=public&kind=news",
+            "bitcoinist": "https://bitcoinist.com/feed/",
         }
 
     async def collect(self) -> List[NewsItem]:
