@@ -11,12 +11,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from infrastructure.logging import get_logger
-logger = get_logger("collectors.exchange")try:
+try:
     import ccxt
 except ImportError:
     ccxt = None
 
-logger = logging.getLogger(__name__)
+logger = get_logger("collectors.exchange")
 
 
 @dataclass

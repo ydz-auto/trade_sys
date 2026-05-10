@@ -173,3 +173,6 @@ tempCodeRunnerFile.py
 
 # PEP 582
 __pypackages__/
+
+# Node modules
+node_modules/

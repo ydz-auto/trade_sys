@@ -1,0 +1,200 @@
+# LLM 资源池配置
+# 多级降级: 智谱免费 → 硅基流动 → DeepSeek → 百度千帆 → 阿里百炼 → Ollama → 关键词匹配
+llm_pools:
+  # 一级: 智谱AI - 主力免费
+  zhipu:
+    enabled: true
+    priority: 1
+    name: "智谱AI"
+    type: "openai_compatible"
+    base_url: "https://open.bigmodel.cn/api/paas/v4"
+    api_key_env: "ZHIPU_API_KEY"
+    models:
+      - "glm-4-flash"
+    rate_limit:
+      requests_per_minute: 60
+      tokens_per_minute: 10000
+    circuit_breaker:
+      failure_threshold: 5
+      timeout_seconds: 60
+    fallback_to: "siliconflow"
+
+  # 二级: 硅基流动 - 备用
+  siliconflow:
+    enabled: true
+    priority: 2
+    name: "硅基流动"
+    type: "openai_compatible"
+    base_url: "https://api.siliconflow.cn/v1"
+    api_key_env: "SILICONFLOW_API_KEY"
+    models:
+      - "deepseek-ai/DeepSeek-V2.5"
+      - "Qwen/Qwen2.5-7B-Instruct"
+    rate_limit:
+      requests_per_minute: 60
+      tokens_per_minute: 8000
+    circuit_breaker:
+      failure_threshold: 5
+      timeout_seconds: 60
+    fallback_to: "deepseek"
+
+  # 三级: DeepSeek
+  deepseek:
+    enabled: true
+    priority: 3
+    name: "DeepSeek"
+    type: "openai_compatible"
+    base_url: "https://api.deepseek.com/v1"
+    api_key_env: "DEEPSEEK_API_KEY"
+    models:
+      - "deepseek-chat"
+    rate_limit:
+      requests_per_minute: 30
+      tokens_per_minute: 5000
+    circuit_breaker:
+      failure_threshold: 5
+      timeout_seconds: 60
+    fallback_to: "qianfan"
+
+  # 四级: 百度千帆
+  qianfan:
+    enabled: true
+    priority: 4
+    name: "百度千帆"
+    type: "openai_compatible"
+    base_url: "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop"
+    api_key_env: "QIANFAN_API_KEY"
+    models:
+      - "ernie-speed-8k"
+    rate_limit:
+      requests_per_minute: 30
+      tokens_per_minute: 5000
+    circuit_breaker:
+      failure_threshold: 5
+      timeout_seconds: 60
+    fallback_to: "dashscope"
+
+  # 五级: 阿里百炼
+  dashscope:
+    enabled: true
+    priority: 5
+    name: "阿里百炼"
+    type: "openai_compatible"
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key_env: "DASHSCOPE_API_KEY"
+    models:
+      - "glm-4-flash"
+    rate_limit:
+      requests_per_minute: 10
+      tokens_per_minute: 2000
+    circuit_breaker:
+      failure_threshold: 5
+      timeout_seconds: 60
+    fallback_to: "ollama"
+
+  # 六级: Ollama 本地模型
+  ollama:
+    enabled: true
+    priority: 6
+    name: "Ollama 本地"
+    type: "ollama"
+    base_url: "http://localhost:11434"
+    api_key_env: ""
+    models:
+      - "qwen2.5:7b"
+      - "llama3:8b"
+      - "phi3:latest"
+    rate_limit:
+      requests_per_minute: 15
+      tokens_per_minute: 10000
+    circuit_breaker:
+      failure_threshold: 3
+      timeout_seconds: 30
+    fallback_to: "keyword"
+
+  # 七级: 关键词匹配降级
+  keyword:
+    enabled: true
+    priority: 7
+    name: "关键词匹配"
+    type: "keyword"
+    models: []
+    fallback_to: null
+
+# 全局配置
+global:
+  load_balancing:
+    strategy: "priority_fallback"  # priority_fallback | round_robin
+  retry:
+    max_retries: 2
+    base_delay: 1.0
+    max_delay: 10.0
+  fallback_to_keyword_only: false  # 所有API都不可用时使用关键词匹配
+  # 情绪分析关键词
+  sentiment_keywords:
+    bullish:
+      - "surge"
+      - "rally"
+      - "soar"
+      - "jump"
+      - "gain"
+      - "rise"
+      - "high"
+      - "breakout"
+      - "bullish"
+      - "bull"
+      - "buy"
+      - "approval"
+      - "adopt"
+      - "ETF"
+      - "positive"
+      - "up"
+      - "上涨"
+      - "暴涨"
+      - "突破"
+      - "利好"
+      - "牛市"
+      - "买入"
+      - "采用"
+      - "获批"
+    bearish:
+      - "crash"
+      - "plunge"
+      - "dump"
+      - "drop"
+      - "fall"
+      - "decline"
+      - "low"
+      - "bearish"
+      - "bear"
+      - "sell"
+      - "hack"
+      - "ban"
+      - "regulation"
+      - "negative"
+      - "down"
+      - "下跌"
+      - "暴跌"
+      - "跌破"
+      - "利空"
+      - "熊市"
+      - "卖出"
+      - "监管"
+      - "黑客"
+
+  # 黑天鹅事件关键词
+  black_swan_keywords:
+    critical:
+      - "exchange hack"
+      - "SEC lawsuit"
+      - "major ban"
+      - "systemic failure"
+      - "交易所被黑"
+      - "SEC起诉"
+      - "全面禁止"
+      - "系统性崩溃"
+    high:
+      - "regulatory crackdown"
+      - "major security breach"
+      - "网络攻击"
+      - "监管打击"

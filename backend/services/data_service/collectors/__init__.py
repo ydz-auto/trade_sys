@@ -48,13 +48,29 @@ from .macro_collector import (
     MacroResult
 )
 
-from .news_collector import (
-    NewsCollector,
-    NewsSourceCollector,
-    NewsItem,
-    Deduplicator,
-    BlackSwanDetector
-)
+try:
+    from .news_collector import (
+        NewsCollector,
+        NewsSourceCollector,
+        NewsItem,
+        Deduplicator,
+        BlackSwanDetector
+    )
+except ImportError:
+    try:
+        from .news_collector_simple import (
+            NewsCollector,
+            NewsItem,
+            Deduplicator,
+            BlackSwanDetector
+        )
+        NewsSourceCollector = NewsCollector
+    except ImportError:
+        NewsCollector = None
+        NewsSourceCollector = None
+        NewsItem = None
+        Deduplicator = None
+        BlackSwanDetector = None
 
 from .social_media_collector import (
     SocialMediaCollector,

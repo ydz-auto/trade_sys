@@ -41,7 +41,9 @@ class ConfigManager:
         self._memory_config: Dict[str, Any] = {}
         self._schemas: Dict[str, ConfigSchema] = {}
         for key, schema_dict in CONFIG_SCHEMAS.items():
-            self._schemas[key] = ConfigSchema(**schema_dict, key=key)
+            schema_dict_copy = schema_dict.copy()
+            schema_dict_copy.setdefault('category', 'general')
+            self._schemas[key] = ConfigSchema(**schema_dict_copy, key=key)
         self._versions: Dict[str, List[ConfigVersion]] = {}
         self._subscribers: Dict[str, List[Callable]] = {}
 

@@ -10,29 +10,46 @@ Data Service - Kafka Producer
 import asyncio
 import sys
 import os
+import uuid
 from pathlib import Path
 from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from infrastructure.messaging import get_broker, Topics
-from infrastructure.messaging.schema import RawData
-from services.data_service.collectors.news_collector import NewsCollector
+
+try:
+    from services.data_service.collectors.news_collector import NewsCollector
+    print("[data_service] Using enhanced NewsCollector with LLM")
+except Exception as e:
+    from services.data_service.collectors.news_collector_simple import NewsCollector
+    print(f"[data_service] Using simple NewsCollector (no LLM): {e}")
 
 
 async def publish_raw_data(broker, news_item: dict, interval: float = 2.0):
     """发布一条原始数据到 Kafka"""
-    raw_data = RawData(
-        type="news",
-        symbol=news_item.get("affected_symbols", ["BTC"])[0] if news_item.get("affected_symbols") else "BTC",
-        source=news_item["source"],
-        data=news_item,
-    )
+    symbol = news_item.get("affected_symbols", ["BTC"])
+    if isinstance(symbol, list) and len(symbol) > 0:
+        symbol = symbol[0]
+    elif not isinstance(symbol, str):
+        symbol = "BTC"
+    
+    key_str = symbol if symbol else "BTC"
+    
+    message = {
+        "id": str(uuid.uuid4()),
+        "timestamp": datetime.utcnow().isoformat(),
+        "source": "news_collector",
+        "version": "v1",
+        "type": "news",
+        "symbol": key_str,
+        "data": news_item,
+    }
 
-    await broker.publish(
-        message=raw_data.model_dump(),
+    await broker.get_broker().publish(
+        message,
         topic=Topics.RAW_DATA,
-        key=news_item.get("affected_symbols", ["BTC"])[0] if news_item.get("affected_symbols") else "BTC",
+        key=key_str.encode() if isinstance(key_str, str) else key_str,
     )
 
     print(f"[data_service] Published: {news_item['title'][:50]}...")
@@ -86,14 +103,16 @@ async def main():
                     print(f"Collected {len(news_items)} news items")
 
                     for news in news_items[:10]:
-                        await publish_raw_data(broker, news_collector._to_dict(news))
+                        await publish_raw_data(broker, news.to_dict())
 
                     print(f"Published {min(10, len(news_items))} news items to Kafka")
                 else:
                     print("No news collected, will retry...")
 
             except Exception as e:
+                import traceback
                 print(f"[data_service] Collection error: {e}")
+                print(f"[data_service] Traceback: {traceback.format_exc()}")
 
             await asyncio.sleep(collection_interval)
 

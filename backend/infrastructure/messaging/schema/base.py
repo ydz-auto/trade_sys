@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 class BaseMessage(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: datetime = Field(default_factory=datetime.utcnow)
-    source: str
+    source: str = "system"
     version: str = "v1"
 
     class Config:
