@@ -30,6 +30,7 @@ from .skill_adapter import (
 from .cryptopanic_adapter import CryptoPanicAdapter
 from .whale_alert_adapter import WhaleAlertAdapter
 from .twitter_adapter import TwitterAdapter
+from .qq_adapter import QQAdapter
 
 __all__ = [
     # 基础类
@@ -47,4 +48,5 @@ __all__ = [
     # 社交/链上适配器
     "TwitterAdapter",
     "WhaleAlertAdapter",
+    "QQAdapter",
 ]

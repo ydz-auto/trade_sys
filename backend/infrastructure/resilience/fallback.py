@@ -147,3 +147,15 @@ def create_default_chain(
         chain.add_strategy(StaticValueFallback(static_value))
     
     return chain
+
+
+__all__ = [
+    "FallbackResult",
+    "FallbackStrategy",
+    "PrimaryFallback",
+    "StaticValueFallback",
+    "AlternateFunctionFallback",
+    "FallbackChain",
+    "fallback",
+    "create_default_chain"
+]

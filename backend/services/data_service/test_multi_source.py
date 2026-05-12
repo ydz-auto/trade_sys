@@ -8,14 +8,17 @@ import asyncio
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+# 添加项目根目录到路径
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
 
 from services.data_service.adapters import (
     get_adapter_registry,
     OdailySkillAdapter,
     CryptoPanicAdapter,
     WhaleAlertAdapter,
-    TwitterAdapter
+    TwitterAdapter,
+    QQAdapter
 )
 
 
@@ -82,10 +85,23 @@ async def test_all_adapters():
             print(f"   {i}. [{author}] {e.title[:50]}...")
     except Exception as e:
         print(f"❌ 失败: {e}")
-    finally:
-        await twitter.close()
     
-    # 5. 汇总
+    # 5. 测试 QQ (中文社区监控)
+    print("\n💬 5. QQ (中文社区监控)")
+    print("-" * 70)
+    qq = QQAdapter()
+    try:
+        events = await qq.collect()
+        print(f"✅ 成功获取 {len(events)} 条事件")
+        print("   (使用模拟数据 - 设置 QQ_USE_MOCK=false 启用 go-cqhttp)")
+        for i, e in enumerate(events[:3], 1):
+            sender = e.metadata.get("sender", "unknown")
+            print(f"   {i}. [{sender}] {e.content[:50]}...")
+            print(f"      情绪: {e.sentiment}, 币种: {e.symbols}, 重要性: {e.importance}")
+    except Exception as e:
+        print(f"❌ 失败: {e}")
+    
+    # 6. 汇总
     print("\n" + "=" * 70)
     print("数据源汇总")
     print("=" * 70)

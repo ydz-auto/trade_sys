@@ -901,4 +901,6 @@ def get_adapter_registry() -> AdapterRegistry:
         _registry.register(TwitterAdapter())
         _registry.register(NewsAdapter())
         _registry.register(PANewsAdapter())
+        from .qq_adapter import QQAdapter
+        _registry.register(QQAdapter())
     return _registry

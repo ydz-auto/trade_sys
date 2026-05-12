@@ -92,6 +92,7 @@ class Source(Enum):
     TWITTER = "twitter"
     REDDIT = "reddit"
     TELEGRAM = "telegram"
+    QQ = "qq"
     
     # Skills
     CLAWHUB_ODAILY = "clawhub_odaily"

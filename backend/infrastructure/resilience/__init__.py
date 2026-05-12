@@ -6,12 +6,18 @@ from .circuit_breaker import (
     CircuitBreaker,
     CircuitState,
     CircuitBreakerConfig,
-    circuit
+    circuit,
+    get_circuit_breaker
 )
 from .fallback import (
+    FallbackResult,
     FallbackStrategy,
+    PrimaryFallback,
+    StaticValueFallback,
+    AlternateFunctionFallback,
     FallbackChain,
-    fallback
+    fallback,
+    create_default_chain
 )
 from .retry import (
     RetryPolicy,
@@ -20,13 +26,22 @@ from .retry import (
 )
 
 __all__ = [
+    # Circuit Breaker
     "CircuitBreaker",
     "CircuitState",
     "CircuitBreakerConfig",
     "circuit",
+    "get_circuit_breaker",
+    # Fallback
+    "FallbackResult",
     "FallbackStrategy",
+    "PrimaryFallback",
+    "StaticValueFallback",
+    "AlternateFunctionFallback",
     "FallbackChain",
     "fallback",
+    "create_default_chain",
+    # Retry
     "RetryPolicy",
     "RetryConfig",
     "retry"
