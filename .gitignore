@@ -176,3 +176,9 @@ __pypackages__/
 
 # Node modules
 node_modules/
+
+# TypeScript build artifacts
+*.tsbuildinfo
+
+# Test files with API keys
+test.py
