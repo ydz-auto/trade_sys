@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Factor, PriceData, RegimeState, RiskIndex, Signal, SystemMode, Position, WeightVersion, DataSourceStatus, Trader, SocialPost } from '../types'
+import type { Factor, PriceData, RegimeState, RiskIndex, Signal, SystemMode, Position, WeightVersion, DataSourceStatus, Trader, SocialPost, NewsItem } from '../types'
 
 interface TradingState {
   mode: SystemMode
@@ -38,6 +38,9 @@ interface TradingState {
 
   socialPosts: SocialPost[]
   setSocialPosts: (posts: SocialPost[]) => void
+
+  news: NewsItem[]
+  setNews: (news: NewsItem[]) => void
 
   isConnected: boolean
   setConnected: (connected: boolean) => void
@@ -97,6 +100,9 @@ export const useTradingStore = create<TradingState>((set) => ({
 
   socialPosts: [],
   setSocialPosts: (socialPosts) => set({ socialPosts }),
+
+  news: [],
+  setNews: (news) => set({ news }),
 
   isConnected: false,
   setConnected: (isConnected) => set({ isConnected }),

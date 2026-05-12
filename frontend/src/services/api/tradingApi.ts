@@ -2,7 +2,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 const USE_MOCK = import.meta.env.VITE_USE_MOCK_API === 'true'
 
 import * as mockData from '../mock'
-import type { PriceData, RegimeState, RiskIndex, Signal, Factor, Position, WeightVersion, DataSourceStatus, Trader, SocialPost } from '../../types'
+import type { PriceData, RegimeState, RiskIndex, Signal, Factor, Position, WeightVersion, DataSourceStatus, Trader, SocialPost, NewsItem } from '../../types'
 
 export interface TradingData {
   prices: PriceData[]
@@ -16,6 +16,7 @@ export interface TradingData {
   dataSources: DataSourceStatus[]
   traders: Trader[]
   socialPosts: SocialPost[]
+  news: NewsItem[]
 }
 
 async function fetchReal<T>(endpoint: string): Promise<T> {
@@ -40,6 +41,7 @@ export async function fetchAllTradingData(): Promise<TradingData> {
       dataSources: mockData.mockDataSources as DataSourceStatus[],
       traders: mockData.mockTraders as Trader[],
       socialPosts: mockData.mockSocialPosts as SocialPost[],
+      news: []
     }
   }
 
@@ -47,6 +49,13 @@ export async function fetchAllTradingData(): Promise<TradingData> {
     fetchReal<TradingData>('/trading/dashboard'),
   ])
   return data
+}
+
+export async function fetchNews(limit: number = 20): Promise<NewsItem[]> {
+  if (USE_MOCK) {
+    return []
+  }
+  return fetchReal<NewsItem[]>(`/news?limit=${limit}`)
 }
 
 export async function fetchPrices(): Promise<PriceData[]> {

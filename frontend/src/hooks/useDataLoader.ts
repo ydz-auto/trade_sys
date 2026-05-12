@@ -29,6 +29,7 @@ export function useDataLoader() {
         store.setDataSources(data.dataSources)
         store.setTraders(data.traders)
         store.setSocialPosts(data.socialPosts)
+        store.setNews(data.news)
         store.setLastUpdate(new Date())
 
         setError(null)

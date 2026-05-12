@@ -91,3 +91,13 @@ export interface SocialPost {
   time: string
   symbols: string[]
 }
+
+export interface NewsItem {
+  id: string
+  title: string
+  content: string
+  source: string
+  sentiment: string
+  sentiment_score: number
+  published: number
+}
