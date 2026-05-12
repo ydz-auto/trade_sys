@@ -24,36 +24,29 @@ import uuid
 
 class EventType(Enum):
     """事件类型"""
-    # 市场事件
     PRICE_UPDATE = "price_update"
     ORDER_BOOK_UPDATE = "order_book_update"
     TRADE = "trade"
-    
-    # 新闻/情报事件
+
     NEWS = "news"
     TWEET = "tweet"
     REGULATORY = "regulatory"
     FUNDAMENTAL = "fundamental"
     TECHNICAL = "technical"
-    
-    # 链上事件
+
     ONCHAIN_TRANSFER = "onchain_transfer"
     ONCHAIN_WHALE = "onchain_whale"
     ONCHAIN_PROTOCOL = "onchain_protocol"
-    
-    # 预测市场
+
     PREDICTION_MARKET = "prediction_market"
-    
-    # 宏观事件
+
     MACRO_EVENT = "macro_event"
     ETF_FLOW = "etf_flow"
-    
-    # 情绪/叙事
+
     SENTIMENT_CHANGE = "sentiment_change"
     NARRATIVE_SHIFT = "narrative_shift"
     REGIME_CHANGE = "regime_change"
-    
-    # 其他
+
     UNKNOWN = "unknown"
 
 
@@ -67,104 +60,87 @@ class Sentiment(Enum):
 
 class Importance(Enum):
     """重要性级别"""
-    CRITICAL = 1.0    # 需立即关注
-    HIGH = 0.75        # 重要
-    MEDIUM = 0.5       # 中等
-    LOW = 0.25         # 一般
+    CRITICAL = 1.0
+    HIGH = 0.75
+    MEDIUM = 0.5
+    LOW = 0.25
 
 
 class Source(Enum):
     """数据源"""
-    # 官方 API
     BINANCE = "binance"
     OKX = "okx"
     COINGECKO = "coingecko"
-    
-    # 新闻/媒体
+
     COINDESK = "coindesk"
     COINTELEGRAPH = "cointelegraph"
     THEBLOCK = "theblock"
     ODALY = "odaily"
     JINSE = "jinse"
     BABI8 = "babi8"
-    
-    # 社交媒体
+
     TWITTER = "twitter"
     REDDIT = "reddit"
     TELEGRAM = "telegram"
     QQ = "qq"
-    
-    # Skills
+
     CLAWHUB_ODAILY = "clawhub_odaily"
     CLAWHUB_PANEWS = "clawhub_panews"
     CLAWHUB_JIN10 = "clawhub_jin10"
-    
-    # 链上
+
     ETHEREUM = "ethereum"
     DEXRANK = "dexrank"
     GLASSNODE = "glassnode"
-    
-    # 预测市场
+
     POLYMARKET = "polymarket"
-    
-    # 宏观
+
     YAHOO = "yahoo"
     CME = "cme"
-    
-    # 未知
+
     UNKNOWN = "unknown"
 
 
 @dataclass
 class StandardEvent:
     """标准事件 - 所有数据源的统一输出格式（系统共享合约）
-    
+
     这是系统的核心公共语言，所有 Adapter 都应该输出这个格式。
-    
+
     事件流向：
     External Source → Adapter → StandardEvent → EventBus → Consumers
     """
-    
-    # === 必需字段 ===
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     source: str = Source.UNKNOWN.value
     event_type: str = EventType.UNKNOWN.value
     timestamp: int = field(default_factory=lambda: int(datetime.now().timestamp()))
     created_at: int = field(default_factory=lambda: int(datetime.now().timestamp()))
-    
-    # === 内容 ===
+
     title: str = ""
     summary: str = ""
     content: str = ""
     url: str = ""
-    
-    # === 重要性/情绪 ===
-    importance: float = 0.5  # 0-1
-    sentiment: str = Sentiment.UNKNOWN.value  # bullish/bearish/neutral
-    
-    # === 相关标的 ===
-    symbols: List[str] = field(default_factory=list)  # ["BTC", "ETH"]
-    assets: List[str] = field(default_factory=list)   # ["BTC", "ETH", "USD"]
-    
-    # === 标签/分类 ===
-    tags: List[str] = field(default_factory=list)        # ["ETF", "BlackRock"]
-    narratives: List[str] = field(default_factory=list)   # ["ETF叙事", "机构入场"]
-    event_subtype: str = ""                               # 事件子类型
-    
-    # === 关联数据 ===
-    metadata: Dict[str, Any] = field(default_factory=dict)  # 原始数据副本
-    
-    # === 置信度 ===
-    confidence: float = 1.0  # 数据置信度 0-1
-    quality_score: float = 0.5  # 质量评分 0-1
-    
-    # === 溯源 ===
-    original_id: str = ""     # 原始数据 ID
-    original_url: str = ""    # 原始链接
-    original_data: Dict = field(default_factory=dict)  # 完整原始数据
-    
+
+    importance: float = 0.5
+    sentiment: str = Sentiment.UNKNOWN.value
+
+    symbols: List[str] = field(default_factory=list)
+    assets: List[str] = field(default_factory=list)
+
+    tags: List[str] = field(default_factory=list)
+    narratives: List[str] = field(default_factory=list)
+    event_subtype: str = ""
+
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    confidence: float = 1.0
+    quality_score: float = 0.5
+
+    original_id: str = ""
+    original_url: str = ""
+    original_data: Dict = field(default_factory=dict)
+
     def to_dict(self) -> Dict:
-        """转换为字典"""
         return {
             "id": self.id,
             "source": self.source,
@@ -188,36 +164,30 @@ class StandardEvent:
             "original_id": self.original_id,
             "original_url": self.original_url,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict) -> "StandardEvent":
-        """从字典创建"""
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
-    
+
     def is_high_priority(self) -> bool:
-        """是否高优先级"""
         return self.importance >= 0.75 or self.confidence >= 0.9
-    
+
     def is_bullish(self) -> bool:
-        """是否看多"""
         return self.sentiment == Sentiment.BULLISH.value
-    
+
     def is_bearish(self) -> bool:
-        """是否看空"""
         return self.sentiment == Sentiment.BEARISH.value
-    
+
     def get_age_seconds(self) -> int:
-        """获取事件年龄（秒）"""
         return int(datetime.now().timestamp()) - self.timestamp
-    
+
     def get_age_minutes(self) -> float:
-        """获取事件年龄（分钟）"""
         return self.get_age_seconds() / 60
 
 
 class EventFilter:
     """事件过滤器"""
-    
+
     def __init__(
         self,
         event_types: List[EventType] = None,
@@ -235,41 +205,33 @@ class EventFilter:
         self.min_confidence = min_confidence
         self.sentiment = sentiment
         self.max_age_minutes = max_age_minutes
-    
+
     def matches(self, event: StandardEvent) -> bool:
-        """检查事件是否匹配"""
-        # 事件类型
         if self.event_types:
             if event.event_type not in [e.value for e in self.event_types]:
                 return False
-        
-        # 来源
+
         if self.sources:
             if event.source not in [s.value for s in self.sources]:
                 return False
-        
-        # 标的
+
         if self.symbols:
             if not any(s.upper() in [sym.upper() for sym in event.symbols]):
                 return False
-        
-        # 重要性
+
         if event.importance < self.min_importance:
             return False
-        
-        # 置信度
+
         if event.confidence < self.min_confidence:
             return False
-        
-        # 情绪
+
         if self.sentiment and event.sentiment != self.sentiment.value:
             return False
-        
-        # 年龄
+
         if self.max_age_minutes:
             if event.get_age_minutes() > self.max_age_minutes:
                 return False
-        
+
         return True
 
 
@@ -284,7 +246,6 @@ def create_news_event(
     url: str = "",
     **kwargs
 ) -> StandardEvent:
-    """创建新闻事件的便捷函数"""
     return StandardEvent(
         source=source,
         event_type=EventType.NEWS.value,
@@ -308,13 +269,12 @@ def create_tweet_event(
     symbols: List[str] = None,
     **kwargs
 ) -> StandardEvent:
-    """创建推文事件的便捷函数"""
     importance = 0.5
     if likes > 10000 or retweets > 1000:
         importance = 0.75
     if likes > 50000 or retweets > 5000:
         importance = 0.9
-    
+
     return StandardEvent(
         source=Source.TWITTER.value,
         event_type=EventType.TWEET.value,
@@ -333,27 +293,26 @@ def create_tweet_event(
 
 def create_whale_event(
     wallet: str,
-    action: str,  # buy/sell/transfer
+    action: str,
     symbol: str,
     amount: float,
     value_usd: float,
     exchange: str = ""
 ) -> StandardEvent:
-    """创建巨鲸事件的便捷函数"""
     sentiment = "neutral"
     if action == "buy":
         sentiment = "bullish"
     elif action == "sell":
         sentiment = "bearish"
-    
+
     importance = 0.5
     if value_usd > 1000000:
         importance = 0.75
     if value_usd > 10000000:
         importance = 0.9
-    
+
     return StandardEvent(
-        source=Source.CLAWHUB_ODAILY.value,  # 修正源为 ClawHub Odaily
+        source=Source.CLAWHUB_ODAILY.value,
         event_type=EventType.ONCHAIN_WHALE.value,
         title=f"Whale {action}: {amount} {symbol} (${value_usd:,.0f})",
         content=f"Wallet {wallet[:10]}... {action}ed {amount} {symbol} on {exchange}",
@@ -368,3 +327,187 @@ def create_whale_event(
             "exchange": exchange
         }
     )
+
+
+class CanonicalSymbol(str, Enum):
+    """统一标的符号"""
+    BTC = "BTC"
+    ETH = "ETH"
+    SOL = "SOL"
+    BNB = "BNB"
+    XRP = "XRP"
+    ADA = "ADA"
+    AVAX = "AVAX"
+    DOGE = "DOGE"
+    DOT = "DOT"
+    LINK = "LINK"
+
+
+class Exchange(str, Enum):
+    """交易所"""
+    BINANCE = "binance"
+    OKX = "okx"
+    COINBASE = "coinbase"
+    KRAKEN = "kraken"
+    BYBIT = "bybit"
+
+
+class Timeframe(str, Enum):
+    """时间周期"""
+    M1 = "1m"
+    M5 = "5m"
+    M15 = "15m"
+    M30 = "30m"
+    H1 = "1h"
+    H4 = "4h"
+    D1 = "1d"
+    W1 = "1w"
+
+
+@dataclass
+class Candle:
+    """K线数据 - 系统唯一标准"""
+    symbol: str
+    exchange: Exchange
+    timeframe: Timeframe
+    timestamp: int
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    quote_volume: float = 0.0
+    trades: int = 0
+    is_closed: bool = True
+
+    @property
+    def canonical_symbol(self) -> str:
+        return self.symbol.upper().replace("USDT", "").replace("USD", "")
+
+    def to_dict(self) -> Dict:
+        return {
+            "symbol": self.symbol,
+            "exchange": self.exchange.value,
+            "timeframe": self.timeframe.value,
+            "timestamp": self.timestamp,
+            "open": self.open,
+            "high": self.high,
+            "low": self.low,
+            "close": self.close,
+            "volume": self.volume,
+            "quote_volume": self.quote_volume,
+            "trades": self.trades,
+            "is_closed": self.is_closed
+        }
+
+
+@dataclass
+class Trade:
+    """成交数据 - 系统唯一标准"""
+    symbol: str
+    exchange: Exchange
+    timestamp: int
+    price: float
+    quantity: float
+    quote_quantity: float
+    is_buyer_maker: bool
+    trade_id: str = ""
+
+    @property
+    def side(self) -> str:
+        return "sell" if self.is_buyer_maker else "buy"
+
+    def to_dict(self) -> Dict:
+        return {
+            "symbol": self.symbol,
+            "exchange": self.exchange.value,
+            "timestamp": self.timestamp,
+            "price": self.price,
+            "quantity": self.quantity,
+            "quote_quantity": self.quote_quantity,
+            "is_buyer_maker": self.is_buyer_maker,
+            "side": self.side,
+            "trade_id": self.trade_id
+        }
+
+
+@dataclass
+class OrderBookLevel:
+    """订单簿级别"""
+    price: float
+    quantity: float
+
+
+@dataclass
+class OrderBook:
+    """订单簿数据 - 系统唯一标准"""
+    symbol: str
+    exchange: Exchange
+    timestamp: int
+    bids: List[OrderBookLevel]
+    asks: List[OrderBookLevel]
+
+    def get_mid_price(self) -> float:
+        if not self.bids or not self.asks:
+            return 0.0
+        return (self.bids[0].price + self.asks[0].price) / 2
+
+    def get_spread(self) -> float:
+        if not self.bids or not self.asks:
+            return 0.0
+        return self.asks[0].price - self.bids[0].price
+
+    def get_imbalance(self) -> float:
+        if not self.bids or not self.asks:
+            return 0.0
+        bid_vol = sum(b.quantity for b in self.bids[:10])
+        ask_vol = sum(a.quantity for a in self.asks[:10])
+        total = bid_vol + ask_vol
+        if total == 0:
+            return 0.0
+        return (bid_vol - ask_vol) / total
+
+
+@dataclass
+class MarketEvent:
+    """市场事件 - 用于 fusion_service"""
+    event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    symbol: str
+    exchange: Exchange
+    event_type: str
+    timestamp: int = field(default_factory=lambda: int(datetime.now().timestamp()))
+    price: float = 0.0
+    volume: float = 0.0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class Signal:
+    """交易信号 - fusion_service 输出"""
+    signal_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    symbol: str
+    direction: str
+    strength: float
+    confidence: float
+    source: str
+    timestamp: int = field(default_factory=lambda: int(datetime.now().timestamp()))
+    expires_at: Optional[int] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def is_expired(self) -> bool:
+        if self.expires_at is None:
+            return False
+        return int(datetime.now().timestamp()) > self.expires_at
+
+    def to_dict(self) -> Dict:
+        return {
+            "signal_id": self.signal_id,
+            "symbol": self.symbol,
+            "direction": self.direction,
+            "strength": self.strength,
+            "confidence": self.confidence,
+            "source": self.source,
+            "timestamp": self.timestamp,
+            "expires_at": self.expires_at,
+            "metadata": self.metadata
+        }

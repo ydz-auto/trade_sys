@@ -1,6 +1,9 @@
 """
-Odaily Skill Collector - 加密情报采集器
+Odaily Skill Collector - 加密情报采集器（世界解释器）
 模拟 Odaily Skill 的结构化情报输出
+
+⚠️ 重要：这是 event_service/understanding 层的一部分
+不是数据采集层，而是世界理解层
 
 模块：
 1. 今日必关注（M1）
@@ -9,7 +12,20 @@ Odaily Skill Collector - 加密情报采集器
 4. 巨鲸/预测市场异动（M4）
 5. API 原始数据（M5）
 
-注意：这是作为 Research / Intelligence Layer，不是 Core Execution Layer
+作为 "World Interpreter"：
+✅ 非常适合：
+- 新闻摘要
+- 市场事件抽取
+- Sentiment 分析
+- Narrative 识别
+- 热点检测
+- 事件标签
+- Entity extraction
+
+⚠️ 慎用：
+- 直接交易信号（hallucination）
+- 仓位管理（不稳定）
+- Execution（风险极高）
 """
 
 import asyncio
@@ -27,15 +43,15 @@ from infrastructure.resilience import (
     RetryConfig
 )
 
-logger = get_logger("intelligence.odaily")
+logger = get_logger("event_service.understanding.odaily")
 
 
 class EventImportance(Enum):
     """事件重要性"""
-    CRITICAL = "critical"   # 需立即关注
-    HIGH = "high"           # 重要
-    MEDIUM = "medium"       # 中等
-    LOW = "low"            # 一般
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
 
 
 class MarketRegime(Enum):
@@ -55,7 +71,7 @@ class CryptoEvent:
     description: str
     importance: EventImportance
     affected_symbols: List[str]
-    sentiment: str  # bullish/bearish/neutral
+    sentiment: str
     source: str
     timestamp: int
     url: Optional[str] = None
@@ -65,7 +81,7 @@ class CryptoEvent:
 class WhaleActivity:
     """巨鲸活动"""
     wallet_address: str
-    activity_type: str  # buy/sell/transfer
+    activity_type: str
     symbol: str
     amount: float
     value_usd: float
@@ -80,7 +96,7 @@ class PredictionMarket:
     market_url: str
     yes_probability: float
     volume_24h: float
-    category: str  # crypto/politics/economy
+    category: str
     timestamp: int
 
 
@@ -112,36 +128,36 @@ class TomorrowEvent:
 class DailyIntelligence:
     """每日情报报告"""
     date: str
-    must_watch: List[CryptoEvent]  # M1
-    market_analysis: MarketAnalysis  # M2
-    tomorrow_events: List[TomorrowEvent]  # M3
-    whale_alerts: List[WhaleActivity]  # M4
-    raw_data: Dict  # M5
+    must_watch: List[CryptoEvent]
+    market_analysis: MarketAnalysis
+    tomorrow_events: List[TomorrowEvent]
+    whale_alerts: List[WhaleActivity]
+    raw_data: Dict
     generated_at: int
     regime_context: Dict = field(default_factory=dict)
 
 
 class OdailySkillCollector:
-    """Odaily Skill 风格情报采集器
+    """Odaily Skill 风格情报采集器（世界解释器）
     
-    作为 Research / Intelligence Layer：
+    定位：
+    - 不是数据源，而是世界理解器
+    - 不是执行层，而是语义层
+    - 提供 context，不是 signal
+    
+    适合：
     - 新闻语义层
     - 给 LLM 提供结构化的 crypto context
     - Event-driven signal
     - Regime/context feature
     - 配合 Twitter/Telegram 形成事件因子
-    
-    ⚠️ 不适合：
-    - 高频交易主链路
-    - 低延迟 execution
-    - 核心风控依赖
     """
-    
+
     def __init__(
         self,
         api_key: Optional[str] = None,
         use_mock: bool = True,
-        integration_type: str = "mock",  # "mock", "clawhub", "http"
+        integration_type: str = "mock",
         skill_name: str = "odaily-crypto",
         api_url: Optional[str] = None
     ):
@@ -149,90 +165,84 @@ class OdailySkillCollector:
         self.integration_type = integration_type
         self.skill_name = skill_name
         self.api_url = api_url
-        
-        # 是否使用 mock
         self.use_mock = use_mock or integration_type == "mock"
-        
-        # 熔断器
+
         self.circuit_breaker = CircuitBreaker(CircuitBreakerConfig(
             name="odaily_skill_circuit",
             failure_threshold=3,
             recovery_timeout=60.0
         ))
-        
-        # 重试策略
+
         self.retry_policy = RetryPolicy(RetryConfig(
             max_attempts=2,
             initial_delay=1.0
         ))
-        
-        # 缓存
+
         self._cache: Dict[str, Any] = {}
-        self._cache_ttl = 300  # 5分钟
-        
+        self._cache_ttl = 300
+
         logger.info(
             f"OdailySkillCollector initialized "
             f"(type={integration_type}, mock={self.use_mock})"
         )
-    
+
     async def get_daily_intelligence(self) -> DailyIntelligence:
         """获取每日情报报告"""
         cache_key = "daily_intelligence"
-        
+
         if self._is_cache_valid(cache_key):
             logger.info("Returning cached intelligence")
             return self._cache[cache_key]
-        
+
         async def _fetch():
             if self.use_mock:
                 return self._generate_mock_intelligence()
             else:
                 return await self._fetch_from_api()
-        
+
         try:
             result = await self.circuit_breaker.execute(
                 lambda: self.retry_policy.execute(_fetch)
             )
-            
+
             self._cache[cache_key] = result
             return result
-            
+
         except Exception as e:
             logger.error(f"Failed to fetch intelligence: {e}")
             return self._generate_mock_intelligence()
-    
+
     async def get_must_watch_events(self) -> List[CryptoEvent]:
         """M1: 今日必关注"""
         intelligence = await self.get_daily_intelligence()
         return intelligence.must_watch
-    
+
     async def get_market_analysis(self) -> MarketAnalysis:
         """M2: 加密市场分析"""
         intelligence = await self.get_daily_intelligence()
         return intelligence.market_analysis
-    
+
     async def get_tomorrow_events(self) -> List[TomorrowEvent]:
         """M3: 明日关键事件"""
         intelligence = await self.get_daily_intelligence()
         return intelligence.tomorrow_events
-    
+
     async def get_whale_alerts(self) -> List[WhaleActivity]:
         """M4: 巨鲸/预测市场异动"""
         intelligence = await self.get_daily_intelligence()
         return intelligence.whale_alerts
-    
+
     async def get_regime_context(self) -> Dict:
         """获取市场 Regime 上下文"""
         intelligence = await self.get_daily_intelligence()
         return intelligence.regime_context
-    
+
     async def get_event_signals(self) -> List[Dict]:
         """从情报中提取事件信号"""
         intelligence = await self.get_daily_intelligence()
-        
+
         signals = []
-        
-        # 从必关注事件提取信号
+
         for event in intelligence.must_watch:
             if event.importance in [EventImportance.CRITICAL, EventImportance.HIGH]:
                 signals.append({
@@ -243,10 +253,9 @@ class OdailySkillCollector:
                     "importance": event.importance.value,
                     "source": event.source
                 })
-        
-        # 从巨鲸活动提取信号
+
         for whale in intelligence.whale_alerts:
-            if whale.value_usd > 1000000:  # > $1M
+            if whale.value_usd > 1000000:
                 signals.append({
                     "type": "whale",
                     "activity": whale.activity_type,
@@ -254,8 +263,7 @@ class OdailySkillCollector:
                     "value_usd": whale.value_usd,
                     "wallet": whale.wallet_address[:10] + "..."
                 })
-        
-        # 从预测市场提取信号
+
         for pred in intelligence.raw_data.get("predictions", []):
             if pred.yes_probability > 0.8 or pred.yes_probability < 0.2:
                 signals.append({
@@ -264,25 +272,25 @@ class OdailySkillCollector:
                     "probability": pred.yes_probability,
                     "category": pred.category
                 })
-        
+
         return signals
-    
+
     def _is_cache_valid(self, key: str) -> bool:
         """检查缓存是否有效"""
         if key not in self._cache:
             return False
-        
+
         cached = self._cache[key]
         if not isinstance(cached, dict) or "_cached_at" not in cached:
             return True
-        
+
         age = datetime.now().timestamp() - cached["_cached_at"]
         return age < self._cache_ttl
-    
+
     def _generate_mock_intelligence(self) -> DailyIntelligence:
         """生成模拟情报（用于测试）"""
         now = int(datetime.now().timestamp())
-        
+
         return DailyIntelligence(
             date=datetime.now().strftime("%Y-%m-%d"),
             must_watch=[
@@ -397,70 +405,64 @@ class OdailySkillCollector:
                 }
             }
         )
-    
+
     async def _fetch_from_api(self) -> DailyIntelligence:
         """从真实 API 获取情报"""
-        # 根据集成类型选择调用方式
         if self.integration_type == "clawhub":
             return await self._call_clawhub_skill()
         elif self.integration_type == "http":
             return await self._call_http_api()
         else:
-            # 默认回退到模拟数据
             return self._generate_mock_intelligence()
-    
+
     async def _call_clawhub_skill(self) -> DailyIntelligence:
         """调用 ClawHub Skill"""
-        # 使用子进程调用 clawhub 命令
         try:
             import subprocess
-            import json
-            
-            # 示例：clawhub run odaily-crypto --json
+
             result = await asyncio.to_thread(
                 subprocess.run,
-                ["clawhub", "run", "odaily-crypto", "--json"],
+                ["clawhub", "run", self.skill_name, "--json"],
                 capture_output=True,
                 text=True,
                 timeout=30
             )
-            
+
             if result.returncode == 0 and result.stdout:
                 data = json.loads(result.stdout)
                 return self._parse_clawhub_output(data)
-            
+
         except Exception as e:
             logger.warning(f"Failed to call clawhub skill: {e}")
-        
+
         return self._generate_mock_intelligence()
-    
+
     async def _call_http_api(self) -> DailyIntelligence:
         """调用 HTTP API"""
         try:
-            from services.data_service.utils import get_http_client
+            from shared.http_client import get_http_client
             client = get_http_client()
-            
-            # 使用配置的 API 地址
+
             api_url = self.api_url or "https://api.odaily.com/skill/daily"
-            
+
             response = await client.get(
                 api_url,
                 headers={"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
             )
-            
+
             if response.status_code == 200:
                 data = response.json()
                 return self._parse_api_output(data)
-                
+
         except Exception as e:
             logger.warning(f"Failed to call HTTP API: {e}")
-        
+
         return self._generate_mock_intelligence()
-    
+
     def _parse_clawhub_output(self, data: Dict) -> DailyIntelligence:
         """解析 ClawHub 输出"""
         now = int(datetime.now().timestamp())
-        
+
         return DailyIntelligence(
             date=data.get("date", datetime.now().strftime("%Y-%m-%d")),
             must_watch=self._parse_events(data.get("must_watch", [])),
@@ -471,11 +473,11 @@ class OdailySkillCollector:
             generated_at=now,
             regime_context=data.get("regime_context", {})
         )
-    
+
     def _parse_api_output(self, data: Dict) -> DailyIntelligence:
         """解析 API 输出"""
         return self._parse_clawhub_output(data)
-    
+
     def _parse_events(self, events: List) -> List[CryptoEvent]:
         """解析事件列表"""
         result = []
@@ -495,11 +497,11 @@ class OdailySkillCollector:
             except Exception:
                 pass
         return result
-    
+
     def _parse_analysis(self, data: Dict) -> MarketAnalysis:
         """解析市场分析"""
         now = int(datetime.now().timestamp())
-        
+
         return MarketAnalysis(
             regime=MarketRegime(data.get("regime", "unknown")),
             btc_trend=data.get("btc_trend", ""),
@@ -510,7 +512,7 @@ class OdailySkillCollector:
             key_levels=data.get("key_levels", {}),
             timestamp=now
         )
-    
+
     def _parse_tomorrow(self, events: List) -> List[TomorrowEvent]:
         """解析明日事件"""
         result = []
@@ -527,7 +529,7 @@ class OdailySkillCollector:
             except Exception:
                 pass
         return result
-    
+
     def _parse_whales(self, whales: List) -> List[WhaleActivity]:
         """解析巨鲸活动"""
         result = []
@@ -547,8 +549,8 @@ class OdailySkillCollector:
         return result
 
 
-# 全局实例
 _collector: Optional[OdailySkillCollector] = None
+
 
 def get_odaily_collector(api_key: str = None) -> OdailySkillCollector:
     """获取 Odaily Skill 采集器"""
