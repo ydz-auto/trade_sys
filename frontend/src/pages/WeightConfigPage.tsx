@@ -144,7 +144,7 @@ export function WeightConfigPage() {
   const renderFactorMonitor = () => (
     <div className="space-y-4">
       <Row gutter={[16, 16]}>
-        <Col span={6}>
+        <Col xs={12} md={6}>
           <Card size="small" className="!bg-[#1E293B] !border-[#334155]">
             <Statistic
               title={<span className="text-[#94A3B8] text-xs">因子数量</span>}
@@ -153,7 +153,7 @@ export function WeightConfigPage() {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} md={6}>
           <Card size="small" className="!bg-[#1E293B] !border-[#334155]">
             <Statistic
               title={<span className="text-[#94A3B8] text-xs">总权重</span>}
@@ -163,7 +163,7 @@ export function WeightConfigPage() {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} md={6}>
           <Card size="small" className="!bg-[#1E293B] !border-[#334155]">
             <Statistic
               title={<span className="text-[#94A3B8] text-xs">平均置信度</span>}
@@ -174,7 +174,7 @@ export function WeightConfigPage() {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} md={6}>
           <Card size="small" className="!bg-[#1E293B] !border-[#334155]">
             <Statistic
               title={<span className="text-[#94A3B8] text-xs">综合得分</span>}
@@ -191,7 +191,7 @@ export function WeightConfigPage() {
           const contribution = (factor.weight / 100) * factor.value
           const contributionPercent = totalContribution > 0 ? (Math.abs(contribution) / totalContribution) * 100 : 0
           return (
-            <Col span={8} key={factor.type}>
+            <Col xs={24} md={8} key={factor.type}>
               <Card size="small" className="!bg-[#1E293B] !border-[#334155]">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
@@ -240,7 +240,7 @@ export function WeightConfigPage() {
 
       <Card title={<span className="text-sm text-[#E2E8F0]">因子贡献度分布</span>} size="small" className="!bg-[#1E293B] !border-[#334155]">
         <Row gutter={[16, 16]}>
-          <Col span={12}>
+          <Col xs={24} md={12}>
             <div className="space-y-3">
               {factors.map((factor) => {
                 const contribution = (factor.weight / 100) * factor.value
@@ -258,7 +258,7 @@ export function WeightConfigPage() {
               })}
             </div>
           </Col>
-          <Col span={12}>
+          <Col xs={24} md={12}>
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
                 <div className="text-xs text-[#94A3B8] mb-2">正向贡献</div>
@@ -288,7 +288,7 @@ export function WeightConfigPage() {
       label: '权重配置',
       children: (
         <Row gutter={16}>
-          <Col span={16}>
+          <Col xs={24} md={16}>
             <Card
               title={
                 <span>
@@ -301,7 +301,7 @@ export function WeightConfigPage() {
             >
               <Row gutter={[16, 16]}>
                 {factors.map((factor) => (
-                  <Col span={12} key={factor.type}>
+                  <Col xs={24} md={12} key={factor.type}>
                     <div className="bg-[#0F172A] rounded-lg p-4">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
@@ -332,7 +332,7 @@ export function WeightConfigPage() {
                 ))}
               </Row>
 
-              <div className="flex items-center justify-between mt-6 pt-4 border-t border-[#334155]">
+              <div className="flex flex-col md:flex-row items-center justify-between mt-6 pt-4 border-t border-[#334155] gap-4">
                 <div className="text-sm text-[#94A3B8]">
                   总计:{' '}
                   <span className={`font-mono ${total === 100 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
@@ -340,7 +340,7 @@ export function WeightConfigPage() {
                   </span>{' '}
                   (应为100%)
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <Button icon={<ReloadOutlined />} onClick={handleReset}>
                     重置
                   </Button>
@@ -353,7 +353,7 @@ export function WeightConfigPage() {
             </Card>
           </Col>
 
-          <Col span={8}>
+          <Col xs={24} md={8}>
             <Card
               title={
                 <span className="flex items-center gap-2">
@@ -414,6 +414,7 @@ export function WeightConfigPage() {
             columns={versionColumns}
             pagination={false}
             rowKey="version"
+            scroll={{ x: 600 }}
           />
         </Card>
       ),

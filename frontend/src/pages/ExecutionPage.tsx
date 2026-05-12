@@ -91,18 +91,19 @@ export function ExecutionPage() {
   return (
     <div className="space-y-4">
       <Row gutter={16}>
-        <Col span={16}>
+        <Col xs={24} md={16}>
           <Card title="执行追踪" className="!bg-[#1E293B] !border-[#334155]">
             <Table
               dataSource={orders}
               columns={orderColumns}
               pagination={false}
               rowKey="id"
+              scroll={{ x: 800 }}
             />
           </Card>
         </Col>
 
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card title="执行日志" className="!bg-[#1E293B] !border-[#334155]">
             <Timeline
               items={[
@@ -153,7 +154,7 @@ export function ExecutionPage() {
       </Row>
 
       <Row gutter={16}>
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card title="执行统计" className="!bg-[#1E293B] !border-[#334155]">
             <div className="space-y-3">
               <div className="flex items-center justify-between p-2 bg-[#0F172A] rounded">
@@ -171,7 +172,7 @@ export function ExecutionPage() {
             </div>
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card title="交易所状态" className="!bg-[#1E293B] !border-[#334155]">
             <div className="space-y-3">
               <div className="flex items-center justify-between p-2 bg-[#0F172A] rounded">
@@ -189,7 +190,7 @@ export function ExecutionPage() {
             </div>
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card title="重试机制" className="!bg-[#1E293B] !border-[#334155]">
             <div className="space-y-3">
               <div className="flex items-center justify-between p-2 bg-[#0F172A] rounded">

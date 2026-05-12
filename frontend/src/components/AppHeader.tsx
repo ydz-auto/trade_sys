@@ -1,19 +1,17 @@
-import { Layout, Button, Tag, Space, Segmented, Popconfirm } from 'antd'
-import { ReloadOutlined, SettingOutlined } from '@ant-design/icons'
+import { Layout, Button, Segmented, Popconfirm } from 'antd'
+import { ReloadOutlined, MenuOutlined } from '@ant-design/icons'
 import { useState } from 'react'
 import { useTradingStore } from '../store/tradingStore'
 import type { SystemMode } from '../types'
 
 const { Header } = Layout
 
-const modeConfig: Record<SystemMode, { color: string; label: string }> = {
-  BACKTEST: { color: '#3B82F6', label: '回测' },
-  SIMULATION: { color: '#F97316', label: '模拟' },
-  LIVE: { color: '#10B981', label: '实盘' },
+interface AppHeaderProps {
+  onMobileMenuToggle?: () => void
 }
 
-export function AppHeader() {
-  const { mode, setMode, lastUpdate } = useTradingStore()
+export function AppHeader({ onMobileMenuToggle }: AppHeaderProps) {
+  const { mode, setMode } = useTradingStore()
   const [showConfirm, setShowConfirm] = useState(false)
 
   const handleModeChange = (newMode: string) => {
@@ -47,13 +45,41 @@ export function AppHeader() {
   }
 
   return (
-    <Header className="flex items-center justify-between !px-6 !py-0 border-b border-[#334155]">
-      <div className="flex items-center gap-4">
-        <h1 className="text-lg m-0 font-semibold text-[#F8FAFC]">{getTitle()}</h1>
-        <span className="text-xs text-[#94A3B8]">实时监控 · BTC/ETH</span>
+    <Header style={{ 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'space-between', 
+      padding: '0 12px', 
+      height: 56, 
+      borderBottom: '1px solid #334155',
+      backgroundColor: '#1E293B'
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <Button
+          type="text"
+          icon={<MenuOutlined />}
+          style={{ color: '#94A3B8', padding: '4px 8px' }}
+          onClick={onMobileMenuToggle}
+        />
+        <h1 style={{ 
+          fontSize: 14, 
+          margin: 0, 
+          fontWeight: 600, 
+          color: '#F8FAFC', 
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis'
+        }}>
+          {getTitle()}
+        </h1>
       </div>
 
-      <Space size={16}>
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: 6,
+        flexShrink: 0
+      }}>
         <Segmented
           value={mode}
           onChange={handleModeChange}
@@ -65,43 +91,26 @@ export function AppHeader() {
           size="small"
         />
 
-        <Tag
-          color={modeConfig[mode].color}
-          style={{ margin: 0 }}
-        >
-          {modeConfig[mode].label}
-        </Tag>
-
-        <div className="text-xs text-[#94A3B8]">
-          最后更新: {lastUpdate.toLocaleTimeString('zh-CN', { hour12: false })}
-        </div>
-
         <Button
           type="text"
           icon={<ReloadOutlined />}
-          className="text-[#94A3B8]"
+          style={{ color: '#94A3B8', padding: '4px 8px' }}
         />
+      </div>
 
-        <Button
-          type="text"
-          icon={<SettingOutlined />}
-          className="text-[#94A3B8]"
-        />
-
-        {showConfirm && (
-          <Popconfirm
-            title="确认切换到实盘模式"
-            description="切换到实盘模式将使用真实资金进行交易。请确保您已了解相关风险。"
-            onConfirm={confirmLive}
-            onCancel={() => setShowConfirm(false)}
-            okText="确认实盘"
-            cancelText="取消"
-            okButtonProps={{ danger: true }}
-          >
-            <div />
-          </Popconfirm>
-        )}
-      </Space>
+      {showConfirm && (
+        <Popconfirm
+          title="确认切换到实盘模式"
+          description="切换到实盘模式将使用真实资金进行交易。请确保您已了解相关风险。"
+          onConfirm={confirmLive}
+          onCancel={() => setShowConfirm(false)}
+          okText="确认实盘"
+          cancelText="取消"
+          okButtonProps={{ danger: true }}
+        >
+          <div />
+        </Popconfirm>
+      )}
     </Header>
   )
 }

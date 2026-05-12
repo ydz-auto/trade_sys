@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { ConfigProvider, Layout, theme, Spin } from 'antd'
+import { ConfigProvider, Layout, Spin } from 'antd'
+import { useState, useEffect } from 'react'
 import { DashboardPage } from './pages/DashboardPage'
 import { WeightConfigPage } from './pages/WeightConfigPage'
 import { RegimePage } from './pages/RegimePage'
@@ -14,12 +15,28 @@ import { useDataLoader } from './hooks'
 
 const { Content } = Layout
 
+const isMobile = () => window.innerWidth < 768
+
 function AppContent() {
   const { loading, error } = useDataLoader()
+  const [collapsed, setCollapsed] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [isMobileDevice, setIsMobileDevice] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobileDevice(isMobile())
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
+  const handleCollapse = (newCollapsed: boolean) => {
+    setCollapsed(newCollapsed)
+  }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#0F172A]">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#0F172A' }}>
         <Spin size="large" />
       </div>
     )
@@ -27,21 +44,28 @@ function AppContent() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#0F172A]">
-        <div className="text-center">
-          <div className="text-red-500 mb-2">数据加载失败</div>
-          <div className="text-gray-400 text-sm">{error}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#0F172A' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ color: '#EF4444', marginBottom: 8 }}>数据加载失败</div>
+          <div style={{ color: '#94A3B8', fontSize: 14 }}>{error}</div>
         </div>
       </div>
     )
   }
 
+  const marginLeft = isMobileDevice ? 0 : (collapsed ? 0 : 220)
+
   return (
-    <Layout className="min-h-screen">
-      <AppSidebar />
-      <Layout>
-        <AppHeader />
-        <Content className="p-6 overflow-auto">
+    <Layout style={{ minHeight: '100vh' }}>
+      <AppSidebar
+        collapsed={collapsed}
+        onCollapse={handleCollapse}
+        mobileOpen={mobileMenuOpen}
+        onMobileClose={() => setMobileMenuOpen(false)}
+      />
+      <Layout style={{ marginLeft, transition: 'margin-left 0.2s' }}>
+        <AppHeader onMobileMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)} />
+        <Content style={{ padding: 24, overflow: 'auto', minHeight: 'calc(100vh - 64px)' }}>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/factors" element={<WeightConfigPage />} />
@@ -65,7 +89,6 @@ function App() {
   return (
     <ConfigProvider
       theme={{
-        algorithm: theme.darkAlgorithm,
         token: {
           colorPrimary: '#F59E0B',
           colorSuccess: '#10B981',

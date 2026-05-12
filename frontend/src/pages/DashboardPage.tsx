@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Card, Row, Col, Statistic, Progress, Tag, Badge, Table, Space, Avatar, Tooltip } from 'antd'
+import { Card, Row, Col, Statistic, Progress, Tag, Badge, Table, Space, Avatar, Tooltip, Empty } from 'antd'
 import {
   ArrowUpOutlined,
   ArrowDownOutlined,
@@ -22,8 +22,23 @@ const platformIcon: Record<string, React.ReactNode> = {
   Telegram: <SendOutlined />,
 }
 
+function formatTimeAgo(timestamp: number): string {
+  const now = Date.now()
+  const diff = now - timestamp
+  const minutes = Math.floor(diff / 60000)
+  
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes}分钟前`
+  
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}小时前`
+  
+  const days = Math.floor(hours / 24)
+  return `${days}天前`
+}
+
 export function DashboardPage() {
-  const { prices, compositeScore, regime, risk, signal, factors, positions, dataSources, traders, socialPosts, setLastUpdate } =
+  const { prices, compositeScore, regime, risk, signal, factors, positions, dataSources, traders, socialPosts, news, setLastUpdate } =
     useTradingStore()
 
   useEffect(() => {
@@ -70,17 +85,17 @@ export function DashboardPage() {
   ]
 
   return (
-    <div className="p-6 bg-[#0F172A] min-h-screen">
+    <div className="p-4 md:p-6 bg-[#0F172A] min-h-screen">
       {/* 价格卡片 - 按平台分组 */}
       <Row gutter={[16, 16]} className="mb-4">
-        <Col span={12}>
+        <Col xs={24} md={12}>
           <Card
             title={<span className="text-sm text-[#E2E8F0]">BTC/USDT 各平台价格</span>}
             size="small"
             className="!bg-[#1E293B] !border-[#334155] h-full"
           >
             <div className="space-y-2">
-              {btcPrices.map((price) => (
+              {btcPrices.length > 0 ? btcPrices.map((price) => (
                 <div key={price.exchange} className="flex justify-between items-center bg-[#0F172A] rounded p-2">
                   <div className="flex items-center gap-2">
                     <span className="text-[#F59E0B] font-bold">B</span>
@@ -94,18 +109,20 @@ export function DashboardPage() {
                     </span>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <Empty description="暂无价格数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
             </div>
           </Card>
         </Col>
-        <Col span={12}>
+        <Col xs={24} md={12}>
           <Card
             title={<span className="text-sm text-[#E2E8F0]">ETH/USDT 各平台价格</span>}
             size="small"
             className="!bg-[#1E293B] !border-[#334155] h-full"
           >
             <div className="space-y-2">
-              {ethPrices.map((price) => (
+              {ethPrices.length > 0 ? ethPrices.map((price) => (
                 <div key={price.exchange} className="flex justify-between items-center bg-[#0F172A] rounded p-2">
                   <div className="flex items-center gap-2">
                     <span className="text-[#8B5CF6] font-bold">E</span>
@@ -119,7 +136,9 @@ export function DashboardPage() {
                     </span>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <Empty description="暂无价格数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
             </div>
           </Card>
         </Col>
@@ -127,7 +146,7 @@ export function DashboardPage() {
 
       {/* 综合得分 + 市场状态 + 风险指数 */}
       <Row gutter={[16, 16]} className="mb-4" align="stretch">
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card size="small" className="!bg-[#1E293B] !border-[#334155] h-full">
             <Statistic
               title={<span className="text-[#94A3B8] text-xs">综合得分</span>}
@@ -143,7 +162,7 @@ export function DashboardPage() {
             />
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card size="small" className="!bg-[#1E293B] !border-[#334155] h-full">
             <Statistic
               title={<span className="text-[#94A3B8] text-xs">市场状态</span>}
@@ -154,7 +173,7 @@ export function DashboardPage() {
             <Tag color={regimeTagColor[regime.state] || 'default'} className="mt-2 text-xs">{regime.state}</Tag>
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card size="small" className="!bg-[#1E293B] !border-[#334155] h-full">
             <Statistic
               title={<span className="text-[#94A3B8] text-xs">风险指数</span>}
@@ -176,7 +195,7 @@ export function DashboardPage() {
 
       {/* KOL交易员 + 社交媒体 */}
       <Row gutter={[16, 16]} className="mb-4" align="stretch">
-        <Col span={12}>
+        <Col xs={24} md={12}>
           <Card
             title={<span className="text-sm text-[#E2E8F0] flex items-center gap-2">
               <UserOutlined className="text-[#EC4899]" /> KOL 交易员
@@ -185,7 +204,7 @@ export function DashboardPage() {
             className="!bg-[#1E293B] !border-[#334155] h-full"
           >
             <div className="space-y-2 max-h-48 overflow-y-auto">
-              {traders.map((trader, idx) => (
+              {traders.length > 0 ? traders.map((trader, idx) => (
                 <div key={idx} className="flex items-center justify-between bg-[#0F172A] rounded p-2">
                   <div className="flex items-center gap-2">
                     <Avatar size="small" icon={platformIcon[trader.platform]} className="bg-[#8B5CF6]" />
@@ -205,11 +224,13 @@ export function DashboardPage() {
                     </Tooltip>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <Empty description="暂无KOL数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
             </div>
           </Card>
         </Col>
-        <Col span={12}>
+        <Col xs={24} md={12}>
           <Card
             title={<span className="text-sm text-[#E2E8F0] flex items-center gap-2">
               <ThunderboltOutlined className="text-[#06B6D4]" /> 社交媒体
@@ -218,7 +239,7 @@ export function DashboardPage() {
             className="!bg-[#1E293B] !border-[#334155] h-full"
           >
             <div className="space-y-2 max-h-48 overflow-y-auto">
-              {socialPosts.map((post) => (
+              {socialPosts.length > 0 ? socialPosts.map((post) => (
                 <div key={post.id} className="bg-[#0F172A] rounded p-2">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-[#94A3B8] text-xs">{post.time}</span>
@@ -230,7 +251,9 @@ export function DashboardPage() {
                   </div>
                   <div className="text-xs text-[#E2E8F0] line-clamp-2">{post.content}</div>
                 </div>
-              ))}
+              )) : (
+                <Empty description="暂无社交媒体数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
             </div>
           </Card>
         </Col>
@@ -238,7 +261,7 @@ export function DashboardPage() {
 
       {/* ETF + 宏观 + 情绪 */}
       <Row gutter={[16, 16]} className="mb-4" align="stretch">
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card
             title={
               <span className="flex items-center gap-2 text-sm text-[#E2E8F0]">
@@ -267,7 +290,7 @@ export function DashboardPage() {
             </div>
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card
             title={
               <span className="flex items-center gap-2 text-sm text-[#E2E8F0]">
@@ -279,28 +302,28 @@ export function DashboardPage() {
             className="!bg-[#1E293B] !border-[#334155] h-full"
           >
             <Row gutter={[8, 8]}>
-              <Col span={12}>
+              <Col xs={12} md={12}>
                 <div className="bg-[#0F172A] rounded p-3">
                   <div className="text-[#94A3B8] text-xs mb-1">黄金 (USD/oz)</div>
                   <div className="font-semibold text-[#F8FAFC]">$2,020</div>
                   <div className="text-[#10B981] text-xs">▲ +0.5%</div>
                 </div>
               </Col>
-              <Col span={12}>
+              <Col xs={12} md={12}>
                 <div className="bg-[#0F172A] rounded p-3">
                   <div className="text-[#94A3B8] text-xs mb-1">原油 (USD/bbl)</div>
                   <div className="font-semibold text-[#F8FAFC]">$78.3</div>
                   <div className="text-[#EF4444] text-xs">▼ -0.3%</div>
                 </div>
               </Col>
-              <Col span={12}>
+              <Col xs={12} md={12}>
                 <div className="bg-[#0F172A] rounded p-3">
                   <div className="text-[#94A3B8] text-xs mb-1">美元指数</div>
                   <div className="font-semibold text-[#F8FAFC]">104.2</div>
                   <div className="text-[#3B82F6] text-xs">▲ +0.1%</div>
                 </div>
               </Col>
-              <Col span={12}>
+              <Col xs={12} md={12}>
                 <div className="bg-[#0F172A] rounded p-3">
                   <div className="text-[#94A3B8] text-xs mb-1">MSTR</div>
                   <div className="font-semibold text-[#F8FAFC]">$1,520</div>
@@ -310,7 +333,7 @@ export function DashboardPage() {
             </Row>
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card
             title={
               <span className="flex items-center gap-2 text-sm text-[#E2E8F0]">
@@ -335,13 +358,13 @@ export function DashboardPage() {
                 />
               </div>
               <Row gutter={[8, 8]}>
-                <Col span={12}>
+                <Col xs={12} md={12}>
                   <div className="bg-[#0F172A] rounded p-2 text-center">
                     <div className="text-[#94A3B8] text-xs">新闻情绪</div>
                     <div className="text-sm font-semibold text-[#10B981]">+0.35</div>
                   </div>
                 </Col>
-                <Col span={12}>
+                <Col xs={12} md={12}>
                   <div className="bg-[#0F172A] rounded p-2 text-center">
                     <div className="text-[#94A3B8] text-xs">社交情绪</div>
                     <div className="text-sm font-semibold text-[#10B981]">+0.52</div>
@@ -358,15 +381,15 @@ export function DashboardPage() {
 
       {/* 因子 + 决策 + 仓位 */}
       <Row gutter={[16, 16]} className="mb-4" align="stretch">
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card
             title={<span className="text-sm text-[#E2E8F0]">因子详情</span>}
             size="small"
             className="!bg-[#1E293B] !border-[#334155] h-full"
           >
             <Row gutter={[8, 8]}>
-              {factors.map((factor) => (
-                <Col span={12} key={factor.type}>
+              {factors.length > 0 ? factors.map((factor) => (
+                <Col xs={12} md={12} key={factor.type}>
                   <div className="bg-[#0F172A] rounded p-3">
                     <div className="flex justify-between items-center mb-1">
                       <span className="text-[#94A3B8] text-xs">{factor.name}</span>
@@ -382,11 +405,15 @@ export function DashboardPage() {
                     </div>
                   </div>
                 </Col>
-              ))}
+              )) : (
+                <Col span={24}>
+                  <Empty description="暂无因子数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                </Col>
+              )}
             </Row>
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card
             title={<span className="text-sm text-[#E2E8F0]">决策信号</span>}
             size="small"
@@ -398,13 +425,13 @@ export function DashboardPage() {
               </Tag>
             </div>
             <Row gutter={[8, 8]} className="mb-3">
-              <Col span={12}>
+              <Col xs={12} md={12}>
                 <div className="bg-[#0F172A] rounded p-3 text-center">
                   <div className="text-[#94A3B8] text-xs mb-1">置信度</div>
                   <div className="text-lg font-semibold text-[#F59E0B]">{signal.confidence}%</div>
                 </div>
               </Col>
-              <Col span={12}>
+              <Col xs={12} md={12}>
                 <div className="bg-[#0F172A] rounded p-3 text-center">
                   <div className="text-[#94A3B8] text-xs mb-1">风险等级</div>
                   <div
@@ -426,13 +453,13 @@ export function DashboardPage() {
             </div>
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card
             title={<span className="text-sm text-[#E2E8F0]">仓位管理</span>}
             size="small"
             className="!bg-[#1E293B] !border-[#334155] h-full"
           >
-            {positions.map((pos) => (
+            {positions.length > 0 ? positions.map((pos) => (
               <div key={pos.symbol} className="bg-[#0F172A] rounded p-3 mb-2 last:mb-0">
                 <div className="flex justify-between items-center mb-2">
                   <span className="font-medium text-sm text-[#F8FAFC]">{pos.symbol}</span>
@@ -442,15 +469,15 @@ export function DashboardPage() {
                 </div>
                 {pos.side !== 'NONE' ? (
                   <Row gutter={[8, 8]}>
-                    <Col span={8}>
+                    <Col xs={8} md={8}>
                       <div className="text-[#94A3B8] text-xs">仓位</div>
                       <div className="text-sm text-[#F8FAFC]">{pos.size} BTC</div>
                     </Col>
-                    <Col span={8}>
+                    <Col xs={8} md={8}>
                       <div className="text-[#94A3B8] text-xs">杠杆</div>
                       <div className="text-sm text-[#F8FAFC]">{pos.leverage}x</div>
                     </Col>
-                    <Col span={8}>
+                    <Col xs={8} md={8}>
                       <div className="text-[#94A3B8] text-xs">浮盈</div>
                       <div className={`text-sm font-semibold ${pos.pnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                         {pos.pnl >= 0 ? '+' : ''}${pos.pnl}
@@ -461,14 +488,16 @@ export function DashboardPage() {
                   <div className="text-[#94A3B8] text-xs">等待买入信号...</div>
                 )}
               </div>
-            ))}
+            )) : (
+              <Empty description="暂无仓位数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            )}
           </Card>
         </Col>
       </Row>
 
       {/* 新闻 + 数据源状态 */}
       <Row gutter={[16, 16]} align="stretch">
-        <Col span={16}>
+        <Col xs={24} md={16}>
           <Card
             title={
               <span className="flex items-center gap-2 text-sm text-[#E2E8F0]">
@@ -479,35 +508,31 @@ export function DashboardPage() {
             size="small"
             className="!bg-[#1E293B] !border-[#334155] h-full"
           >
-            <div className="space-y-2">
-              <div className="bg-[#0F172A] rounded p-3 hover:bg-[#334155]/50 transition-colors cursor-pointer">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[#94A3B8] text-xs">10分钟前</span>
-                  <Tag color="orange" className="text-xs">CoinDesk</Tag>
-                  <Tag color="green" className="text-xs">+0.85</Tag>
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {news.length > 0 ? news.slice(0, 10).map((item) => (
+                <div key={item.id} className="bg-[#0F172A] rounded p-3 hover:bg-[#334155]/50 transition-colors cursor-pointer">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="text-[#94A3B8] text-xs">{formatTimeAgo(item.published)}</span>
+                    <Tag color="orange" className="text-xs">{item.source}</Tag>
+                    <Tag 
+                      color={item.sentiment_score >= 0 ? 'green' : 'red'} 
+                      className="text-xs"
+                    >
+                      {item.sentiment_score >= 0 ? '+' : ''}{item.sentiment_score.toFixed(2)}
+                    </Tag>
+                  </div>
+                  <div className="text-sm text-[#F8FAFC]">{item.title}</div>
+                  {item.content && item.content !== item.title && (
+                    <div className="text-xs text-[#94A3B8] mt-1 line-clamp-2">{item.content}</div>
+                  )}
                 </div>
-                <div className="text-sm text-[#F8FAFC]">BTC ETF净流入创历史新高，单日流入超10亿美元</div>
-              </div>
-              <div className="bg-[#0F172A] rounded p-3 hover:bg-[#334155]/50 transition-colors cursor-pointer">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[#94A3B8] text-xs">25分钟前</span>
-                  <Tag color="orange" className="text-xs">金十数据</Tag>
-                  <Tag color="red" className="text-xs">-0.15</Tag>
-                </div>
-                <div className="text-sm text-[#F8FAFC]">美联储宣布维持利率不变，符合市场预期</div>
-              </div>
-              <div className="bg-[#0F172A] rounded p-3 hover:bg-[#334155]/50 transition-colors cursor-pointer">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[#94A3B8] text-xs">32分钟前</span>
-                  <Tag color="orange" className="text-xs">CoinTelegraph</Tag>
-                  <Tag color="green" className="text-xs">+0.72</Tag>
-                </div>
-                <div className="text-sm text-[#F8FAFC]">以太坊ETF获批预期升温，ETH突破新高</div>
-              </div>
+              )) : (
+                <Empty description="暂无新闻数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
             </div>
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card
             title={
               <span className="flex items-center gap-2 text-sm text-[#E2E8F0]">
@@ -525,6 +550,7 @@ export function DashboardPage() {
               size="small"
               className="!bg-transparent"
               rowKey="name"
+              scroll={{ x: 300 }}
             />
           </Card>
         </Col>

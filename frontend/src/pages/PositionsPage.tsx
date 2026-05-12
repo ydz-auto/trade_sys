@@ -83,7 +83,7 @@ export function PositionsPage() {
   return (
     <div className="space-y-4">
       <Row gutter={16}>
-        <Col span={24}>
+        <Col xs={24} md={24}>
           <Card
             title="仓位管理"
             extra={
@@ -99,15 +99,16 @@ export function PositionsPage() {
               columns={columns}
               pagination={false}
               rowKey="symbol"
+              scroll={{ x: 1200 }}
             />
           </Card>
         </Col>
       </Row>
 
       <Row gutter={16}>
-        <Col span={12}>
+        <Col xs={24} md={12}>
           <Card title="持仓统计" className="!bg-[#1E293B] !border-[#334155]">
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-[#0F172A] rounded p-3 text-center">
                 <div className="text-[#94A3B8] text-xs mb-1">总浮盈</div>
                 <div className="font-mono text-lg text-[#10B981]">+$132</div>
@@ -127,9 +128,9 @@ export function PositionsPage() {
             </div>
           </Card>
         </Col>
-        <Col span={12}>
+        <Col xs={24} md={12}>
           <Card title="风险限制" className="!bg-[#1E293B] !border-[#334155]">
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-[#0F172A] rounded p-3 text-center">
                 <div className="text-[#94A3B8] text-xs mb-1">最大仓位</div>
                 <div className="font-mono text-lg">30%</div>

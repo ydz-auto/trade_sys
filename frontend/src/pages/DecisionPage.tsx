@@ -14,7 +14,7 @@ export function DecisionPage() {
   return (
     <div className="space-y-4">
       <Row gutter={16}>
-        <Col span={16}>
+        <Col xs={24} md={16}>
           <Card title="决策信号" className="!bg-[#1E293B] !border-[#334155]">
             <div className="text-center py-8">
               <Tag color={signalTagColor} className="text-2xl px-6 py-2">
@@ -22,13 +22,13 @@ export function DecisionPage() {
               </Tag>
 
               <Row gutter={24} className="mt-8">
-                <Col span={8}>
+                <Col xs={8} md={8}>
                   <div className="bg-[#0F172A] rounded-lg p-4">
                     <div className="text-[#94A3B8] text-sm mb-2">置信度</div>
                     <div className="font-mono text-2xl text-[#F59E0B]">{signal.confidence}%</div>
                   </div>
                 </Col>
-                <Col span={8}>
+                <Col xs={8} md={8}>
                   <div className="bg-[#0F172A] rounded-lg p-4">
                     <div className="text-[#94A3B8] text-sm mb-2">风险等级</div>
                     <div
@@ -44,7 +44,7 @@ export function DecisionPage() {
                     </div>
                   </div>
                 </Col>
-                <Col span={8}>
+                <Col xs={8} md={8}>
                   <div className="bg-[#0F172A] rounded-lg p-4">
                     <div className="text-[#94A3B8] text-sm mb-2">市场状态</div>
                     <div className="font-mono text-2xl text-[#EF4444]">RISK_OFF</div>
@@ -73,7 +73,7 @@ export function DecisionPage() {
           </Card>
         </Col>
 
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card title="信号历史" className="!bg-[#1E293B] !border-[#334155]">
             <div className="space-y-3">
               {[

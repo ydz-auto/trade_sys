@@ -1,4 +1,4 @@
-import { Layout, Menu, Badge } from 'antd'
+import { Layout, Menu, Badge, Drawer, Button } from 'antd'
 import {
   DashboardOutlined,
   AreaChartOutlined,
@@ -11,6 +11,7 @@ import {
   InboxOutlined,
   ThunderboltOutlined,
   FundProjectionScreenOutlined,
+  CloseOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -49,7 +50,7 @@ const menuItems: MenuProps['items'] = [
         key: '/control',
         icon: <MessageOutlined />,
         label: (
-          <span className="flex items-center gap-2">
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             控制中心
             <Badge count="API" size="small" style={{ backgroundColor: '#3B82F6' }} />
           </span>
@@ -68,56 +69,134 @@ const menuItems: MenuProps['items'] = [
   },
 ]
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  collapsed?: boolean
+  onCollapse?: (collapsed: boolean) => void
+  mobileOpen?: boolean
+  onMobileClose?: () => void
+}
+
+export function AppSidebar({ collapsed, onCollapse, mobileOpen, onMobileClose }: AppSidebarProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const { mode, isConnected } = useTradingStore()
 
   const onClick: MenuProps['onClick'] = (e) => {
     navigate(e.key)
+    if (onMobileClose) {
+      onMobileClose()
+    }
   }
 
+  const sidebarContent = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#1E293B' }}>
+      <div style={{ 
+        height: 64, 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between', 
+        paddingLeft: 16, 
+        paddingRight: 16, 
+        borderBottom: '1px solid #334155',
+        flexShrink: 0
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ 
+            width: 32, 
+            height: 32, 
+            backgroundColor: '#F59E0B', 
+            borderRadius: 8, 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center' 
+          }}>
+            <FundProjectionScreenOutlined style={{ color: '#0F172A', fontSize: 18 }} />
+          </div>
+          {!collapsed && (
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14, color: 'white' }}>TradeAgent</div>
+              <div style={{ fontSize: 12, color: '#94A3B8' }}>Trading System</div>
+            </div>
+          )}
+        </div>
+        {onMobileClose && (
+          <Button
+            type="text"
+            icon={<CloseOutlined />}
+            onClick={onMobileClose}
+            style={{ color: '#94A3B8' }}
+          />
+        )}
+      </div>
+
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <Menu
+          mode="inline"
+          selectedKeys={[location.pathname]}
+          items={menuItems}
+          onClick={onClick}
+          style={{ borderRight: 'none', backgroundColor: 'transparent' }}
+          theme="dark"
+          inlineCollapsed={collapsed}
+        />
+      </div>
+
+      {!collapsed && (
+        <div style={{ padding: 16, borderTop: '1px solid #334155', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Badge status={isConnected ? 'success' : 'error' } />
+            <span style={{ fontSize: 12, color: '#94A3B8' }}>
+              {isConnected ? '系统正常' : '系统异常'}
+            </span>
+          </div>
+          <div
+            style={{
+              display: 'inline-block',
+              padding: '4px 8px',
+              borderRadius: 4,
+              fontSize: 12,
+              ...(mode === 'LIVE'
+                ? { backgroundColor: '#10B98120', color: '#10B981' }
+                : mode === 'SIMULATION'
+                ? { backgroundColor: '#F9731620', color: '#F97316' }
+                : { backgroundColor: '#3B82F620', color: '#3B82F6' }),
+            }}
+          >
+            {mode === 'LIVE' ? '实盘' : mode === 'SIMULATION' ? '模拟' : '回测'}
+          </div>
+          <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>v2.1.0</div>
+        </div>
+      )}
+    </div>
+  )
+
   return (
-    <Sider width={220} className="overflow-auto">
-      <div className="h-16 flex items-center gap-3 px-4 border-b border-[#334155]">
-        <div className="w-8 h-8 bg-[#F59E0B] rounded-lg flex items-center justify-center">
-          <FundProjectionScreenOutlined className="text-[#0F172A] text-lg" />
-        </div>
-        <div>
-          <div className="font-semibold text-sm text-white">TradeAgent</div>
-          <div className="text-xs text-[#94A3B8]">Trading System</div>
-        </div>
-      </div>
-
-      <Menu
-        mode="inline"
-        selectedKeys={[location.pathname]}
-        items={menuItems}
-        onClick={onClick}
-        className="!border-none"
+    <>
+      <Sider
+        width={220}
+        style={{ overflow: 'auto', height: '100vh', position: 'fixed', left: 0, top: 0 }}
+        collapsible
+        collapsed={collapsed}
+        onCollapse={onCollapse}
         theme="dark"
-      />
+        breakpoint="md"
+        collapsedWidth="0"
+      >
+        {sidebarContent()}
+      </Sider>
 
-      <div className="p-4 border-t border-[#334155]">
-        <div className="flex items-center gap-2 mb-2">
-          <Badge status={isConnected ? 'success' : 'error'} />
-          <span className="text-xs text-[#94A3B8]">
-            {isConnected ? '系统正常' : '系统异常'}
-          </span>
-        </div>
-        <div
-          className={`inline-block px-2 py-0.5 rounded text-xs ${
-            mode === 'LIVE'
-              ? 'bg-[#10B981]/20 text-[#10B981]'
-              : mode === 'SIMULATION'
-              ? 'bg-[#F97316]/20 text-[#F97316]'
-              : 'bg-[#3B82F6]/20 text-[#3B82F6]'
-          }`}
-        >
-          {mode === 'LIVE' ? '实盘' : mode === 'SIMULATION' ? '模拟' : '回测'}
-        </div>
-        <div className="text-xs text-[#94A3B8] mt-1">v2.1.0</div>
-      </div>
-    </Sider>
+      <Drawer
+        placement="left"
+        onClose={onMobileClose}
+        open={mobileOpen}
+        width={250}
+        bodyStyle={{ padding: 0, backgroundColor: '#1E293B' }}
+        headerStyle={{ display: 'none' }}
+        maskStyle={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+        styles={{ body: { padding: 0 } }}
+      >
+        {sidebarContent()}
+      </Drawer>
+    </>
   )
 }

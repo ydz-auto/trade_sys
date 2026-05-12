@@ -11,7 +11,7 @@ export function RiskPage() {
   return (
     <div className="space-y-4">
       <Row gutter={16}>
-        <Col span={16}>
+        <Col xs={24} md={16}>
           <Card title="风险引擎" className="!bg-[#1E293B] !border-[#334155]">
             <div className="space-y-6">
               {riskComponents.map((risk) => (
@@ -55,7 +55,7 @@ export function RiskPage() {
           </Card>
         </Col>
 
-        <Col span={8}>
+        <Col xs={24} md={8}>
           <Card title="风控规则" className="!bg-[#1E293B] !border-[#334155]">
             <div className="space-y-3">
               <div className="flex items-center justify-between p-2 bg-[#0F172A] rounded">
