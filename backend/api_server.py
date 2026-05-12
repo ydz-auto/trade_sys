@@ -51,6 +51,7 @@ class DashboardResponse(BaseModel):
     dataSources: List[dict]
     traders: List[dict]
     socialPosts: List[dict]
+    news: List[dict]
 
 class NewsItem(BaseModel):
     id: str
@@ -78,8 +79,21 @@ async def get_dashboard():
         data_api = get_data_api()
         prices = await data_api.get_all_prices()
 
-        mock_news_collector = NewsCollector()
-        news_items = await mock_news_collector.collect()
+        news_collector = NewsCollector()
+        news_items = await news_collector.collect()
+
+        news_list = [
+            {
+                "id": item.id if hasattr(item, 'id') else str(i),
+                "title": item.title if hasattr(item, 'title') else "",
+                "content": item.content if hasattr(item, 'content') else "",
+                "source": item.source if hasattr(item, 'source') else "",
+                "sentiment": item.sentiment if hasattr(item, 'sentiment') else "neutral",
+                "sentiment_score": item.sentiment_score if hasattr(item, 'sentiment_score') else 0.5,
+                "published": item.published if hasattr(item, 'published') else 0
+            }
+            for i, item in enumerate(news_items[:20])
+        ]
 
         data_sources = []
         for source in ["coindesk", "cointelegraph", "cryptonews", "decrypt", "theblock", "blockworks"]:
@@ -143,7 +157,8 @@ async def get_dashboard():
             socialPosts=[
                 {"id": "1", "platform": "twitter", "author": "CryptoKing", "content": "BTC looking strong", "sentiment": "bullish", "timestamp": datetime.now().isoformat()},
                 {"id": "2", "platform": "reddit", "author": "CryptoBull", "content": "ETH breakout soon", "sentiment": "bullish", "timestamp": datetime.now().isoformat()}
-            ]
+            ],
+            news=news_list
         )
     except Exception as e:
         logger.error(f"Dashboard error: {e}")
@@ -167,7 +182,8 @@ async def get_dashboard():
             weightVersions=[{"version": "v1.0", "createdAt": "2026-01-01T00:00:00Z", "factors": {"trend": 0.3, "flow": 0.25, "sentiment": 0.25, "macro": 0.2}}],
             dataSources=[{"name": "news", "status": "connected", "lastUpdate": datetime.now().isoformat(), "recordsCount": 40}],
             traders=[],
-            socialPosts=[]
+            socialPosts=[],
+            news=[]
         )
 
 @app.get("/api/v1/news", response_model=List[NewsItem])

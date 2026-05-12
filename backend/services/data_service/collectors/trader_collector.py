@@ -1,6 +1,6 @@
 """
 Trader Data Collector - 交易员/KOL数据采集
-支持：Twitter KOL + Dune Analytics + Nansen 链上数据
+支持：Twitter KOL + Dune Analytics + Nansen 链上数据 + 弹性能力
 """
 
 import asyncio
@@ -16,6 +16,8 @@ from shared.config import get_datasource_config_manager, KOL_TRADER_LIST
 from shared.llm_client import LLMServiceClient
 from shared.http_client import HTTPClient, HTTPRequest, HTTPMethod
 from infrastructure.logging import get_logger
+from .base_collector import BaseCollector, CollectorResult
+from infrastructure.resilience import CircuitBreakerConfig, RetryConfig
 
 logger = get_logger("collectors.trader")
 
@@ -244,8 +246,8 @@ class DuneAnalyticsCollector:
         ]
 
 
-class TraderDataCollector:
-    """交易员数据收集器（KOL + 链上）"""
+class TraderDataCollector(BaseCollector):
+    """交易员数据收集器（KOL + 链上）+ 弹性能力"""
 
     def __init__(self):
         self.latest_statements: List[TraderStatement] = []
@@ -256,6 +258,21 @@ class TraderDataCollector:
         self.dune_collector = DuneAnalyticsCollector()
 
         self.llm_client = LLMServiceClient()
+        
+        # 调用基类初始化
+        super().__init__(
+            name="TraderDataCollector",
+            circuit_config=CircuitBreakerConfig(
+                name="trader_circuit",
+                failure_threshold=3,
+                recovery_timeout=60.0
+            ),
+            retry_config=RetryConfig(
+                max_attempts=2,
+                initial_delay=1.0
+            ),
+            fallback_value={"statements": [], "onchain": []}  # 降级时返回空数据
+        )
 
     def _load_kol_list(self) -> List[Dict]:
         try:
@@ -263,24 +280,40 @@ class TraderDataCollector:
         except Exception:
             return []
 
-    async def collect(self) -> Dict:
-        statement_results = await self.collect_trader_opinions()
+    async def collect(self) -> CollectorResult:
+        """采集交易员数据（返回 CollectorResult）"""
+        try:
+            statement_results = await self.collect_trader_opinions()
 
-        wallet_addresses = []
-        for kol in self.kol_list:
-            wallets = kol.get("wallet_addresses", [])
-            wallet_addresses.extend(wallets)
+            wallet_addresses = []
+            for kol in self.kol_list:
+                wallets = kol.get("wallet_addresses", [])
+                wallet_addresses.extend(wallets)
 
-        if wallet_addresses:
-            onchain_results = await self.collect_onchain_data(wallet_addresses)
-        else:
-            onchain_results = []
+            if wallet_addresses:
+                onchain_results = await self.collect_onchain_data(wallet_addresses)
+            else:
+                onchain_results = []
 
-        return {
-            "statements": statement_results,
-            "onchain": onchain_results,
-            "timestamp": datetime.now().isoformat()
-        }
+            data = {
+                "statements": statement_results,
+                "onchain": onchain_results,
+                "timestamp": datetime.now().isoformat()
+            }
+
+            return CollectorResult(
+                success=True,
+                data=data,
+                source="TraderDataCollector",
+                confidence=0.8
+            )
+        except Exception as e:
+            logger.error(f"Trader data collection failed: {e}")
+            return CollectorResult(
+                success=False,
+                error=str(e),
+                source="TraderDataCollector"
+            )
 
     async def collect_trader_opinions(self) -> List[Dict]:
         statements = await self.twitter_collector.collect()

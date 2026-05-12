@@ -45,6 +45,7 @@ class DashboardResponse(BaseModel):
     dataSources: List[dict]
     traders: List[dict]
     socialPosts: List[dict]
+    news: List[dict]
 
 class NewsItem(BaseModel):
     id: str
@@ -144,7 +145,8 @@ async def get_dashboard():
         weightVersions=[{"version": "v1.0", "createdAt": "2026-01-01T00:00:00Z", "factors": {"trend": 0.3, "flow": 0.25, "sentiment": 0.25, "macro": 0.2}}],
         dataSources=data_sources,
         traders=[{"id": "1", "name": "CryptoQuant", "followers": 50000, "winRate": 0.65}],
-        socialPosts=[{"id": "1", "platform": "twitter", "author": "CryptoKing", "content": "BTC looking strong", "sentiment": "bullish", "timestamp": datetime.now().isoformat()}]
+        socialPosts=[{"id": "1", "platform": "twitter", "author": "CryptoKing", "content": "BTC looking strong", "sentiment": "bullish", "timestamp": datetime.now().isoformat()}],
+        news=all_news
     )
 
 @app.get("/api/v1/news", response_model=List[NewsItem])

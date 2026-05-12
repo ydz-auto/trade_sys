@@ -1,6 +1,6 @@
 """
 ETF Collector - ETF资金流数据采集（增强版）
-支持：多源融合（Farside + SoSoValue + CoinGlass + LLM爬虫）
+支持：多源融合（Farside + SoSoValue + CoinGlass + LLM爬虫）+ 弹性能力
 """
 
 import asyncio
@@ -17,6 +17,8 @@ from shared.config import get_datasource_config_manager
 from shared.http_client import HTTPClient, HTTPRequest, HTTPMethod
 from shared.llm_client import LLMServiceClient
 from infrastructure.logging import get_logger
+from .base_collector import BaseCollector, CollectorResult, MultiSourceCollector, SourceConfig
+from infrastructure.resilience import CircuitBreakerConfig, RetryConfig
 
 logger = get_logger("collectors.etf")
 
@@ -173,8 +175,8 @@ class ETFSourceCollector:
         return None
 
 
-class ETFCollector:
-    """ETF收集器（多源融合）"""
+class ETFCollector(MultiSourceCollector):
+    """ETF收集器（多源融合）+ 弹性能力"""
 
     ETF_SYMBOL_MAP = {
         "BTC": ["IBIT", "FBTC", "ARKB", "BBTC"],
@@ -184,6 +186,53 @@ class ETFCollector:
     def __init__(self):
         self.latest_results: Dict[str, ETFFlowResult] = {}
         self.sources: Dict[str, ETFSourceCollector] = {}
+        self.symbols: List[str] = []
+        
+        # 先收集sources列表
+        source_configs = [
+            {
+                "name": "farside",
+                "type": "farside",
+                "enabled": True,
+                "weight": 0.45,
+                "retry_count": 3,
+                "retry_delay": 1.0
+            },
+            {
+                "name": "sosovalue",
+                "type": "sosovalue",
+                "enabled": True,
+                "weight": 0.30,
+                "retry_count": 3,
+                "retry_delay": 1.0
+            },
+            {
+                "name": "coinglass",
+                "type": "coinglass",
+                "enabled": True,
+                "weight": 0.25,
+                "retry_count": 3,
+                "retry_delay": 1.0
+            }
+        ]
+        
+        # 创建SourceConfig列表
+        source_config_list = [
+            SourceConfig(
+                name=cfg["name"],
+                type=cfg["type"],
+                enabled=cfg["enabled"],
+                weight=cfg["weight"],
+                retry_count=cfg.get("retry_count", 3),
+                retry_delay=cfg.get("retry_delay", 1.0)
+            )
+            for cfg in source_configs
+        ]
+        
+        # 调用基类初始化
+        super().__init__(name="ETFCollector", sources=source_config_list)
+        
+        # 初始化数据源采集器
         self._init_sources()
 
     def _init_sources(self):
@@ -219,19 +268,66 @@ class ETFCollector:
                     config=config
                 )
 
-    async def collect(self) -> Dict[str, ETFFlowResult]:
-        results = {}
-
-        for symbol in self.symbols:
-            try:
-                result = await self._collect_with_fusion(symbol)
-                if result:
-                    self.latest_results[symbol] = result
-                    results[symbol] = result
-            except Exception as e:
-                logger.error(f"Error collecting ETF for {symbol}: {e}")
-
-        return results
+    async def collect(self) -> CollectorResult:
+        """采集所有ETF数据（返回 CollectorResult）"""
+        try:
+            results = {}
+            
+            for symbol in self.symbols:
+                try:
+                    result = await self._collect_with_fusion(symbol)
+                    if result:
+                        self.latest_results[symbol] = result
+                        results[symbol] = result
+                except Exception as e:
+                    logger.error(f"Error collecting ETF for {symbol}: {e}")
+            
+            return CollectorResult(
+                success=bool(results),
+                data=results,
+                source="ETFCollector",
+                confidence=0.85
+            )
+        except Exception as e:
+            logger.error(f"ETF collection failed: {e}")
+            return CollectorResult(
+                success=False,
+                error=str(e),
+                source="ETFCollector"
+            )
+    
+    async def collect_source(self, name: str, config: SourceConfig) -> CollectorResult:
+        """采集单个数据源"""
+        try:
+            collector = self.sources.get(name)
+            if not collector:
+                return CollectorResult(
+                    success=False,
+                    error=f"Collector {name} not found",
+                    source=name
+                )
+            
+            results = {}
+            for symbol in self.symbols:
+                try:
+                    flow = await collector.collect(symbol)
+                    if flow:
+                        results[symbol] = flow
+                except Exception as e:
+                    logger.warning(f"{name} failed for {symbol}: {e}")
+            
+            return CollectorResult(
+                success=bool(results),
+                data=results,
+                source=name,
+                confidence=config.weight if results else 0
+            )
+        except Exception as e:
+            return CollectorResult(
+                success=False,
+                error=str(e),
+                source=name
+            )
 
     async def _collect_with_fusion(self, symbol: str) -> Optional[ETFFlowResult]:
         individual_flows = {}

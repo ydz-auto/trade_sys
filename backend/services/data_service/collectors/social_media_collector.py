@@ -1,6 +1,6 @@
 """
 Social Media Collector - 社交媒体数据采集
-支持：Twitter/X, Reddit, Telegram
+支持：Twitter/X, Reddit, Telegram + 弹性能力
 """
 
 import asyncio
@@ -15,6 +15,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from shared.config import get_datasource_config_manager
 from shared.llm_client import LLMServiceClient
 from infrastructure.logging import get_logger
+from .base_collector import BaseCollector, CollectorResult
+from infrastructure.resilience import CircuitBreakerConfig, RetryConfig
 
 logger = get_logger("collectors.social")
 
@@ -255,14 +257,30 @@ class RedditCollector:
         ]
 
 
-class SocialMediaCollector:
-    """社交媒体收集器（多平台统一）"""
+class SocialMediaCollector(BaseCollector):
+    """社交媒体收集器（多平台统一）+ 弹性能力"""
 
     def __init__(self):
         self.latest_posts: List[SocialPost] = []
         self.twitter_collector: Optional[TwitterCollector] = None
         self.reddit_collector: Optional[RedditCollector] = None
         self.llm_client = LLMServiceClient()
+        
+        # 调用基类初始化
+        super().__init__(
+            name="SocialMediaCollector",
+            circuit_config=CircuitBreakerConfig(
+                name="social_circuit",
+                failure_threshold=3,
+                recovery_timeout=60.0
+            ),
+            retry_config=RetryConfig(
+                max_attempts=2,
+                initial_delay=1.0
+            ),
+            fallback_value=[]  # 降级时返回空列表
+        )
+        
         self._init_collectors()
 
     def _init_collectors(self):
@@ -279,27 +297,41 @@ class SocialMediaCollector:
         except Exception as e:
             logger.warning(f"Reddit collector init error: {e}")
 
-    async def collect(self) -> List[SocialPost]:
-        all_posts = []
+    async def collect(self) -> CollectorResult:
+        """采集社交媒体数据（返回 CollectorResult）"""
+        try:
+            all_posts = []
 
-        if self.twitter_collector:
-            try:
-                twitter_posts = await self.twitter_collector.collect_tweets(self.twitter_handles)
-                all_posts.extend(twitter_posts)
-            except Exception as e:
-                logger.error(f"Twitter collection error: {e}")
+            if self.twitter_collector:
+                try:
+                    twitter_posts = await self.twitter_collector.collect_tweets(self.twitter_handles)
+                    all_posts.extend(twitter_posts)
+                except Exception as e:
+                    logger.error(f"Twitter collection error: {e}")
 
-        if self.reddit_collector:
-            try:
-                reddit_posts = await self.reddit_collector.collect_posts()
-                all_posts.extend(reddit_posts)
-            except Exception as e:
-                logger.error(f"Reddit collection error: {e}")
+            if self.reddit_collector:
+                try:
+                    reddit_posts = await self.reddit_collector.collect_posts()
+                    all_posts.extend(reddit_posts)
+                except Exception as e:
+                    logger.error(f"Reddit collection error: {e}")
 
-        analyzed = await self._analyze_sentiment(all_posts)
-        self.latest_posts = sorted(analyzed, key=lambda x: x.published, reverse=True)[:100]
+            analyzed = await self._analyze_sentiment(all_posts)
+            self.latest_posts = sorted(analyzed, key=lambda x: x.published, reverse=True)[:100]
 
-        return self.latest_posts
+            return CollectorResult(
+                success=True,
+                data=self.latest_posts,
+                source="SocialMediaCollector",
+                confidence=0.8
+            )
+        except Exception as e:
+            logger.error(f"Social media collection failed: {e}")
+            return CollectorResult(
+                success=False,
+                error=str(e),
+                source="SocialMediaCollector"
+            )
 
     async def _analyze_sentiment(self, posts: List[SocialPost]) -> List[SocialPost]:
         for post in posts:

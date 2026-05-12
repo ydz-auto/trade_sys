@@ -1,6 +1,6 @@
 """
 Macro Collector - 宏观数据采集（增强版）
-支持：多源融合（Yahoo Finance + Metals.live + CME + 金十数据）
+支持：多源融合（Yahoo Finance + Metals.live + CME + 金十数据）+ 弹性能力
 """
 
 import asyncio
@@ -16,6 +16,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from shared.config import get_datasource_config_manager
 from shared.http_client import HTTPClient, HTTPRequest, HTTPMethod
 from infrastructure.logging import get_logger
+from .base_collector import BaseCollector, CollectorResult, SourceConfig
+from infrastructure.resilience import CircuitBreakerConfig, RetryConfig
 
 logger = get_logger("collectors.macro")
 
@@ -186,8 +188,8 @@ class MacroSourceCollector:
         return None
 
 
-class MacroCollector:
-    """宏观数据收集器（多源融合）"""
+class MacroCollector(BaseCollector):
+    """宏观数据收集器（多源融合）+ 弹性能力"""
 
     ASSET_MAP = {
         "gold": {"name": "黄金", "unit": "USD/oz"},
@@ -202,6 +204,22 @@ class MacroCollector:
     def __init__(self):
         self.latest_results: Dict[str, MacroResult] = {}
         self.sources: Dict[str, MacroSourceCollector] = {}
+        
+        # 调用基类初始化
+        super().__init__(
+            name="MacroCollector",
+            circuit_config=CircuitBreakerConfig(
+                name="macro_circuit",
+                failure_threshold=3,
+                recovery_timeout=60.0
+            ),
+            retry_config=RetryConfig(
+                max_attempts=2,
+                initial_delay=1.0
+            ),
+            fallback_value={}  # 降级时返回空字典
+        )
+        
         self._init_sources()
 
     def _init_sources(self):
@@ -219,19 +237,33 @@ class MacroCollector:
                     config=config
                 )
 
-    async def collect(self) -> Dict[str, MacroResult]:
-        results = {}
+    async def collect(self) -> CollectorResult:
+        """采集宏观数据（返回 CollectorResult）"""
+        try:
+            results = {}
 
-        for asset in self.ASSET_MAP.keys():
-            try:
-                result = await self._collect_with_fusion(asset)
-                if result:
-                    self.latest_results[asset] = result
-                    results[asset] = result
-            except Exception as e:
-                logger.error(f"Error collecting macro for {asset}: {e}")
+            for asset in self.ASSET_MAP.keys():
+                try:
+                    result = await self._collect_with_fusion(asset)
+                    if result:
+                        self.latest_results[asset] = result
+                        results[asset] = result
+                except Exception as e:
+                    logger.error(f"Error collecting macro for {asset}: {e}")
 
-        return results
+            return CollectorResult(
+                success=bool(results),
+                data=results,
+                source="MacroCollector",
+                confidence=0.85
+            )
+        except Exception as e:
+            logger.error(f"Macro collection failed: {e}")
+            return CollectorResult(
+                success=False,
+                error=str(e),
+                source="MacroCollector"
+            )
 
     async def _collect_with_fusion(self, asset: str) -> Optional[MacroResult]:
         individual_data = {}

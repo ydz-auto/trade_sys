@@ -1,6 +1,6 @@
 """
 Exchange Collector - 多交易所价格数据采集（增强版）
-支持：REST API + WebSocket + 多交易所分别保存
+支持：REST API + WebSocket + 多交易所分别保存 + 弹性能力
 """
 
 import asyncio
@@ -11,6 +11,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from infrastructure.logging import get_logger
+from .base_collector import BaseCollector, CollectorResult, SourceConfig
+from infrastructure.resilience import CircuitBreakerConfig, RetryConfig
+
 try:
     import ccxt
 except ImportError:
@@ -85,13 +88,31 @@ class MultiExchangePrices:
         return None
 
 
-class ExchangeCollector:
+class ExchangeCollector(BaseCollector):
+    """交易所价格采集器 + 弹性能力"""
+
     def __init__(self, symbols: List[str], exchanges: List[str]):
         self.symbols = symbols
         self.exchanges = exchanges
         self.exchange_instances: Dict[str, Any] = {}
         self.latest_prices: Dict[str, MultiExchangePrices] = {}
         self.ws_connections: Dict[str, Any] = {}
+        
+        # 调用基类初始化
+        super().__init__(
+            name="ExchangeCollector",
+            circuit_config=CircuitBreakerConfig(
+                name="exchange_circuit",
+                failure_threshold=5,
+                recovery_timeout=60.0
+            ),
+            retry_config=RetryConfig(
+                max_attempts=2,
+                initial_delay=1.0
+            ),
+            fallback_value={}  # 降级时返回空字典
+        )
+        
         self._init_exchanges()
 
     def _init_exchanges(self):
@@ -117,29 +138,42 @@ class ExchangeCollector:
                 except Exception as e:
                     logger.error(f"Failed to initialize {exchange_name}: {e}")
 
-    async def collect(self) -> Dict[str, MultiExchangePrices]:
-        """多源并行采集所有交易所价格"""
-        results = {}
+    async def collect(self) -> CollectorResult:
+        """多源并行采集所有交易所价格（返回 CollectorResult）"""
+        try:
+            results = {}
 
-        for symbol in self.symbols:
-            multi_prices = MultiExchangePrices(symbol=symbol)
+            for symbol in self.symbols:
+                multi_prices = MultiExchangePrices(symbol=symbol)
 
-            for exchange_name, exchange in self.exchange_instances.items():
-                try:
-                    price = await self._fetch_ticker(exchange, symbol, exchange_name)
-                    if price:
-                        multi_prices.prices[exchange_name] = price
-                except Exception as e:
-                    logger.error(f"Error fetching {symbol} from {exchange_name}: {e}")
-                    multi_prices.prices[exchange_name] = self._create_error_price(symbol, exchange_name)
+                for exchange_name, exchange in self.exchange_instances.items():
+                    try:
+                        price = await self._fetch_ticker(exchange, symbol, exchange_name)
+                        if price:
+                            multi_prices.prices[exchange_name] = price
+                    except Exception as e:
+                        logger.error(f"Error fetching {symbol} from {exchange_name}: {e}")
+                        multi_prices.prices[exchange_name] = self._create_error_price(symbol, exchange_name)
 
-            if not multi_prices.prices:
-                multi_prices.prices["mock"] = self._create_mock_price(symbol)
+                if not multi_prices.prices:
+                    multi_prices.prices["mock"] = self._create_mock_price(symbol)
 
-            self.latest_prices[symbol] = multi_prices
-            results[symbol] = multi_prices
+                self.latest_prices[symbol] = multi_prices
+                results[symbol] = multi_prices
 
-        return results
+            return CollectorResult(
+                success=bool(results),
+                data=results,
+                source="ExchangeCollector",
+                confidence=0.9
+            )
+        except Exception as e:
+            logger.error(f"Exchange collection failed: {e}")
+            return CollectorResult(
+                success=False,
+                error=str(e),
+                source="ExchangeCollector"
+            )
 
     async def _fetch_ticker(self, exchange, symbol: str, exchange_name: str) -> Optional[ExchangePrice]:
         start_time = time.time()

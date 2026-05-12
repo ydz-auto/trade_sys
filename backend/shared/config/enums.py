@@ -21,6 +21,7 @@ class ConfigCategory(str, Enum):
     ALERTING = "alerting"
     MIDDLEWARE = "middleware"
     API_GATEWAY = "api_gateway"
+    APPROVAL = "approval"
 
 
 class ConfigScope(str, Enum):

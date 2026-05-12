@@ -1,6 +1,6 @@
 """
 Crypto Stock Collector - 加密货币相关股票采集
-支持：MSTR, COIN, MARA, RIOT, CRCL, HOOD 等
+支持：MSTR, COIN, MARA, RIOT, CRCL, HOOD 等 + 弹性能力
 """
 
 import asyncio
@@ -15,6 +15,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from shared.config import get_datasource_config_manager
 from shared.http_client import HTTPClient, HTTPRequest, HTTPMethod
 from infrastructure.logging import get_logger
+from .base_collector import BaseCollector, CollectorResult
+from infrastructure.resilience import CircuitBreakerConfig, RetryConfig
 
 logger = get_logger("collectors.crypto_stock")
 
@@ -183,13 +185,29 @@ class AlphaVantageCollector:
         return None
 
 
-class CryptoStockCollector:
-    """加密货币股票收集器"""
+class CryptoStockCollector(BaseCollector):
+    """加密货币股票收集器 + 弹性能力"""
 
     def __init__(self):
         self.latest_stocks: Dict[str, CryptoStock] = {}
         self.yahoo_collector = YahooFinanceCollector()
         self.alpha_vantage_collector: Optional[AlphaVantageCollector] = None
+        
+        # 调用基类初始化
+        super().__init__(
+            name="CryptoStockCollector",
+            circuit_config=CircuitBreakerConfig(
+                name="crypto_stock_circuit",
+                failure_threshold=3,
+                recovery_timeout=60.0
+            ),
+            retry_config=RetryConfig(
+                max_attempts=2,
+                initial_delay=1.0
+            ),
+            fallback_value={}  # 降级时返回空字典
+        )
+        
         self._init_alpha_vantage()
 
     def _init_alpha_vantage(self):
@@ -201,21 +219,35 @@ class CryptoStockCollector:
         except Exception as e:
             logger.warning(f"Alpha Vantage init error: {e}")
 
-    async def collect(self, symbols: List[str] = None) -> Dict[str, CryptoStock]:
-        results = {}
+    async def collect(self) -> CollectorResult:
+        """采集加密股票数据（返回 CollectorResult）"""
+        try:
+            results = {}
 
-        yahoo_stocks = await self.yahoo_collector.collect(symbols)
-        for stock in yahoo_stocks:
-            results[stock.symbol] = stock
-            self.latest_stocks[stock.symbol] = stock
+            yahoo_stocks = await self.yahoo_collector.collect()
+            for stock in yahoo_stocks:
+                results[stock.symbol] = stock
+                self.latest_stocks[stock.symbol] = stock
 
-        if self.alpha_vantage_collector:
-            alpha_stocks = await self.alpha_vantage_collector.collect(symbols or [])
-            for stock in alpha_stocks:
-                if stock.symbol not in results:
-                    results[stock.symbol] = stock
+            if self.alpha_vantage_collector:
+                alpha_stocks = await self.alpha_vantage_collector.collect(list(self.latest_stocks.keys()))
+                for stock in alpha_stocks:
+                    if stock.symbol not in results:
+                        results[stock.symbol] = stock
 
-        return results
+            return CollectorResult(
+                success=bool(results),
+                data=results,
+                source="CryptoStockCollector",
+                confidence=0.85
+            )
+        except Exception as e:
+            logger.error(f"Crypto stock collection failed: {e}")
+            return CollectorResult(
+                success=False,
+                error=str(e),
+                source="CryptoStockCollector"
+            )
 
     def get_stock(self, symbol: str) -> Optional[CryptoStock]:
         return self.latest_stocks.get(symbol)

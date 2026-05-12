@@ -74,7 +74,7 @@ except ImportError:
 
 from .social_media_collector import (
     SocialMediaCollector,
-    TwitterCollector,
+    TwitterCollector as LegacyTwitterCollector,
     RedditCollector,
     SocialPost
 )
@@ -92,6 +92,35 @@ from .trader_collector import (
     DuneAnalyticsCollector,
     TraderStatement,
     OnChainData
+)
+
+# New Enhanced News Collection Modules
+from .news_feed_collector import (
+    RSSFeedCollector,
+    NewsArticle,
+    RSSFeedSource,
+    Deduplicator as ArticleDeduplicator
+)
+
+from .news_api_collector import (
+    NewsAPICollector,
+    CryptoPanicCollector,
+    CoinGeckoNewsCollector,
+    APISourceConfig
+)
+
+from .twitter_collector import (
+    TwitterCollector,
+    TwitterPost,
+    TwitterAccount,
+    AlertRule,
+    AlertPriority
+)
+
+from .news_hub import (
+    NewsHub,
+    AggregatedNews,
+    NewsSource
 )
 
 __all__ = [
@@ -128,7 +157,7 @@ __all__ = [
     "Deduplicator",
     "BlackSwanDetector",
     "SocialMediaCollector",
-    "TwitterCollector",
+    "LegacyTwitterCollector",
     "RedditCollector",
     "SocialPost",
     "CryptoStockCollector",
@@ -140,4 +169,21 @@ __all__ = [
     "DuneAnalyticsCollector",
     "TraderStatement",
     "OnChainData",
+    # New Enhanced Modules
+    "RSSFeedCollector",
+    "NewsArticle",
+    "RSSFeedSource",
+    "ArticleDeduplicator",
+    "NewsAPICollector",
+    "CryptoPanicCollector",
+    "CoinGeckoNewsCollector",
+    "APISourceConfig",
+    "TwitterCollector",
+    "TwitterPost",
+    "TwitterAccount",
+    "AlertRule",
+    "AlertPriority",
+    "NewsHub",
+    "AggregatedNews",
+    "NewsSource",
 ]

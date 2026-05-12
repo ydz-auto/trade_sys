@@ -1,12 +1,12 @@
 """
-增强版新闻采集器 - 支持 LLM 资源池 + 多级降级
+增强版新闻采集器 - 支持 LLM 资源池 + 多级降级 + 弹性能力
 """
 
 import asyncio
 import re
 import hashlib
 import json
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from datetime import datetime
 import feedparser
 import httpx
@@ -14,6 +14,8 @@ from bs4 import BeautifulSoup
 
 from infrastructure.logging import get_logger
 from infrastructure.llm import get_llm_pool, LLMPoolManager
+from .base_collector import BaseCollector, CollectorResult, CollectorStatus
+from infrastructure.resilience import CircuitBreakerConfig, RetryConfig
 
 logger = get_logger("collectors.news")
 
@@ -97,8 +99,8 @@ class BlackSwanDetector:
         return {"black_swan_score": min(score, 1.0)}
 
 
-class NewsCollector:
-    """增强版新闻采集器 - 支持 LLM 资源池 + 多级降级"""
+class NewsCollector(BaseCollector):
+    """增强版新闻采集器 - 支持 LLM 资源池 + 多级降级 + 弹性能力"""
 
     def __init__(self, use_llm: bool = True):
         self.use_llm = use_llm
@@ -107,6 +109,21 @@ class NewsCollector:
         self.black_swan_detector = BlackSwanDetector()
         self.sources = self._init_sources()
         self.llm_pool: Optional[LLMPoolManager] = None
+
+        # 调用基类初始化，配置弹性能力
+        super().__init__(
+            name="NewsCollector",
+            circuit_config=CircuitBreakerConfig(
+                name="news_circuit",
+                failure_threshold=3,
+                recovery_timeout=60.0
+            ),
+            retry_config=RetryConfig(
+                max_attempts=2,
+                initial_delay=1.0
+            ),
+            fallback_value=[]  # 降级时返回空列表
+        )
 
         if self.use_llm:
             try:
@@ -125,36 +142,50 @@ class NewsCollector:
             "bitcoinist": "https://bitcoinist.com/feed/",
         }
 
-    async def collect(self) -> List[NewsItem]:
-        """采集所有来源的新闻"""
-        all_news = []
+    async def collect(self) -> CollectorResult:
+        """采集所有来源的新闻（返回 CollectorResult）"""
+        try:
+            all_news = []
 
-        for source_name, url in self.sources.items():
-            try:
-                news = await self._fetch_rss(source_name, url)
-                all_news.extend(news)
-                logger.info(f"[{source_name}] Fetched {len(news)} news")
-            except Exception as e:
-                logger.warning(f"[{source_name}] Error: {e}")
+            for source_name, url in self.sources.items():
+                try:
+                    news = await self._fetch_rss(source_name, url)
+                    all_news.extend(news)
+                    logger.info(f"[{source_name}] Fetched {len(news)} news")
+                except Exception as e:
+                    logger.warning(f"[{source_name}] Error: {e}")
 
-        deduplicated = self._deduplicate(all_news)
-        logger.info(f"After dedup: {len(deduplicated)} news")
+            deduplicated = self._deduplicate(all_news)
+            logger.info(f"After dedup: {len(deduplicated)} news")
 
-        analyzed = await self._analyze_sentiment(deduplicated)
-        self._detect_black_swan(analyzed)
+            analyzed = await self._analyze_sentiment(deduplicated)
+            self._detect_black_swan(analyzed)
 
-        self.latest_news = sorted(
-            analyzed,
-            key=lambda x: (x.published, x.black_swan_score),
-            reverse=True
-        )[:50]
+            self.latest_news = sorted(
+                analyzed,
+                key=lambda x: (x.published, x.black_swan_score),
+                reverse=True
+            )[:50]
 
-        if self.llm_pool:
-            stats = self.llm_pool.get_pool_stats()
-            logger.info(f"LLM Pool stats: {json.dumps(stats, ensure_ascii=False)}")
+            if self.llm_pool:
+                stats = self.llm_pool.get_pool_stats()
+                logger.info(f"LLM Pool stats: {json.dumps(stats, ensure_ascii=False)}")
 
-        logger.info(f"Total collected: {len(self.latest_news)} news")
-        return self.latest_news
+            logger.info(f"Total collected: {len(self.latest_news)} news")
+
+            return CollectorResult(
+                success=True,
+                data=self.latest_news,
+                source="NewsCollector",
+                confidence=0.9
+            )
+        except Exception as e:
+            logger.error(f"News collection failed: {e}")
+            return CollectorResult(
+                success=False,
+                error=str(e),
+                source="NewsCollector"
+            )
 
     async def _fetch_rss(self, source_name: str, url: str) -> List[NewsItem]:
         if "api" in source_name:
@@ -287,3 +318,32 @@ class NewsCollector:
             if item.black_swan_score <= 0:
                 detection = self.black_swan_detector.detect(item.title, item.content)
                 item.black_swan_score = detection["black_swan_score"]
+
+    def get_latest_news(self, limit: int = 20) -> List[Dict]:
+        """获取最新新闻"""
+        return [item.to_dict() for item in self.latest_news[:limit]]
+
+    def get_black_swan_news(self, min_score: float = 0.5) -> List[Dict]:
+        """获取黑天鹅新闻"""
+        return [
+            item.to_dict() for item in self.latest_news
+            if item.black_swan_score >= min_score
+        ]
+
+    def get_news_by_sentiment(self, sentiment: str) -> List[Dict]:
+        """按情绪获取新闻"""
+        return [
+            item.to_dict() for item in self.latest_news
+            if item.sentiment == sentiment
+        ]
+
+    def get_news_by_symbol(self, symbol: str) -> List[Dict]:
+        """按币种获取新闻"""
+        return [
+            item.to_dict() for item in self.latest_news
+            if symbol.upper() in item.affected_symbols
+        ]
+
+    def get_item_count(self) -> int:
+        """获取新闻数量"""
+        return len(self.latest_news)
