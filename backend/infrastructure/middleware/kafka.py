@@ -3,7 +3,7 @@ Kafka 消息队列 - FastStream 实现
 支持 Pydantic Schema 校验，自动 OpenAPI 文档
 """
 
-from typing import Optional, Dict, Any, Callable, Type
+from typing import Optional, Dict, Any, Callable, Type, Union
 from pydantic import BaseModel
 
 from infrastructure.logging import get_logger
@@ -15,6 +15,8 @@ try:
     FASTSTREAM_AVAILABLE = True
 except ImportError:
     FASTSTREAM_AVAILABLE = False
+    FastStream = None
+    KafkaBroker = None  # type: ignore
 
 
 class FastStreamKafka:
@@ -24,16 +26,18 @@ class FastStreamKafka:
 
         self.bootstrap_servers = bootstrap_servers
         self.client_id = client_id
-        self._broker: Optional[KafkaBroker] = None
-        self._app: Optional[FastStream] = None
+        self._broker = None  # type: Optional[KafkaBroker]
+        self._app = None  # type: Optional[FastStream]
         self._handlers: Dict[str, Callable] = {}
         self._running = False
 
-    def create_broker(self) -> KafkaBroker:
+    def create_broker(self):
+        from faststream.kafka import KafkaBroker
         self._broker = KafkaBroker(self.bootstrap_servers)
         return self._broker
 
-    def create_app(self, title: str = "TradeAgent Kafka", version: str = "1.0.0") -> FastStream:
+    def create_app(self, title: str = "TradeAgent Kafka", version: str = "1.0.0"):
+        from faststream import FastStream
         if self._broker is None:
             self.create_broker()
         self._app = FastStream(self._broker, title=title, version=version)
@@ -51,7 +55,7 @@ class FastStreamKafka:
 
 
 class KafkaPublisher:
-    def __init__(self, broker: KafkaBroker):
+    def __init__(self, broker):
         self._broker = broker
         self._publishers: Dict[str, Callable] = {}
 
@@ -67,7 +71,7 @@ class KafkaPublisher:
     async def publish(
         self,
         topic: str,
-        message: BaseModel | Dict[str, Any],
+        message: Union[BaseModel, Dict[str, Any]],
         key: Optional[str] = None,
     ) -> None:
         if topic not in self._publishers:
@@ -76,7 +80,7 @@ class KafkaPublisher:
 
 
 class KafkaConsumer:
-    def __init__(self, broker: KafkaBroker):
+    def __init__(self, broker):
         self._broker = broker
         self._handlers: Dict[str, Callable] = {}
 
@@ -101,20 +105,21 @@ class KafkaConsumer:
         pass
 
 
-_broker: Optional[KafkaBroker] = None
-_publisher: Optional[KafkaPublisher] = None
-_consumer: Optional[KafkaConsumer] = None
-_faststream: Optional[FastStreamKafka] = None
+_broker = None
+_publisher = None
+_consumer = None
+_faststream = None
 
 
-def get_kafka_broker(bootstrap_servers: str = "localhost:9092") -> KafkaBroker:
+def get_kafka_broker(bootstrap_servers: str = "localhost:9092"):
     global _broker
     if _broker is None:
+        from faststream.kafka import KafkaBroker
         _broker = KafkaBroker(bootstrap_servers)
     return _broker
 
 
-def get_kafka_publisher(broker: Optional[KafkaBroker] = None) -> KafkaPublisher:
+def get_kafka_publisher(broker=None) -> KafkaPublisher:
     global _publisher
     if _publisher is None:
         b = broker or get_kafka_broker()
@@ -122,7 +127,7 @@ def get_kafka_publisher(broker: Optional[KafkaBroker] = None) -> KafkaPublisher:
     return _publisher
 
 
-def get_kafka_consumer(broker: Optional[KafkaBroker] = None) -> KafkaConsumer:
+def get_kafka_consumer(broker=None) -> KafkaConsumer:
     global _consumer
     if _consumer is None:
         b = broker or get_kafka_broker()
@@ -130,7 +135,7 @@ def get_kafka_consumer(broker: Optional[KafkaBroker] = None) -> KafkaConsumer:
     return _consumer
 
 
-async def init_kafka(bootstrap_servers: str = "localhost:9092") -> FastStreamKafka:
+async def init_kafka(bootstrap_servers: str = "localhost:9092"):
     global _faststream
     broker = get_kafka_broker(bootstrap_servers)
     _faststream = FastStreamKafka(bootstrap_servers, client_id="tradeagent-data-service")

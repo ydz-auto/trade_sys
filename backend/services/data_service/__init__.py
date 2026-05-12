@@ -11,7 +11,7 @@ AI Native Trading System 的数据层
                  ▼
 ┌─────────────────────────────────────────┐
 │         Data Collection Layer           │
-│  (Adapters, Collectors, Crawlers...)    │
+│  (Adapters, Collectors, Crawlers...)   │
 └────────────────┬────────────────────────┘
                  ▼
 ┌─────────────────────────────────────────┐
@@ -21,7 +21,7 @@ AI Native Trading System 的数据层
                  ▼
 ┌─────────────────────────────────────────┐
 │              Event Bus                  │
-│  (Pub/Sub, Routing, Replay)             │
+│  (Pub/Sub, Routing, Replay)           │
 └────────────────┬────────────────────────┘
                  ▼
 ┌─────────────────────────────────────────┐
@@ -30,7 +30,7 @@ AI Native Trading System 的数据层
 └────────────────┬────────────────────────┘
                  ▼
 ┌─────────────────────────────────────────┐
-│         Feature/Factor Engine          │
+│         Feature/Factor Engine           │
 └─────────────────────────────────────────┘
 """
 
@@ -47,6 +47,26 @@ from shared.contracts import (
     create_whale_event
 )
 
+# 导出实时源管理器
+from .source_manager import (
+    DataSourceManager,
+    SourceStatus,
+    SourceInfo,
+    get_source_manager,
+    start_sources,
+    stop_sources,
+    get_source_status,
+    get_source_stats
+)
+
+# 导出实时源
+from .sources import (
+    BaseSource,
+    Priority,
+    QQRealtimeSource,
+    TelegramRealtimeSource,
+)
+
 __all__ = [
     # Standard Event (shared contract)
     "StandardEvent",
@@ -58,4 +78,18 @@ __all__ = [
     "create_news_event",
     "create_tweet_event",
     "create_whale_event",
+    # Source Manager
+    "DataSourceManager",
+    "SourceStatus",
+    "SourceInfo",
+    "get_source_manager",
+    "start_sources",
+    "stop_sources",
+    "get_source_status",
+    "get_source_stats",
+    # Real-time Sources
+    "BaseSource",
+    "Priority",
+    "QQRealtimeSource",
+    "TelegramRealtimeSource",
 ]
