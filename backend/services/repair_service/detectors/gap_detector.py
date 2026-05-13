@@ -8,7 +8,7 @@ from datetime import datetime
 import asyncio
 
 from infrastructure.logging import get_logger
-from infrastructure.database import ClickHouseClient
+from infrastructure.database import ClickHouseManager
 
 from services.aggregation_service.models.candle_model import Timeframe, Candle
 from ..models.repair_models import GapInfo, GapStatus, IntegrityReport
@@ -23,11 +23,11 @@ class GapDetector:
     """
 
     def __init__(self):
-        self.clickhouse: Optional[ClickHouseClient] = None
+        self.clickhouse: Optional[ClickHouseManager] = None
 
     async def initialize(self):
         """初始化"""
-        self.clickhouse = ClickHouseClient()
+        self.clickhouse = ClickHouseManager()
 
     async def detect_gaps(
         self,
@@ -177,7 +177,7 @@ class GapDetector:
 
         bucket_size = timeframe.seconds * 1000
         total_buckets = (end_time - start_time) // bucket_size
-        complete_count = len([c for c in candles if bool(c[2]) if len(c) > 2 else True]) - sum(
+        complete_count = len([c for c in candles if len(c) > 2 and bool(c[2])]) - sum(
             int(c[3]) if len(c) > 3 else 0 for c in candles
         )
         missing_count = total_buckets - complete_count

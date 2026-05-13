@@ -5,10 +5,12 @@ API 安全认证
 import hmac
 import hashlib
 import secrets
+import os
 from typing import Optional, Dict, Any, Tuple
 from datetime import datetime, timedelta
 import jwt
 
+from infrastructure.logging import get_logger
 from infrastructure.api_gateway.config import PERMISSIONS
 from infrastructure.api_gateway.exceptions import (
     AuthError,
@@ -16,6 +18,8 @@ from infrastructure.api_gateway.exceptions import (
     TokenExpiredError,
     PermissionDeniedError,
 )
+
+logger = get_logger("infrastructure.api_gateway.security")
 
 
 class APIKeyAuth:
@@ -46,7 +50,11 @@ class APIKeyAuth:
 
     async def verify_api_key(self, api_key: str) -> Optional[Dict[str, Any]]:
         if not self.db:
-            return {"id": "default", "role": "admin"}
+            # 生产环境必须配置数据库
+            if os.getenv("ALLOW_DEFAULT_ADMIN", "false").lower() == "true":
+                logger.warning("Using default admin access - DISABLE IN PRODUCTION!")
+                return {"id": "default", "role": "admin"}
+            raise InvalidCredentialsError("Database not configured")
 
         row = await self.db.fetchrow(
             """
@@ -77,11 +85,24 @@ class APIKeyAuth:
 class JWTAuth:
     def __init__(
         self,
-        secret_key: str = "your-secret-key",
+        secret_key: Optional[str] = None,
         algorithm: str = "HS256",
         token_expiry_hours: int = 24,
     ):
-        self.secret_key = secret_key
+        # 优先从环境变量读取密钥
+        self.secret_key = secret_key or os.getenv("JWT_SECRET_KEY")
+        
+        if not self.secret_key:
+            # 生产环境必须配置密钥
+            if os.getenv("ENV") == "production":
+                raise RuntimeError("JWT_SECRET_KEY must be configured in production")
+                
+            # 开发环境生成临时密钥
+            self.secret_key = secrets.token_hex(64)
+            logger.warning(
+                "Using auto-generated JWT_SECRET_KEY - THIS WILL INVALIDATE ALL TOKENS ON RESTART!"
+            )
+        
         self.algorithm = algorithm
         self.token_expiry_hours = token_expiry_hours
 

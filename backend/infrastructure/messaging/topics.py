@@ -40,6 +40,16 @@ class Topics:
 
     NAMESPACE: Final[str] = "tradeagent"
 
+    # 基础常量 Topic（向后兼容）
+    RAW_DATA: Final[str] = f"{NAMESPACE}.raw_data"
+    FEATURES: Final[str] = f"{NAMESPACE}.features"
+    FACTORS: Final[str] = f"{NAMESPACE}.factors"
+    SIGNALS: Final[str] = f"{NAMESPACE}.signals"
+    DECISIONS: Final[str] = f"{NAMESPACE}.decisions.all"
+    ORDERS: Final[str] = f"{NAMESPACE}.orders"
+    EVENTS: Final[str] = f"{NAMESPACE}.events"
+    ALERTS: Final[str] = f"{NAMESPACE}.alerts"
+
     @classmethod
     def _layer(cls, layer: str, source: str = "", type: str = "", symbol: str = "", timeframe: str = "") -> str:
         """生成分层 Topic"""
@@ -203,6 +213,22 @@ class Topics:
     def alerts(cls, level: str = "") -> str:
         """告警"""
         return cls._layer("alerts", level)
+    
+    # 新增：决策和执行层 Topic
+    @classmethod
+    def decisions(cls) -> str:
+        """策略决策"""
+        return cls._layer("decisions", "all")
+    
+    @classmethod
+    def decisions_risk_checked(cls) -> str:
+        """风控检查后的决策"""
+        return cls._layer("decisions", "risk_checked")
+    
+    @classmethod
+    def decisions_approved(cls) -> str:
+        """已批准的决策"""
+        return cls._layer("decisions", "approved")
 
 
 class TopicGroups:

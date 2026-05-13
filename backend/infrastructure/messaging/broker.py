@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any, Callable, Type
+from typing import Optional, Dict, Any, Callable, Type, TYPE_CHECKING
 from pydantic import BaseModel
 
 try:
@@ -7,8 +7,14 @@ try:
     FASTSTREAM_AVAILABLE = True
 except ImportError:
     FASTSTREAM_AVAILABLE = False
+    FastStream = None
+    KafkaBroker = None
 
-_broker: Optional[KafkaBroker] = None
+if TYPE_CHECKING:
+    from faststream import FastStream as FastStreamType
+    from faststream.kafka import KafkaBroker as KafkaBrokerType
+
+_broker: Optional[Any] = None
 
 
 class KafkaBrokerWrapper:
@@ -17,13 +23,13 @@ class KafkaBrokerWrapper:
             raise RuntimeError("FastStream not installed. Run: pip install faststream[kafka]")
 
         self.bootstrap_servers = bootstrap_servers
-        self._broker: Optional[KafkaBroker] = None
-        self._app: Optional[FastStream] = None
+        self._broker: Optional[Any] = None
+        self._app: Optional[Any] = None
         self._publishers: Dict[str, Any] = {}
         self._subscribers: Dict[str, Callable] = {}
         self._started = False
 
-    def get_broker(self) -> KafkaBroker:
+    def get_broker(self):
         if self._broker is None:
             self._broker = KafkaBroker(self.bootstrap_servers)
         return self._broker
@@ -86,7 +92,7 @@ class KafkaBrokerWrapper:
             self.publisher(topic)
         await broker.publish(message=message, topic=topic, key=key)
 
-    def create_app(self, title: str = "TradeAgent", version: str = "1.0.0") -> FastStream:
+    def create_app(self, title: str = "TradeAgent", version: str = "1.0.0"):
         if self._app is None:
             self._app = FastStream(self.get_broker(), title=title, version=version)
         return self._app
@@ -102,10 +108,10 @@ class KafkaBrokerWrapper:
 
 import os
 
-_broker_instance: Optional[KafkaBrokerWrapper] = None
+_broker_instance: Optional["KafkaBrokerWrapper"] = None
 
 
-def get_broker(bootstrap_servers: str = None) -> KafkaBrokerWrapper:
+def get_broker(bootstrap_servers: str = None) -> "KafkaBrokerWrapper":
     global _broker_instance
     if _broker_instance is None:
         servers = bootstrap_servers or os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")

@@ -1,5 +1,6 @@
 """
 Repair Service Models - 修复服务数据模型
+统一从 shared.contracts 导入基础类型
 """
 
 from dataclasses import dataclass, field
@@ -7,7 +8,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from enum import Enum
 
-from services.aggregation_service.models.candle_model import Timeframe
+from shared.contracts import Timeframe
 
 
 class GapStatus(str, Enum):
@@ -67,7 +68,6 @@ class GapInfo:
         return self.timeframe.seconds * 1000
 
     def get_missing_buckets(self) -> List[int]:
-        """获取缺失的时间桶"""
         buckets = []
         current = self.gap_start
         while current < self.gap_end:

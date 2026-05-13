@@ -1,5 +1,6 @@
 """
 Signal Schemas - 信号数据模型定义
+统一从 shared.contracts 导入基础类型
 """
 
 from enum import Enum

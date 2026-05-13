@@ -37,6 +37,9 @@ class DatabaseConfig:
     connection_timeout: int = DATABASE_CONFIGS.get("database.connection_timeout", 30)
     command_timeout: int = DATABASE_CONFIGS.get("database.command_timeout", 60)
 
+    def get_async_url(self) -> str:
+        return f"postgresql+asyncpg://{self.username}:{self.password}@{self.host}:{self.port}/{self.database}"
+
 
 @dataclass
 class ClickHouseConfig:

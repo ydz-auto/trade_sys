@@ -7,7 +7,8 @@ from typing import Dict, Optional, Tuple
 from datetime import datetime
 
 from infrastructure.logging import get_logger
-from ..models.candle_model import Candle, CandleWindow, Timeframe
+from shared.contracts import Exchange, Timeframe
+from ..models.candle_model import Candle, CandleWindow
 
 logger = get_logger("aggregation_service.candle_aggregator")
 
@@ -23,10 +24,12 @@ class CandleAggregator:
     def __init__(self):
         self.windows: Dict[Tuple[str, str, Timeframe], CandleWindow] = {}
 
-    def get_window(self, exchange: str, symbol: str, timeframe: Timeframe) -> CandleWindow:
+    def get_window(self, exchange: Exchange, symbol: str, timeframe: Timeframe) -> CandleWindow:
         """获取或创建窗口"""
-        key = (exchange, symbol, timeframe)
+        key = (exchange.value if isinstance(exchange, Exchange) else exchange, symbol, timeframe)
         if key not in self.windows:
+            if isinstance(exchange, str):
+                exchange = Exchange(exchange)
             self.windows[key] = CandleWindow(
                 exchange=exchange,
                 symbol=symbol,
@@ -135,9 +138,9 @@ class CandleAggregator:
                 window.reset()
         return closed
 
-    def get_window_state(self, exchange: str, symbol: str, timeframe: Timeframe) -> Optional[CandleWindow]:
+    def get_window_state(self, exchange: Exchange, symbol: str, timeframe: Timeframe) -> Optional[CandleWindow]:
         """获取窗口状态"""
-        key = (exchange, symbol, timeframe)
+        key = (exchange.value if isinstance(exchange, Exchange) else exchange, symbol, timeframe)
         return self.windows.get(key)
 
 

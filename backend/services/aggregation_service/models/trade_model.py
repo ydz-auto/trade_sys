@@ -1,59 +1,18 @@
 """
 Trade Model - 成交数据模型
+统一从 shared.contracts 导入
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Dict, Any
 
-from shared.contracts import Exchange
+from shared.contracts import Exchange, Trade as ContractTrade
 
 
-@dataclass
-class Trade:
-    """成交数据"""
-    exchange: str
-    symbol: str
-    trade_id: str
-    price: float
-    quantity: float
-    quote_quantity: float
-    timestamp: int
-    is_buyer_maker: bool
-
-    @property
-    def side(self) -> str:
-        return "sell" if self.is_buyer_maker else "buy"
-
-    @property
-    def canonical_symbol(self) -> str:
-        return self.symbol.upper().replace("USDT", "").replace("USD", "")
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "exchange": self.exchange,
-            "symbol": self.symbol,
-            "trade_id": self.trade_id,
-            "price": self.price,
-            "quantity": self.quantity,
-            "quote_quantity": self.quote_quantity,
-            "timestamp": self.timestamp,
-            "is_buyer_maker": self.is_buyer_maker,
-            "side": self.side,
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Trade":
-        return cls(
-            exchange=data["exchange"],
-            symbol=data["symbol"],
-            trade_id=data.get("trade_id", ""),
-            price=float(data["price"]),
-            quantity=float(data["quantity"]),
-            quote_quantity=float(data.get("quote_quantity", 0)),
-            timestamp=int(data["timestamp"]),
-            is_buyer_maker=bool(data.get("is_buyer_maker", False)),
-        )
+class Trade(ContractTrade):
+    """成交数据 - 继承自 contracts"""
+    pass
 
 
 @dataclass

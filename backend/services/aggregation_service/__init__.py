@@ -15,13 +15,14 @@ raw.kline.1m.closed → aggregation → kline.5m/15m/1h/4h/1d
 - replay rebuild
 """
 
-from .candle_model import Candle, Timeframe
-from .trade_model import Trade, TradeBatch
-from .orderbook_model import OrderBookSnapshot, OrderBookFeature
+from .models.candle_model import Candle, Timeframe, CandleWindow
+from .models.trade_model import Trade, TradeBatch
+from .models.orderbook_model import OrderBookSnapshot, OrderBookFeature
 
 __all__ = [
     "Candle",
     "Timeframe",
+    "CandleWindow",
     "Trade",
     "TradeBatch",
     "OrderBookSnapshot",

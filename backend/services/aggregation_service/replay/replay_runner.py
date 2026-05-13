@@ -1,6 +1,8 @@
 """
 Replay Runner - 回放器
 从原始数据重新生成聚合K线
+
+已重构为使用统一的 ReplayOrchestrator
 """
 
 from typing import Optional, List, Dict, Any
@@ -8,11 +10,13 @@ from datetime import datetime
 import asyncio
 
 from infrastructure.logging import get_logger
-from infrastructure.database import ClickHouseClient
 
-from ..models.candle_model import Candle, Timeframe
-from ..aggregators.candle.candle_aggregator import TimeframeAggregator
-from ..publishers.kafka_publisher import KafkaPublisher
+from shared.replay import (
+    ReplayOrchestrator,
+    get_replay_orchestrator,
+    ReplayStatus,
+)
+from shared.contracts import Timeframe, Exchange, Candle
 
 logger = get_logger("aggregation_service.replay")
 
@@ -21,6 +25,7 @@ class ReplayRunner:
     """回放运行器
 
     用于从原始数据重新生成聚合K线
+    现在委托给统一的 ReplayOrchestrator
     """
 
     def __init__(
@@ -37,9 +42,8 @@ class ReplayRunner:
         self.end_time = end_time
         self.source_timeframe = Timeframe(source_timeframe)
 
-        self.aggregator = TimeframeAggregator()
-        self.publisher: Optional[KafkaPublisher] = None
-        self.clickhouse: Optional[ClickHouseClient] = None
+        self.orchestrator: Optional[ReplayOrchestrator] = None
+        self._task_id: Optional[str] = None
 
         self.stats = {
             "processed": 0,
@@ -50,86 +54,62 @@ class ReplayRunner:
 
     async def initialize(self):
         """初始化"""
-        self.publisher = KafkaPublisher()
-        await self.publisher.initialize()
-
-        self.clickhouse = ClickHouseClient()
+        self.orchestrator = await get_replay_orchestrator()
 
     async def run(self):
         """运行回放"""
         logger.info(f"Starting replay: {self.exchange}:{self.symbol} {self.start_time} - {self.end_time}")
 
-        rows = await self._fetch_source_candles()
-
-        for row in rows:
-            try:
-                candle = self._parse_candle(row)
-                results = self.aggregator.process(candle)
-
-                for aggregated in results:
-                    await self.publisher.publish_candle(aggregated)
-                    self.stats["aggregated"] += 1
-                    self.stats["published"] += 1
-
-                self.stats["processed"] += 1
-
-            except Exception as e:
-                logger.error(f"Error processing candle: {e}")
-                self.stats["errors"] += 1
-
+        task = await self.orchestrator.create_replay_task(
+            exchange=self.exchange,
+            symbol=self.symbol,
+            timeframe=self.source_timeframe.value,
+            start_time=self.start_time,
+            end_time=self.end_time,
+        )
+        
+        self._task_id = task.task_id
+        
+        await self.orchestrator.start_replay(task.task_id)
+        
+        while True:
+            current_task = await self.orchestrator.get_replay_task(task.task_id)
+            if not current_task:
+                break
+            
+            self.stats["processed"] = current_task.processed_count
+            self.stats["errors"] = current_task.error_count
+            
+            if current_task.status in [ReplayStatus.COMPLETED, ReplayStatus.FAILED, ReplayStatus.CANCELLED]:
+                break
+            
+            await asyncio.sleep(0.5)
+        
+        final_task = await self.orchestrator.get_replay_task(task.task_id)
+        if final_task:
+            self.stats["processed"] = final_task.processed_count
+            self.stats["errors"] = final_task.error_count
+        
         logger.info(f"Replay completed: {self.stats}")
 
-    async def _fetch_source_candles(self) -> List:
-        """获取源K线"""
-        if not self.clickhouse:
-            return []
+    async def pause(self):
+        """暂停回放"""
+        if self._task_id and self.orchestrator:
+            await self.orchestrator.pause_replay(self._task_id)
 
-        try:
-            rows = await self.clickhouse.execute(
-                """
-                SELECT * FROM candles
-                WHERE exchange = %(exchange)s
-                AND symbol = %(symbol)s
-                AND timeframe = %(timeframe)s
-                AND open_time >= %(start_time)s
-                AND open_time < %(end_time)s
-                ORDER BY open_time
-                """,
-                {
-                    "exchange": self.exchange,
-                    "symbol": self.symbol,
-                    "timeframe": self.source_timeframe.value,
-                    "start_time": self.start_time,
-                    "end_time": self.end_time
-                }
-            )
-            return rows
-        except Exception as e:
-            logger.error(f"Failed to fetch candles: {e}")
-            return []
+    async def resume(self):
+        """恢复回放"""
+        if self._task_id and self.orchestrator:
+            await self.orchestrator.resume_replay(self._task_id)
 
-    def _parse_candle(self, row) -> Candle:
-        """解析K线"""
-        return Candle(
-            exchange=row[0],
-            symbol=row[1],
-            timeframe=Timeframe(row[2]),
-            open_time=row[3],
-            close_time=row[5],
-            open=float(row[6]),
-            high=float(row[7]),
-            low=float(row[8]),
-            close=float(row[9]),
-            volume=float(row[10]),
-            quote_volume=float(row[11]),
-            trade_count=int(row[12]),
-            is_closed=bool(row[13]),
-        )
+    async def cancel(self):
+        """取消回放"""
+        if self._task_id and self.orchestrator:
+            await self.orchestrator.cancel_replay(self._task_id)
 
     async def shutdown(self):
         """关闭"""
-        if self.publisher:
-            await self.publisher.shutdown()
+        pass
 
 
 async def run_replay(
