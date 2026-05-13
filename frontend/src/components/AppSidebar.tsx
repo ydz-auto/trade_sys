@@ -16,7 +16,6 @@ import {
 import type { MenuProps } from 'antd'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useTradingStore } from '../store/tradingStore'
-import { useState, useEffect } from 'react'
 
 const { Sider } = Layout
 
@@ -68,6 +67,14 @@ const menuItems: MenuProps['items'] = [
       { key: '/execution', icon: <ThunderboltOutlined />, label: '执行追踪' },
     ],
   },
+  {
+    key: 'system',
+    type: 'group',
+    label: '系统',
+    children: [
+      { key: '/settings', icon: <SettingOutlined />, label: '系统设置' },
+    ],
+  },
 ]
 
 interface AppSidebarProps {
@@ -81,13 +88,6 @@ export function AppSidebar({ collapsed, onCollapse, mobileOpen, onMobileClose }:
   const location = useLocation()
   const navigate = useNavigate()
   const { mode, isConnected } = useTradingStore()
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
-
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768)
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
 
   const onClick: MenuProps['onClick'] = (e) => {
     navigate(e.key)
@@ -96,7 +96,7 @@ export function AppSidebar({ collapsed, onCollapse, mobileOpen, onMobileClose }:
     }
   }
 
-  const sidebarContent = () => (
+  const sidebarContent = (isDrawer: boolean = false) => (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#1E293B' }}>
       <div style={{ 
         height: 64, 
@@ -120,14 +120,14 @@ export function AppSidebar({ collapsed, onCollapse, mobileOpen, onMobileClose }:
           }}>
             <FundProjectionScreenOutlined style={{ color: '#0F172A', fontSize: 18 }} />
           </div>
-          {!collapsed && (
+          {(!collapsed || isDrawer) && (
             <div>
               <div style={{ fontWeight: 600, fontSize: 14, color: 'white' }}>TradeAgent</div>
               <div style={{ fontSize: 12, color: '#94A3B8' }}>Trading System</div>
             </div>
           )}
         </div>
-        {isMobile && onMobileClose && (
+        {isDrawer && onMobileClose && (
           <Button
             type="text"
             icon={<CloseOutlined />}
@@ -145,11 +145,11 @@ export function AppSidebar({ collapsed, onCollapse, mobileOpen, onMobileClose }:
           onClick={onClick}
           style={{ borderRight: 'none', backgroundColor: 'transparent' }}
           theme="dark"
-          inlineCollapsed={collapsed}
+          inlineCollapsed={isDrawer ? false : collapsed}
         />
       </div>
 
-      {!collapsed && (
+      {(!collapsed || isDrawer) && (
         <div style={{ padding: 16, borderTop: '1px solid #334155', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <Badge status={isConnected ? 'success' : 'error' } />
@@ -203,7 +203,7 @@ export function AppSidebar({ collapsed, onCollapse, mobileOpen, onMobileClose }:
         maskStyle={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
         styles={{ body: { padding: 0 } }}
       >
-        {sidebarContent()}
+        {sidebarContent(true)}
       </Drawer>
     </>
   )

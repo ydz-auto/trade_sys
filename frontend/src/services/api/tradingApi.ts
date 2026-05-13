@@ -74,10 +74,18 @@ export async function fetchAllTradingData(): Promise<TradingData> {
     }
   }
 
-  const [data] = await Promise.all([
-    fetchReal<TradingData>('/trading/dashboard'),
-  ])
-  return data
+  const data = await fetchReal<TradingData>('/trading/dashboard')
+  
+  // 处理字段名映射
+  const mappedData: TradingData = {
+    ...data,
+    prices: data.prices.map(p => ({
+      ...p,
+      change24h: p.change24h ?? p.change_24h ?? 0
+    }))
+  }
+  
+  return mappedData
 }
 
 export async function fetchNews(limit: number = 20): Promise<NewsItem[]> {
@@ -91,7 +99,11 @@ export async function fetchPrices(): Promise<PriceData[]> {
   if (USE_MOCK) {
     return mockData.mockPrices as PriceData[]
   }
-  return fetchReal<PriceData[]>('/prices')
+  const data = await fetchReal<PriceData[]>('/prices')
+  return data.map(p => ({
+    ...p,
+    change24h: p.change24h ?? (p as any).change_24h ?? 0
+  }))
 }
 
 export async function fetchFactors(): Promise<Factor[]> {

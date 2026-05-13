@@ -22,6 +22,12 @@ ALLOWED_TABLES: Set[str] = {
     'klines', 'features', 'factors', 'trades', 'orders',
     'signals', 'events', 'positions', 'audit_logs',
     'execution_records', 'idempotency_records',
+    'lake_raw_trades', 'lake_raw_klines', 'lake_raw_news', 'lake_raw_orderbook',
+    'lake_normalized_trades', 'lake_normalized_klines',
+    'lake_aggregated_klines', 'lake_aggregated_vwap', 'lake_aggregated_footprint',
+    'lake_feature_technical', 'lake_feature_factor',
+    'lake_signal_trading', 'lake_signal_fusion',
+    'lake_replay_events', 'lake_replay_snapshots',
 }
 
 

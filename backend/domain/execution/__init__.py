@@ -8,6 +8,8 @@ from domain.execution.config import (
     OrderTypeConfig,
     SlippageConfig,
     FeeConfig,
+    ExchangeFeeConfig,
+    ContractType,
     ExecutionRuntimeConfig,
     EXECUTION_DEFAULTS,
     EXECUTION_SCHEMA,
@@ -29,11 +31,17 @@ from domain.execution.models import (
     OrderFilled,
     PositionUpdated,
 )
+from domain.execution.utils import (
+    ExpectedReturn,
+    FeeCalculator,
+)
 
 __all__ = [
     "OrderTypeConfig",
     "SlippageConfig",
     "FeeConfig",
+    "ExchangeFeeConfig",
+    "ContractType",
     "ExecutionRuntimeConfig",
     "EXECUTION_DEFAULTS",
     "EXECUTION_SCHEMA",
@@ -52,4 +60,6 @@ __all__ = [
     "OrderUpdated",
     "OrderFilled",
     "PositionUpdated",
+    "ExpectedReturn",
+    "FeeCalculator",
 ]

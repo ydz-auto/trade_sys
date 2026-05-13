@@ -71,8 +71,106 @@ services:
       - redis_data:/data
     restart: unless-stopped
 
-  # data-service 是一次性生产者：发布 5 条新闻后退出
-  # 使用 restart: "no" 避免重复发布
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_DB: tradeagent
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+    networks:
+      - kafka-network
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--storage.tsdb.retention.time=30d'
+    networks:
+      - kafka-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: http://localhost:3000
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - kafka-network
+    depends_on:
+      - prometheus
+      - tempo
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  tempo:
+    image: grafana/tempo:latest
+    container_name: tempo
+    ports:
+      - "3200:3200"
+      - "4317:4317"
+      - "4318:4318"
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    networks:
+      - kafka-network
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    ports:
+      - "16686:16686"
+      - "6831:6831/udp"
+      - "6832:6832/udp"
+    environment:
+      COLLECTOR_ZIPKIN_HOST_PORT: :9411
+    networks:
+      - kafka-network
+    restart: unless-stopped
+
   data-service:
     build:
       context: ..
@@ -89,9 +187,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       PYTHONUNBUFFERED: "1"
       PYTHONPATH: /app
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
     restart: "no"
 
-  # event-service 是消费者：持续运行，处理 raw_data -> events
   event-service:
     build:
       context: ..
@@ -107,9 +205,9 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       PYTHONUNBUFFERED: "1"
       PYTHONPATH: /app
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
     restart: unless-stopped
 
-  # fusion-service 是消费者：持续运行，处理 events -> signals
   fusion-service:
     build:
       context: ..
@@ -125,9 +223,9 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       PYTHONUNBUFFERED: "1"
       PYTHONPATH: /app
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
     restart: unless-stopped
 
-  # strategy-service 是消费者：持续运行，处理 signals -> decisions
   strategy-service:
     build:
       context: ..
@@ -143,6 +241,32 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       PYTHONUNBUFFERED: "1"
       PYTHONPATH: /app
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+    restart: unless-stopped
+
+  api-server:
+    build:
+      context: ..
+      dockerfile: api_server.Dockerfile
+    container_name: api-server
+    ports:
+      - "8001:8001"
+    depends_on:
+      - kafka
+      - redis
+      - prometheus
+      - data-service
+    networks:
+      - kafka-network
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_URL: redis://redis:6379/0
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: /app
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+      API_PORT: "8001"
+      DATA_SERVICE_URL: "http://data-service:8002"
+      EXECUTION_SERVICE_URL: "http://execution-service:8000"
     restart: unless-stopped
 
 networks:
@@ -153,3 +277,8 @@ volumes:
   zookeeper_data:
   kafka_data:
   redis_data:
+  clickhouse_data:
+  clickhouse_logs:
+  prometheus_data:
+  grafana_data:
+  tempo_data:

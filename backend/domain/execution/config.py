@@ -7,6 +7,57 @@ Execution Domain 配置
 
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
+from enum import Enum
+
+
+class ContractType(str, Enum):
+    """合约类型"""
+    SPOT = "spot"
+    USDT_PERPETUAL = "usdt_perpetual"
+    USDC_PERPETUAL = "usdc_perpetual"
+    COIN_QUARTERLY = "coin_quarterly"
+
+
+class ExchangeFeeConfig(BaseModel):
+    """单一交易所的手续费配置"""
+    spot_maker_fee_pct: float = Field(description="现货Maker费率")
+    spot_taker_fee_pct: float = Field(description="现货Taker费率")
+    usdt_perpetual_maker_fee_pct: float = Field(description="USDT永续Maker费率")
+    usdt_perpetual_taker_fee_pct: float = Field(description="USDT永续Taker费率")
+    usdc_perpetual_maker_fee_pct: float = Field(description="USDC永续Maker费率")
+    usdc_perpetual_taker_fee_pct: float = Field(description="USDC永续Taker费率")
+    coin_quarterly_maker_fee_pct: float = Field(description="币本位季度Maker费率")
+    coin_quarterly_taker_fee_pct: float = Field(description="币本位季度Taker费率")
+
+
+class FeeConfig(BaseModel):
+    """手续费配置（VIP0基础费率）"""
+    binance: ExchangeFeeConfig = Field(
+        default_factory=lambda: ExchangeFeeConfig(
+            spot_maker_fee_pct=0.001,
+            spot_taker_fee_pct=0.001,
+            usdt_perpetual_maker_fee_pct=0.0002,
+            usdt_perpetual_taker_fee_pct=0.0004,
+            usdc_perpetual_maker_fee_pct=0.0002,
+            usdc_perpetual_taker_fee_pct=0.0004,
+            coin_quarterly_maker_fee_pct=0.0002,
+            coin_quarterly_taker_fee_pct=0.0004,
+        ),
+        description="币安手续费配置"
+    )
+    okx: ExchangeFeeConfig = Field(
+        default_factory=lambda: ExchangeFeeConfig(
+            spot_maker_fee_pct=0.001,
+            spot_taker_fee_pct=0.0015,
+            usdt_perpetual_maker_fee_pct=0.0002,
+            usdt_perpetual_taker_fee_pct=0.0005,
+            usdc_perpetual_maker_fee_pct=0.0002,
+            usdc_perpetual_taker_fee_pct=0.0005,
+            coin_quarterly_maker_fee_pct=0.0002,
+            coin_quarterly_taker_fee_pct=0.0005,
+        ),
+        description="OKX手续费配置"
+    )
 
 
 class OrderTypeConfig(BaseModel):
@@ -24,13 +75,6 @@ class SlippageConfig(BaseModel):
     max_slippage_pct: float = Field(default=0.002, ge=0.0, le=0.1, description="最大滑点百分比")
     target_slippage_pct: float = Field(default=0.001, ge=0.0, le=0.1, description="目标滑点百分比")
     aggressive_slippage_pct: float = Field(default=0.005, ge=0.0, le=0.1, description="激进滑点百分比")
-
-
-class FeeConfig(BaseModel):
-    """手续费配置"""
-    maker_fee_pct: float = Field(default=0.001, description="Maker费率")
-    taker_fee_pct: float = Field(default=0.001, description="Taker费率")
-    estimated_fee_pct: float = Field(default=0.002, description="预估费率")
 
 
 class ExecutionRuntimeConfig(BaseModel):

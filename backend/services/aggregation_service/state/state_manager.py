@@ -9,7 +9,7 @@ import time
 
 from infrastructure.logging import get_logger
 from infrastructure.cache import RedisClient
-from ..models.candle_model import CandleWindow, Timeframe
+from services.aggregation_service.models.candle_model import CandleWindow, Timeframe
 
 logger = get_logger("aggregation_service.state")
 

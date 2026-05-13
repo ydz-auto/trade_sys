@@ -1,8 +1,19 @@
-import { Card, Row, Col, Tag, Button, Switch, Divider } from 'antd'
-import { MessageOutlined, CustomerServiceOutlined, QqOutlined } from '@ant-design/icons'
+import { useState, useEffect } from 'react'
+import { Card, Row, Col, Tag, Button, Switch, Divider, Spin, message } from 'antd'
+import { MessageOutlined, CustomerServiceOutlined, QqOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
+import api from '../services/api'
+
+interface ControlChannel {
+  name: string
+  icon: React.ReactNode
+  account: string
+  status: string
+  enabled: boolean
+  description: string
+}
 
 export function ControlPage() {
-  const channels = [
+  const [channels, setChannels] = useState<ControlChannel[]>([
     {
       name: 'Telegram Bot',
       icon: <MessageOutlined />,
@@ -27,7 +38,45 @@ export function ControlPage() {
       enabled: false,
       description: '团队协作通知',
     },
-  ]
+  ])
+  const [apiConfig, setApiConfig] = useState({
+    endpoint: '',
+    websocket: '',
+    apiKey: '****',
+    refreshRate: '1s',
+  })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadConfig()
+  }, [])
+
+  const loadConfig = async () => {
+    try {
+      const systemConfig = await api.get('/config/system')
+      setApiConfig({
+        endpoint: window.location.origin + '/api/v1',
+        websocket: window.location.origin.replace('http', 'ws') + '/ws/market',
+        apiKey: '****',
+        refreshRate: '1s',
+      })
+    } catch (error) {
+      console.error('Failed to load config:', error)
+      setApiConfig({
+        endpoint: window.location.origin + '/api/v1',
+        websocket: window.location.origin.replace('http', 'ws') + '/ws/market',
+        apiKey: '****',
+        refreshRate: '1s',
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleToggleChannel = (index: number, enabled: boolean) => {
+    setChannels(prev => prev.map((ch, i) => i === index ? { ...ch, enabled } : ch))
+    message.success(`${channels[index].name} ${enabled ? '已启用' : '已禁用'}`)
+  }
 
   const commands = [
     { cmd: '/status', desc: '查看系统状态' },
@@ -60,7 +109,10 @@ export function ControlPage() {
                       <Tag color={channel.status === 'connected' ? 'green' : 'default'}>
                         {channel.status === 'connected' ? '已连接' : '未连接'}
                       </Tag>
-                      <Switch checked={channel.enabled} />
+                      <Switch 
+                        checked={channel.enabled} 
+                        onChange={(checked) => handleToggleChannel(idx, checked)}
+                      />
                     </div>
                   </div>
                   <div className="text-xs text-[#94A3B8]">{channel.description}</div>
@@ -86,24 +138,30 @@ export function ControlPage() {
 
         <Col xs={24} md={8}>
           <Card title="API 配置" className="!bg-[#1E293B] !border-[#334155]">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-2 bg-[#0F172A] rounded">
-                <span className="text-sm">API 端点</span>
-                <Tag>https://api.tradeagent.com</Tag>
+            {loading ? (
+              <div className="flex justify-center p-4">
+                <Spin />
               </div>
-              <div className="flex items-center justify-between p-2 bg-[#0F172A] rounded">
-                <span className="text-sm">WebSocket</span>
-                <Tag>wss://ws.tradeagent.com</Tag>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-2 bg-[#0F172A] rounded">
+                  <span className="text-sm">API 端点</span>
+                  <Tag className="font-mono text-xs">{apiConfig.endpoint}</Tag>
+                </div>
+                <div className="flex items-center justify-between p-2 bg-[#0F172A] rounded">
+                  <span className="text-sm">WebSocket</span>
+                  <Tag className="font-mono text-xs">{apiConfig.websocket}</Tag>
+                </div>
+                <div className="flex items-center justify-between p-2 bg-[#0F172A] rounded">
+                  <span className="text-sm">API Key</span>
+                  <Tag>{apiConfig.apiKey}</Tag>
+                </div>
+                <div className="flex items-center justify-between p-2 bg-[#0F172A] rounded">
+                  <span className="text-sm">刷新率</span>
+                  <Tag>{apiConfig.refreshRate}</Tag>
+                </div>
               </div>
-              <div className="flex items-center justify-between p-2 bg-[#0F172A] rounded">
-                <span className="text-sm">API Key</span>
-                <Tag>****</Tag>
-              </div>
-              <div className="flex items-center justify-between p-2 bg-[#0F172A] rounded">
-                <span className="text-sm">刷新率</span>
-                <Tag>1s</Tag>
-              </div>
-            </div>
+            )}
 
             <Button block className="mt-4">
               配置文档

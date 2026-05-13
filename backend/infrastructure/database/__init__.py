@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from infrastructure.database.connection_pool import ConnectionPool
     from infrastructure.database.sqlalchemy_base import Base, SQLAlchemyManager, get_sqlalchemy_manager, init_sqlalchemy, close_sqlalchemy
     from infrastructure.database.models import User, Role, APIKey, TradingAccount, Position, Order
+    from infrastructure.database.data_lake import DataLakeManager, DataLakeConfig, DataLakeLayer, get_data_lake_manager, init_data_lake, close_data_lake
 
 
 def __getattr__(name):
@@ -58,6 +59,14 @@ def __getattr__(name):
         # schemas
         "POSTGRESQL_SCHEMAS": ("infrastructure.database.schemas", "POSTGRESQL_SCHEMAS"),
         "CLICKHOUSE_SCHEMAS": ("infrastructure.database.schemas", "CLICKHOUSE_SCHEMAS"),
+        "DATA_LAKE_SCHEMAS": ("infrastructure.database.schemas", "DATA_LAKE_SCHEMAS"),
+        # data lake
+        "DataLakeManager": ("infrastructure.database.data_lake", "DataLakeManager"),
+        "DataLakeConfig": ("infrastructure.database.data_lake", "DataLakeConfig"),
+        "DataLakeLayer": ("infrastructure.database.data_lake", "DataLakeLayer"),
+        "get_data_lake_manager": ("infrastructure.database.data_lake", "get_data_lake_manager"),
+        "init_data_lake": ("infrastructure.database.data_lake", "init_data_lake"),
+        "close_data_lake": ("infrastructure.database.data_lake", "close_data_lake"),
     }
 
     if name in _module_map:
@@ -83,7 +92,9 @@ def __dir__():
         "ConnectionPool",
         "Base", "SQLAlchemyManager", "get_sqlalchemy_manager", "init_sqlalchemy", "close_sqlalchemy",
         "User", "Role", "APIKey", "TradingAccount", "Position", "Order",
-        "POSTGRESQL_SCHEMAS", "CLICKHOUSE_SCHEMAS",
+        "POSTGRESQL_SCHEMAS", "CLICKHOUSE_SCHEMAS", "DATA_LAKE_SCHEMAS",
+        "DataLakeManager", "DataLakeConfig", "DataLakeLayer",
+        "get_data_lake_manager", "init_data_lake", "close_data_lake",
     ]
 
 

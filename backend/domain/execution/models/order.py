@@ -158,6 +158,13 @@ class OrderIntent:
     strategy_id: Optional[str] = None
     confidence: float = 0.0
 
+    # 预计收益信息
+    expected_profit_pct: Optional[float] = None
+    expected_loss_pct: Optional[float] = None
+    risk_reward_ratio: Optional[float] = None
+    estimated_fees_pct: Optional[float] = None
+    net_expected_return_pct: Optional[float] = None
+
     created_at: datetime = field(default_factory=datetime.now)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -177,6 +184,11 @@ class OrderIntent:
             "signal_id": self.signal_id,
             "strategy_id": self.strategy_id,
             "confidence": self.confidence,
+            "expected_profit_pct": self.expected_profit_pct,
+            "expected_loss_pct": self.expected_loss_pct,
+            "risk_reward_ratio": self.risk_reward_ratio,
+            "estimated_fees_pct": self.estimated_fees_pct,
+            "net_expected_return_pct": self.net_expected_return_pct,
             "created_at": self.created_at.isoformat(),
         }
 

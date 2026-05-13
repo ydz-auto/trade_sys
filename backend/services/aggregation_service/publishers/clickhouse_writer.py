@@ -7,9 +7,9 @@ from typing import Optional, List
 from datetime import datetime
 
 from infrastructure.logging import get_logger
-from infrastructure.database import ClickHouseClient
+from infrastructure.database import get_clickhouse_manager
 
-from ..models.candle_model import Candle
+from services.aggregation_service.models.candle_model import Candle
 
 logger = get_logger("aggregation_service.clickhouse")
 
@@ -18,11 +18,16 @@ class ClickHouseWriter:
     """ClickHouse 写入器"""
 
     def __init__(self):
-        self.client: Optional[ClickHouseClient] = None
+        self.client = None
 
     async def initialize(self):
         """初始化"""
-        self.client = ClickHouseClient()
+        try:
+            self.client = await get_clickhouse_manager()
+            logger.info("ClickHouse client initialized")
+        except Exception as e:
+            logger.warning(f"ClickHouse not available: {e}")
+            self.client = None
 
     async def create_table(self):
         """创建表"""
@@ -160,8 +165,7 @@ class ClickHouseWriter:
 
     async def shutdown(self):
         """关闭"""
-        if self.client:
-            await self.client.close()
+        pass
 
 
 _writer: Optional[ClickHouseWriter] = None

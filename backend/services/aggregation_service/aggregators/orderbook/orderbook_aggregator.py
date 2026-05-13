@@ -7,7 +7,7 @@ from typing import Dict, Optional
 from datetime import datetime
 
 from infrastructure.logging import get_logger
-from ..models.orderbook_model import OrderBookSnapshot, OrderBookFeature
+from services.aggregation_service.models.orderbook_model import OrderBookSnapshot, OrderBookFeature
 
 logger = get_logger("aggregation_service.orderbook_aggregator")
 

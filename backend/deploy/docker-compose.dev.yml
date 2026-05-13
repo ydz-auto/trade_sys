@@ -145,17 +145,37 @@ services:
       PYTHONUNBUFFERED: "1"
       PYTHONPATH: /app
 
+  execution-service:
+    image: python:3.12-slim
+    container_name: execution-service
+    working_dir: /app
+    command: ["bash", "-c", "pip install --no-cache-dir fastapi==0.109.0 uvicorn==0.27.0 httpx && python -m services.execution_service.http_server"]
+    volumes:
+      - ..:/app:ro
+    ports:
+      - "8000:8000"
+    depends_on:
+      - kafka
+    networks:
+      - kafka-network
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: /app
+      EXECUTION_MOCK: "true"
+
   api-service:
     image: python:3.12-slim
     container_name: api-service
     working_dir: /app
-    command: ["bash", "-c", "pip install --no-cache-dir fastapi==0.109.0 uvicorn==0.27.0 httpx feedparser beautifulsoup4 && python api_server_simple.py"]
+    command: ["bash", "-c", "pip install --no-cache-dir fastapi==0.109.0 uvicorn==0.27.0 httpx feedparser beautifulsoup4 && python api_server.py"]
     volumes:
       - ..:/app:ro
     ports:
       - "8001:8001"
     depends_on:
       - data-service
+      - execution-service
       - kafka
     networks:
       - kafka-network
@@ -165,6 +185,8 @@ services:
       PYTHONUNBUFFERED: "1"
       PYTHONPATH: /app
       API_PORT: "8001"
+      DATA_SERVICE_URL: "http://data-service:8002"
+      EXECUTION_SERVICE_URL: "http://execution-service:8000"
 
 networks:
   kafka-network:

@@ -9,6 +9,7 @@ import { DecisionPage } from './pages/DecisionPage'
 import { ControlPage } from './pages/ControlPage'
 import { PositionsPage } from './pages/PositionsPage'
 import { ExecutionPage } from './pages/ExecutionPage'
+import { SettingsPage } from './pages/SettingsPage'
 import { AppSidebar } from './components/AppSidebar'
 import { AppHeader } from './components/AppHeader'
 import { useDataLoader } from './hooks'
@@ -77,6 +78,7 @@ function AppContent() {
             <Route path="/control" element={<ControlPage />} />
             <Route path="/positions" element={<PositionsPage />} />
             <Route path="/execution" element={<ExecutionPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Content>

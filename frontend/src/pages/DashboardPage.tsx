@@ -23,8 +23,10 @@ const platformIcon: Record<string, React.ReactNode> = {
 }
 
 function formatTimeAgo(timestamp: number): string {
+  // 处理秒级时间戳（后端返回的是Unix timestamp）
+  const ts = timestamp > 9999999999 ? timestamp : timestamp * 1000
   const now = Date.now()
-  const diff = now - timestamp
+  const diff = now - ts
   const minutes = Math.floor(diff / 60000)
   
   if (minutes < 1) return '刚刚'
@@ -62,8 +64,8 @@ export function DashboardPage() {
     HOLD: 'default',
   }
 
-  const btcPrices = prices.filter(p => p.symbol === 'BTC/USDT')
-  const ethPrices = prices.filter(p => p.symbol === 'ETH/USDT')
+  const btcPrices = prices.filter(p => p.symbol === 'BTC' || p.symbol === 'BTC/USDT')
+  const ethPrices = prices.filter(p => p.symbol === 'ETH' || p.symbol === 'ETH/USDT')
 
   const dataSourceColumns = [
     { title: '数据源', dataIndex: 'name', key: 'name' },
@@ -74,10 +76,10 @@ export function DashboardPage() {
       render: (status: string, record: any) => (
         <Space size="small">
           <Badge
-            status={status === 'normal' ? 'success' : status === 'delayed' ? 'warning' : 'error'}
+            status={status === 'connected' || status === 'normal' ? 'success' : status === 'delayed' ? 'warning' : 'error'}
           />
           <span>
-            {status === 'normal' ? '正常' : status === 'delayed' ? `延迟${record.delay}` : '异常'}
+            {status === 'connected' || status === 'normal' ? '正常' : status === 'delayed' ? `延迟${record.delay || ''}` : '异常'}
           </span>
         </Space>
       ),

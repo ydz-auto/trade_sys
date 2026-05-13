@@ -7,8 +7,8 @@ from typing import Dict, Optional, Tuple
 from datetime import datetime
 
 from infrastructure.logging import get_logger
-from ..models.candle_model import Candle, CandleWindow, Timeframe
-from ..models.trade_model import Trade
+from services.aggregation_service.models.candle_model import Candle, CandleWindow, Timeframe
+from services.aggregation_service.models.trade_model import Trade
 
 logger = get_logger("aggregation_service.trade_aggregator")
 

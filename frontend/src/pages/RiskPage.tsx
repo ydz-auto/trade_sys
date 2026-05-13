@@ -1,12 +1,22 @@
 import { Card, Row, Col, Progress } from 'antd'
+import { useTradingStore } from '../store/tradingStore'
 
 export function RiskPage() {
+  const { risk } = useTradingStore()
+  
   const riskComponents = [
-    { name: '波动风险', value: 0.65, color: '#F97316' },
-    { name: '资金流风险', value: 0.30, color: '#10B981' },
-    { name: '情绪风险', value: 0.75, color: '#EF4444' },
-    { name: '宏观风险', value: 0.50, color: '#3B82F6' },
+    { name: '波动风险', value: risk.components.volatility, color: '#F97316' },
+    { name: '资金流风险', value: risk.components.flow, color: '#10B981' },
+    { name: '情绪风险', value: risk.components.sentiment, color: '#EF4444' },
+    { name: '宏观风险', value: risk.components.macro, color: '#3B82F6' },
   ]
+
+  const riskLevelColor: Record<string, string> = {
+    low: '#10B981',
+    medium: '#F59E0B',
+    high: '#F97316',
+    extreme: '#EF4444',
+  }
 
   return (
     <div className="space-y-4">
@@ -14,18 +24,18 @@ export function RiskPage() {
         <Col xs={24} md={16}>
           <Card title="风险引擎" className="!bg-[#1E293B] !border-[#334155]">
             <div className="space-y-6">
-              {riskComponents.map((risk) => (
-                <div key={risk.name}>
+              {riskComponents.map((riskItem) => (
+                <div key={riskItem.name}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-[#94A3B8]">{risk.name}</span>
-                    <span className="font-mono" style={{ color: risk.color }}>
-                      {(risk.value * 100).toFixed(0)}
+                    <span className="text-sm text-[#94A3B8]">{riskItem.name}</span>
+                    <span className="font-mono" style={{ color: riskItem.color }}>
+                      {(riskItem.value * 100).toFixed(0)}
                     </span>
                   </div>
                   <Progress
-                    percent={risk.value * 100}
+                    percent={riskItem.value * 100}
                     showInfo={false}
-                    strokeColor={risk.color}
+                    strokeColor={riskItem.color}
                     trailColor="#334155"
                   />
                 </div>
@@ -35,12 +45,18 @@ export function RiskPage() {
             <div className="mt-8 pt-6 border-t border-[#334155]">
               <div className="flex items-center justify-between">
                 <span className="text-lg font-medium">总风险指数</span>
-                <span className="font-mono text-3xl font-bold text-[#F97316]">58</span>
+                <span className="font-mono text-3xl font-bold" style={{ color: riskLevelColor[risk.level] || '#F97316' }}>
+                  {risk.total}
+                </span>
               </div>
               <div className="flex gap-6 mt-4 text-sm">
                 <div>
+                  <span className="text-[#94A3B8]">风险等级:</span>{' '}
+                  <span style={{ color: riskLevelColor[risk.level] || '#F97316' }}>{risk.level.toUpperCase()}</span>
+                </div>
+                <div>
                   <span className="text-[#94A3B8]">允许交易:</span>{' '}
-                  <span className="text-[#10B981]">是</span>
+                  <span className="text-[#10B981]">{risk.total < 80 ? '是' : '否'}</span>
                 </div>
                 <div>
                   <span className="text-[#94A3B8]">最大仓位:</span>{' '}

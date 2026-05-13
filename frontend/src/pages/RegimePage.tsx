@@ -1,10 +1,24 @@
 import { Card, Row, Col, Tag, Progress, Steps } from 'antd'
+import { useTradingStore } from '../store/tradingStore'
 
 export function RegimePage() {
-  const regimeState = 'RISK_OFF'
-  const confidence = 85
+  const { regime } = useTradingStore()
+  
+  const regimeState = regime.state
+  const confidence = regime.confidence
 
-  const regimes = ['TRENDING', 'RANGE', 'PANIC', 'EUPHORIA', 'RISK_OFF', 'UNCERTAIN']
+  const regimes = ['TRENDING', 'RANGE', 'PANIC', 'EUPHORIA', 'RISK_OFF', 'RISK_ON', 'NEUTRAL', 'UNCERTAIN']
+
+  const regimeColorMap: Record<string, string> = {
+    TRENDING: '#3B82F6',
+    RANGE: '#F59E0B',
+    PANIC: '#EF4444',
+    EUPHORIA: '#10B981',
+    RISK_OFF: '#EF4444',
+    RISK_ON: '#10B981',
+    NEUTRAL: '#6B7280',
+    UNCERTAIN: '#94A3B8',
+  }
 
   return (
     <div className="space-y-4">
@@ -16,12 +30,18 @@ export function RegimePage() {
                 <Progress
                   type="circle"
                   percent={confidence}
-                  strokeColor="#EF4444"
+                  strokeColor={regimeColorMap[regimeState] || '#F59E0B'}
                   trailColor="#334155"
                   format={() => (
                     <div className="text-center">
-                      <div className="font-mono text-lg font-bold text-[#EF4444]">RISK</div>
-                      <div className="font-mono text-lg font-bold text-[#EF4444]">OFF</div>
+                      <div className="font-mono text-lg font-bold" style={{ color: regimeColorMap[regimeState] || '#F59E0B' }}>
+                        {regimeState.split('_')[0]}
+                      </div>
+                      {regimeState.includes('_') && (
+                        <div className="font-mono text-lg font-bold" style={{ color: regimeColorMap[regimeState] || '#F59E0B' }}>
+                          {regimeState.split('_')[1]}
+                        </div>
+                      )}
                     </div>
                   )}
                 />
@@ -30,17 +50,21 @@ export function RegimePage() {
                 <div className="text-lg font-medium mb-4">当前状态</div>
                 <div className="space-y-2 text-sm">
                   <div>
-                    <span className="text-[#94A3B8]">波动率:</span>{' '}
-                    <Tag color="orange">高</Tag>
+                    <span className="text-[#94A3B8]">状态:</span>{' '}
+                    <Tag color={regimeState === 'RISK_OFF' || regimeState === 'PANIC' ? 'red' : regimeState === 'RISK_ON' || regimeState === 'EUPHORIA' ? 'green' : 'orange'}>
+                      {regimeState}
+                    </Tag>
                   </div>
                   <div>
-                    <span className="text-[#94A3B8]">ETF流出:</span>{' '}
-                    <Tag color="green">是</Tag>
+                    <span className="text-[#94A3B8]">置信度:</span>{' '}
+                    <Tag color="blue">{confidence}%</Tag>
                   </div>
-                  <div>
-                    <span className="text-[#94A3B8]">黄金上涨:</span>{' '}
-                    <Tag color="orange">是</Tag>
-                  </div>
+                  {regime.trendStrength !== undefined && (
+                    <div>
+                      <span className="text-[#94A3B8]">趋势强度:</span>{' '}
+                      <Tag color="purple">{(regime.trendStrength * 100).toFixed(0)}%</Tag>
+                    </div>
+                  )}
                 </div>
                 <div className="mt-4">
                   <span className="text-[#94A3B8] text-sm">状态置信度:</span>{' '}

@@ -14,12 +14,14 @@ export interface PriceData {
   symbol: string
   price: number
   change24h: number
+  change_24h?: number
   exchange: string
 }
 
 export interface RegimeState {
-  state: 'TRENDING' | 'RANGE' | 'PANIC' | 'EUPHORIA' | 'RISK_OFF' | 'UNCERTAIN'
+  state: 'TRENDING' | 'RANGE' | 'PANIC' | 'EUPHORIA' | 'RISK_OFF' | 'RISK_ON' | 'NEUTRAL' | 'TRANSITIONAL' | 'UNCERTAIN'
   confidence: number
+  trendStrength?: number
 }
 
 export interface RiskIndex {

@@ -1,0 +1,45 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'trade-agent'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'trade-agent-services'
+    static_configs:
+      - targets:
+          - 'api-server:8000'
+          - 'data-service:9090'
+          - 'event-service:9090'
+          - 'fusion-service:9090'
+          - 'strategy-service:9090'
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka:9092']
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+
+  - job_name: 'clickhouse'
+    static_configs:
+      - targets: ['clickhouse:8123']
+    metrics_path: /metrics
+
+  - job_name: 'tempo'
+    static_configs:
+      - targets: ['tempo:3200']

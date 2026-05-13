@@ -4,13 +4,14 @@ Kafka Publisher - Kafka 发布器
 """
 
 import json
+import os
 from typing import Optional, List
 
 from infrastructure.logging import get_logger
-from infrastructure.messaging import KafkaProducer
+from infrastructure.messaging import get_broker
 
-from ..models.candle_model import Candle
-from ..models.orderbook_model import OrderBookFeature
+from services.aggregation_service.models.candle_model import Candle
+from services.aggregation_service.models.orderbook_model import OrderBookFeature
 
 logger = get_logger("aggregation_service.publisher")
 
@@ -19,24 +20,27 @@ class KafkaPublisher:
     """Kafka 发布器"""
 
     def __init__(self):
-        self.producer: Optional[KafkaProducer] = None
+        self.broker = None
+        self._initialized = False
 
     async def initialize(self):
         """初始化"""
-        self.producer = KafkaProducer()
-        await self.producer.start()
+        bootstrap_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+        self.broker = get_broker(bootstrap_servers)
+        await self.broker.start()
+        self._initialized = True
 
     async def publish_candle(self, candle: Candle) -> bool:
         """发布 K线"""
-        if not self.producer:
+        if not self._initialized or not self.broker:
             return False
 
         try:
             topic = f"kline.{candle.exchange}.{candle.timeframe.value}.{candle.symbol}"
             key = f"{candle.exchange}:{candle.symbol}:{candle.open_time}"
-            value = json.dumps(candle.to_dict())
+            value = candle.to_dict()
 
-            await self.producer.send(topic, key=key, value=value)
+            await self.broker.publish(message=value, topic=topic, key=key)
             logger.debug(f"Published candle: {topic} {key}")
             return True
         except Exception as e:
@@ -53,15 +57,15 @@ class KafkaPublisher:
 
     async def publish_orderbook_feature(self, feature: OrderBookFeature) -> bool:
         """发布订单簿特征"""
-        if not self.producer:
+        if not self._initialized or not self.broker:
             return False
 
         try:
             topic = f"orderbook.{feature.exchange}.{feature.symbol}"
             key = f"{feature.exchange}:{feature.symbol}:{feature.timestamp}"
-            value = json.dumps(feature.to_dict())
+            value = feature.to_dict()
 
-            await self.producer.send(topic, key=key, value=value)
+            await self.broker.publish(message=value, topic=topic, key=key)
             logger.debug(f"Published orderbook feature: {topic} {key}")
             return True
         except Exception as e:
@@ -70,8 +74,8 @@ class KafkaPublisher:
 
     async def shutdown(self):
         """关闭"""
-        if self.producer:
-            await self.producer.stop()
+        if self.broker:
+            await self.broker.stop()
 
 
 _publisher: Optional[KafkaPublisher] = None

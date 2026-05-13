@@ -8,7 +8,7 @@ from datetime import datetime
 
 from infrastructure.logging import get_logger
 from shared.contracts import Exchange, Timeframe
-from ..models.candle_model import Candle, CandleWindow
+from services.aggregation_service.models.candle_model import Candle, CandleWindow
 
 logger = get_logger("aggregation_service.candle_aggregator")
 
