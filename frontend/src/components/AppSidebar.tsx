@@ -16,6 +16,7 @@ import {
 import type { MenuProps } from 'antd'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useTradingStore } from '../store/tradingStore'
+import { useState, useEffect } from 'react'
 
 const { Sider } = Layout
 
@@ -80,6 +81,13 @@ export function AppSidebar({ collapsed, onCollapse, mobileOpen, onMobileClose }:
   const location = useLocation()
   const navigate = useNavigate()
   const { mode, isConnected } = useTradingStore()
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const onClick: MenuProps['onClick'] = (e) => {
     navigate(e.key)
@@ -119,7 +127,7 @@ export function AppSidebar({ collapsed, onCollapse, mobileOpen, onMobileClose }:
             </div>
           )}
         </div>
-        {onMobileClose && (
+        {isMobile && onMobileClose && (
           <Button
             type="text"
             icon={<CloseOutlined />}

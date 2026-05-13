@@ -1,4 +1,6 @@
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+const EXECUTION_BASE = '/execution/api/v1'
 const USE_MOCK = import.meta.env.VITE_USE_MOCK_API === 'true'
 
 import * as mockData from '../mock'
@@ -19,10 +21,37 @@ export interface TradingData {
   news: NewsItem[]
 }
 
-async function fetchReal<T>(endpoint: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`)
+export interface ExecuteOrderRequest {
+  symbol: string
+  side: string
+  quantity: number
+  price?: number
+  orderType?: string
+  exchange?: string
+  marketType?: string
+  leverage?: number
+  reduceOnly?: boolean
+}
+
+export interface ExecuteOrderResponse {
+  success: boolean
+  orderId?: string
+  error?: string
+  status?: string
+}
+
+async function fetchReal<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}${endpoint}`, options)
   if (!response.ok) {
     throw new Error(`API Error: ${response.statusText}`)
+  }
+  return response.json()
+}
+
+async function fetchExecution<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`${EXECUTION_BASE}${endpoint}`, options)
+  if (!response.ok) {
+    throw new Error(`Execution API Error: ${response.statusText}`)
   }
   return response.json()
 }
@@ -97,7 +126,11 @@ export async function fetchPositions(): Promise<Position[]> {
   if (USE_MOCK) {
     return mockData.mockPositions as Position[]
   }
-  return fetchReal<Position[]>('/positions')
+  try {
+    return await fetchExecution<Position[]>('/positions')
+  } catch {
+    return fetchReal<Position[]>('/positions')
+  }
 }
 
 export async function fetchWeightVersions(): Promise<WeightVersion[]> {
@@ -115,5 +148,40 @@ export async function updateFactorWeight(type: string, weight: number): Promise<
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ weight }),
+  })
+}
+
+// === 执行服务新增API ===
+export async function executeOrder(request: ExecuteOrderRequest): Promise<ExecuteOrderResponse> {
+  if (USE_MOCK) {
+    return {
+      success: true,
+      orderId: 'mock-' + Date.now(),
+      status: 'filled'
+    }
+  }
+  return fetchExecution<ExecuteOrderResponse>('/orders/execute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request)
+  })
+}
+
+export async function fetchOrders(): Promise<any[]> {
+  if (USE_MOCK) {
+    return []
+  }
+  return fetchExecution<any[]>('/orders')
+}
+
+export async function closePosition(symbol: string, exchange: string = 'BINANCE', marketType: string = 'USDT_FUTURES'): Promise<ExecuteOrderResponse> {
+  if (USE_MOCK) {
+    return {
+      success: true,
+      orderId: 'close-' + Date.now()
+    }
+  }
+  return fetchExecution<ExecuteOrderResponse>(`/positions/${symbol}/close`, {
+    method: 'POST'
   })
 }

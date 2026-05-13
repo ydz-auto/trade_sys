@@ -1,6 +1,6 @@
 import { Layout, Button, Segmented, Popconfirm } from 'antd'
 import { ReloadOutlined, MenuOutlined } from '@ant-design/icons'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTradingStore } from '../store/tradingStore'
 import type { SystemMode } from '../types'
 
@@ -13,6 +13,13 @@ interface AppHeaderProps {
 export function AppHeader({ onMobileMenuToggle }: AppHeaderProps) {
   const { mode, setMode } = useTradingStore()
   const [showConfirm, setShowConfirm] = useState(false)
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const handleModeChange = (newMode: string) => {
     if (newMode === 'LIVE' && mode !== 'LIVE') {
@@ -55,12 +62,14 @@ export function AppHeader({ onMobileMenuToggle }: AppHeaderProps) {
       backgroundColor: '#1E293B'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        <Button
-          type="text"
-          icon={<MenuOutlined />}
-          style={{ color: '#94A3B8', padding: '4px 8px' }}
-          onClick={onMobileMenuToggle}
-        />
+        {isMobile && (
+          <Button
+            type="text"
+            icon={<MenuOutlined />}
+            style={{ color: '#94A3B8', padding: '4px 8px' }}
+            onClick={onMobileMenuToggle}
+          />
+        )}
         <h1 style={{ 
           fontSize: 14, 
           margin: 0, 
