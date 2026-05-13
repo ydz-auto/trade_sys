@@ -22,10 +22,9 @@ export function useDataLoader() {
         store.setRegime(data.regime)
         store.setRisk(data.risk)
         store.setSignal(data.signal)
-        data.factors.forEach(f => {
-          store.updateFactorWeight(f.type, f.weight)
-        })
+        store.setFactors(data.factors)
         store.setPositions(data.positions)
+        store.setWeightVersions(data.weightVersions)
         store.setDataSources(data.dataSources)
         store.setTraders(data.traders)
         store.setSocialPosts(data.socialPosts)

@@ -140,6 +140,92 @@ export async function fetchWeightVersions(): Promise<WeightVersion[]> {
   return fetchReal<WeightVersion[]>('/weights/versions')
 }
 
+// === 多数据源价格 API ===
+import type { PriceComparison, PriceSourceStatus } from '../../types'
+
+/**
+ * 获取所有交易所的同一交易对价格（用于对比显示）
+ * @param symbols 交易对列表，如 "BTC,ETH"
+ */
+export async function fetchPricesFromAllSources(symbols: string = 'BTC,ETH,SOL'): Promise<PriceData[]> {
+  if (USE_MOCK) {
+    // 模拟多数据源数据
+    const basePrices = mockData.mockPrices as PriceData[]
+    const exchanges = ['binance', 'coingecko', 'okx']
+    const result: PriceData[] = []
+    
+    basePrices.forEach(price => {
+      exchanges.forEach(exchange => {
+        result.push({
+          symbol: price.symbol,
+          price: price.price * (1 + (Math.random() - 0.5) * 0.001), // 微小差异
+          change24h: price.change24h,
+          exchange
+        })
+      })
+    })
+    
+    return result
+  }
+  
+  return fetchReal<PriceData[]>(`/prices?symbols=${symbols}&all_sources=true`)
+}
+
+/**
+ * 获取指定交易对的多交易所价格对比分析
+ * @param symbol 交易对，如 "BTC"
+ */
+export async function fetchPriceComparison(symbol: string = 'BTC'): Promise<PriceComparison> {
+  if (USE_MOCK) {
+    // 模拟价格对比数据
+    return {
+      symbol: `${symbol}/USDT`,
+      prices: [
+        { exchange: 'binance', price: 81018.18, change24h: -0.20, volume24h: 966464900, latencyMs: 586 },
+        { exchange: 'coingecko', price: 81000.00, change24h: -0.20, volume24h: 31609042937, latencyMs: 610 },
+        { exchange: 'okx', price: 81015.20, change24h: 0.00, volume24h: 940010508, latencyMs: 721 }
+      ],
+      priceSpread: 0.0224,
+      bestBid: 'binance',
+      bestAsk: 'coingecko',
+      timestamp: new Date().toISOString()
+    }
+  }
+  
+  return fetchReal<PriceComparison>(`/prices/compare?symbol=${symbol}`)
+}
+
+/**
+ * 获取价格数据源状态（熔断器状态、可用性等）
+ */
+export async function fetchPriceSourcesStatus(): Promise<Record<string, PriceSourceStatus>> {
+  if (USE_MOCK) {
+    return {
+      binance: {
+        name: 'Binance',
+        priority: 1,
+        circuitBreaker: { state: 'closed', failureCount: 0 },
+        status: { available: true, latencyMs: 586 }
+      },
+      coingecko: {
+        name: 'CoinGecko',
+        priority: 2,
+        circuitBreaker: { state: 'closed', failureCount: 0 },
+        status: { available: true, latencyMs: 610 }
+      },
+      okx: {
+        name: 'OKX',
+        priority: 3,
+        circuitBreaker: { state: 'closed', failureCount: 0 },
+        status: { available: true, latencyMs: 721 }
+      }
+    }
+  }
+  
+  const response = await fetchReal<{ sources: Record<string, PriceSourceStatus> }>('/prices/sources')
+  return response.sources
+}
+
 export async function updateFactorWeight(type: string, weight: number): Promise<void> {
   if (USE_MOCK) {
     return
@@ -174,7 +260,7 @@ export async function fetchOrders(): Promise<any[]> {
   return fetchExecution<any[]>('/orders')
 }
 
-export async function closePosition(symbol: string, exchange: string = 'BINANCE', marketType: string = 'USDT_FUTURES'): Promise<ExecuteOrderResponse> {
+export async function closePosition(symbol: string, _exchange: string = 'BINANCE', _marketType: string = 'USDT_FUTURES'): Promise<ExecuteOrderResponse> {
   if (USE_MOCK) {
     return {
       success: true,

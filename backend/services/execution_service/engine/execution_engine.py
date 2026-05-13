@@ -203,19 +203,7 @@ class ExecutionEngine:
 
     async def execute_intent(self, intent: OrderIntent) -> OrderResult:
         """执行订单意图"""
-        request = OrderRequest(
-            symbol=intent.symbol,
-            exchange=intent.exchange,
-            side=intent.side,
-            order_type=intent.order_type,
-            quantity=intent.quantity,
-            price=intent.price,
-            stop_price=intent.stop_price,
-            market_type=intent.market_type,
-            leverage=intent.leverage,
-            reduce_only=intent.reduce_only,
-            client_order_id=intent.client_order_id,
-        )
+        request = intent.to_order_request(order_type=OrderType.MARKET)
         return await self.execute_order(request)
 
     async def execute_futures_order(

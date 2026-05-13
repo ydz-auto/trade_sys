@@ -207,21 +207,28 @@ export function DashboardPage() {
               {traders.length > 0 ? traders.map((trader, idx) => (
                 <div key={idx} className="flex items-center justify-between bg-[#0F172A] rounded p-2">
                   <div className="flex items-center gap-2">
-                    <Avatar size="small" icon={platformIcon[trader.platform]} className="bg-[#8B5CF6]" />
+                    <Avatar size="small" icon={<UserOutlined />} className="bg-[#8B5CF6]" />
                     <div>
                       <div className="text-sm text-[#F8FAFC]">{trader.name}</div>
-                      <div className="text-xs text-[#94A3B8]">{trader.platform} · {(trader.followers / 1000).toFixed(0)}K 粉丝</div>
+                      <div className="text-xs text-[#94A3B8]">{trader.platform || 'Unknown'} · {(trader.followers / 1000).toFixed(0)}K 粉丝</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Tag color={trader.recentPosition === 'LONG' ? 'green' : trader.recentPosition === 'SHORT' ? 'red' : 'default'} className="text-xs">
-                      {trader.recentPosition} {trader.symbol}
+                    {trader.recentPosition && (
+                      <Tag color={trader.recentPosition === 'LONG' ? 'green' : trader.recentPosition === 'SHORT' ? 'red' : 'default'} className="text-xs">
+                        {trader.recentPosition} {trader.symbol}
+                      </Tag>
+                    )}
+                    {trader.sentiment !== undefined && (
+                      <Tooltip title={`情绪 ${(trader.sentiment * 100).toFixed(0)}%`}>
+                        <span className={`text-xs font-semibold ${trader.sentiment >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                          {(trader.sentiment * 100).toFixed(0)}%
+                        </span>
+                      </Tooltip>
+                    )}
+                    <Tag color="blue" className="text-xs">
+                      胜率 {(trader.winRate * 100).toFixed(0)}%
                     </Tag>
-                    <Tooltip title={`情绪 ${(trader.sentiment * 100).toFixed(0)}%`}>
-                      <span className={`text-xs font-semibold ${trader.sentiment >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                        {(trader.sentiment * 100).toFixed(0)}%
-                      </span>
-                    </Tooltip>
                   </div>
                 </div>
               )) : (
@@ -242,12 +249,18 @@ export function DashboardPage() {
               {socialPosts.length > 0 ? socialPosts.map((post) => (
                 <div key={post.id} className="bg-[#0F172A] rounded p-2">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[#94A3B8] text-xs">{post.time}</span>
-                    <Tag color="blue" className="text-xs">{platformIcon[post.platform]}</Tag>
+                    <span className="text-[#94A3B8] text-xs">{post.time || post.timestamp}</span>
+                    <Tag color="blue" className="text-xs">{platformIcon[post.platform as keyof typeof platformIcon] || post.platform}</Tag>
                     <span className="text-xs text-[#94A3B8]">{post.author}</span>
-                    <Tag color={post.sentiment > 0 ? 'green' : 'red'} className="text-xs ml-auto">
-                      {post.sentiment > 0 ? '+' : ''}{(post.sentiment * 100).toFixed(0)}%
-                    </Tag>
+                    {typeof post.sentiment === 'number' ? (
+                      <Tag color={post.sentiment > 0 ? 'green' : 'red'} className="text-xs ml-auto">
+                        {post.sentiment > 0 ? '+' : ''}{(post.sentiment * 100).toFixed(0)}%
+                      </Tag>
+                    ) : (
+                      <Tag color={post.sentiment === 'bullish' ? 'green' : post.sentiment === 'bearish' ? 'red' : 'default'} className="text-xs ml-auto">
+                        {post.sentiment}
+                      </Tag>
+                    )}
                   </div>
                   <div className="text-xs text-[#E2E8F0] line-clamp-2">{post.content}</div>
                 </div>
@@ -393,7 +406,7 @@ export function DashboardPage() {
                   <div className="bg-[#0F172A] rounded p-3">
                     <div className="flex justify-between items-center mb-1">
                       <span className="text-[#94A3B8] text-xs">{factor.name}</span>
-                      <span className="text-[#94A3B8] text-xs">{factor.weight}%</span>
+                      <span className="text-[#94A3B8] text-xs">{(factor.weight * 100).toFixed(0)}%</span>
                     </div>
                     <div
                       className={`font-semibold text-lg ${
@@ -428,7 +441,7 @@ export function DashboardPage() {
               <Col xs={12} md={12}>
                 <div className="bg-[#0F172A] rounded p-3 text-center">
                   <div className="text-[#94A3B8] text-xs mb-1">置信度</div>
-                  <div className="text-lg font-semibold text-[#F59E0B]">{signal.confidence}%</div>
+                  <div className="text-lg font-semibold text-[#F59E0B]">{(signal.confidence * 100).toFixed(0)}%</div>
                 </div>
               </Col>
               <Col xs={12} md={12}>
@@ -471,16 +484,18 @@ export function DashboardPage() {
                   <Row gutter={[8, 8]}>
                     <Col xs={8} md={8}>
                       <div className="text-[#94A3B8] text-xs">仓位</div>
-                      <div className="text-sm text-[#F8FAFC]">{pos.size} BTC</div>
+                      <div className="text-sm text-[#F8FAFC]">{pos.size} {pos.symbol}</div>
                     </Col>
-                    <Col xs={8} md={8}>
-                      <div className="text-[#94A3B8] text-xs">杠杆</div>
-                      <div className="text-sm text-[#F8FAFC]">{pos.leverage}x</div>
-                    </Col>
+                    {pos.leverage !== undefined && (
+                      <Col xs={8} md={8}>
+                        <div className="text-[#94A3B8] text-xs">杠杆</div>
+                        <div className="text-sm text-[#F8FAFC]">{pos.leverage}x</div>
+                      </Col>
+                    )}
                     <Col xs={8} md={8}>
                       <div className="text-[#94A3B8] text-xs">浮盈</div>
                       <div className={`text-sm font-semibold ${pos.pnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                        {pos.pnl >= 0 ? '+' : ''}${pos.pnl}
+                        {pos.pnl >= 0 ? '+' : ''}{pos.pnl > 1000 || pos.pnl < -1000 ? `$${(pos.pnl / 1000).toFixed(1)}K` : `$${pos.pnl}`}
                       </div>
                     </Col>
                   </Row>

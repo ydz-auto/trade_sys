@@ -21,12 +21,14 @@ interface TradingState {
   setSignal: (signal: Signal) => void
 
   factors: Factor[]
+  setFactors: (factors: Factor[]) => void
   updateFactorWeight: (type: Factor['type'], weight: number) => void
 
   positions: Position[]
   setPositions: (positions: Position[]) => void
 
   weightVersions: WeightVersion[]
+  setWeightVersions: (versions: WeightVersion[]) => void
   currentVersion: string
   setCurrentVersion: (version: string) => void
 
@@ -78,6 +80,7 @@ export const useTradingStore = create<TradingState>((set) => ({
   setSignal: (signal) => set({ signal }),
 
   factors: [],
+  setFactors: (factors) => set({ factors }),
   updateFactorWeight: (type, weight) =>
     set((state) => ({
       factors: state.factors.map((f) =>
@@ -89,6 +92,7 @@ export const useTradingStore = create<TradingState>((set) => ({
   setPositions: (positions) => set({ positions }),
 
   weightVersions: [],
+  setWeightVersions: (weightVersions) => set({ weightVersions }),
   currentVersion: '',
   setCurrentVersion: (currentVersion) => set({ currentVersion }),
 

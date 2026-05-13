@@ -26,7 +26,7 @@ from domain.execution.models import (
 from services.execution_service.engine import get_execution_engine, init_execution_engine, reset_execution_engine
 from services.execution_service.adapters import MockAdapter
 from services.execution_service.storage import init_db, get_db_manager
-from infrastructure.logging import setup_logging
+from infrastructure.logging import LoggerFactory
 
 
 async def test_memory_mode():

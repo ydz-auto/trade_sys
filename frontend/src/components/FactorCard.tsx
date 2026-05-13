@@ -26,8 +26,8 @@ interface FactorCardProps {
 }
 
 export function FactorCard({ factor, onClick }: FactorCardProps) {
-  const Icon = iconMap[factor.type]
-  const colorClass = colorMap[factor.color] || colorMap.primary
+  const Icon = iconMap[factor.type] || iconMap.trend
+  const colorClass = factor.color ? colorMap[factor.color] : colorMap.primary
   const isPositive = factor.value >= 0
 
   return (
@@ -45,7 +45,7 @@ export function FactorCard({ factor, onClick }: FactorCardProps) {
           </div>
           <span className="font-heading text-sm text-text-primary">{factor.name}</span>
         </div>
-        <span className="text-xs text-text-secondary">{factor.weight}%</span>
+        <span className="text-xs text-text-secondary">{(factor.weight * 100).toFixed(0)}%</span>
       </div>
 
       <div className="flex items-end gap-3">
@@ -58,7 +58,7 @@ export function FactorCard({ factor, onClick }: FactorCardProps) {
           {isPositive ? '+' : ''}
           {factor.value.toFixed(2)}
         </span>
-        <span className="text-sm text-text-secondary mb-1">conf: {factor.confidence}%</span>
+        <span className="text-sm text-text-secondary mb-1">conf: {(factor.confidence * 100).toFixed(0)}%</span>
       </div>
 
       <div className="mt-3 h-10 bg-background/50 rounded flex items-center px-2">
