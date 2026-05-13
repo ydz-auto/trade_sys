@@ -1,3 +1,2 @@
-export { LiveIndicator } from './LiveIndicator'
-export { StatusBadge } from './StatusBadge'
-export { FactorCard } from './FactorCard'
+// 组件导出
+export { MultiSourcePriceCard } from './MultiSourcePriceCard'
