@@ -12,6 +12,9 @@ import {
   ThunderboltOutlined,
   FundProjectionScreenOutlined,
   CloseOutlined,
+  CloudServerOutlined,
+  ExperimentOutlined,
+  PlayCircleOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -21,24 +24,26 @@ const { Sider } = Layout
 
 const menuItems: MenuProps['items'] = [
   {
-    key: 'monitoring',
-    type: 'group',
-    label: '监控层',
-    children: [
-      { key: '/', icon: <DashboardOutlined />, label: '数据大盘' },
-      { key: '/factors', icon: <AreaChartOutlined />, label: '因子面板' },
-    ],
-  },
+          key: 'monitoring',
+          type: 'group',
+          label: '监控层',
+          children: [
+            { key: '/', icon: <DashboardOutlined />, label: '数据大盘' },
+            { key: '/factors', icon: <AreaChartOutlined />, label: '因子面板' },
+            { key: '/factor-analytics', icon: <BarChartOutlined />, label: '因子分析' },
+          ],
+        },
   {
-    key: 'strategy',
-    type: 'group',
-    label: '策略层',
-    children: [
-      { key: '/regime', icon: <SafetyCertificateOutlined />, label: 'Regime状态' },
-      { key: '/risk', icon: <AlertOutlined />, label: '风险引擎' },
-      { key: '/decision', icon: <FileTextOutlined />, label: '决策信号' },
-    ],
-  },
+          key: 'strategy',
+          type: 'group',
+          label: '策略层',
+          children: [
+            { key: '/regime', icon: <SafetyCertificateOutlined />, label: 'Regime状态' },
+            { key: '/risk', icon: <AlertOutlined />, label: '风险引擎' },
+            { key: '/risk-propagation', icon: <WarningOutlined />, label: '风险传播链' },
+            { key: '/decision', icon: <FileTextOutlined />, label: '决策信号' },
+          ],
+        },
   {
     key: 'config',
     type: 'group',
@@ -67,6 +72,16 @@ const menuItems: MenuProps['items'] = [
       { key: '/execution', icon: <ThunderboltOutlined />, label: '执行追踪' },
     ],
   },
+  {
+          key: 'alpha',
+          type: 'group',
+          label: 'Alpha Lifecycle',
+          children: [
+            { key: '/alpha', icon: <ExperimentOutlined />, label: 'Alpha生命周期' },
+            { key: '/replay', icon: <PlayCircleOutlined />, label: '回放系统' },
+            { key: '/monitor', icon: <CloudServerOutlined />, label: '系统监控' },
+          ],
+        },
   {
     key: 'system',
     type: 'group',

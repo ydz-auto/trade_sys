@@ -107,6 +107,7 @@ export interface NewsItem {
   sentiment: string
   sentiment_score: number
   published: number
+  url?: string
 }
 
 // === 多数据源价格对比 ===

@@ -15,6 +15,7 @@ import {
   SendOutlined,
 } from '@ant-design/icons'
 import { useTradingStore } from '../store/tradingStore'
+import { AISummaryBar } from '../components/AISummaryBar'
 
 const platformIcon: Record<string, React.ReactNode> = {
   Twitter: <TwitterOutlined />,
@@ -40,7 +41,7 @@ function formatTimeAgo(timestamp: number): string {
 }
 
 export function DashboardPage() {
-  const { prices, compositeScore, regime, risk, signal, factors, positions, dataSources, traders, socialPosts, news, setLastUpdate } =
+  const { prices, compositeScore, regime, risk, signal, factors, positions, dataSources, traders, socialPosts, news, fearGreed, macro, etf, setLastUpdate } =
     useTradingStore()
 
   useEffect(() => {
@@ -88,6 +89,7 @@ export function DashboardPage() {
 
   return (
     <div className="p-4 md:p-6 bg-[#0F172A] min-h-screen">
+      <AISummaryBar />
       {/* 价格卡片 - 按平台分组 */}
       <Row gutter={[16, 16]} className="mb-4">
         <Col xs={24} md={12}>
@@ -212,7 +214,10 @@ export function DashboardPage() {
                     <Avatar size="small" icon={<UserOutlined />} className="bg-[#8B5CF6]" />
                     <div>
                       <div className="text-sm text-[#F8FAFC]">{trader.name}</div>
-                      <div className="text-xs text-[#94A3B8]">{trader.platform || 'Unknown'} · {(trader.followers / 1000).toFixed(0)}K 粉丝</div>
+                      <div className="text-xs text-[#94A3B8]">
+                        {trader.platform || 'Unknown'}
+                        {trader.followers && trader.followers > 0 && ` · ${(trader.followers / 1000).toFixed(0)}K 粉丝`}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -228,9 +233,11 @@ export function DashboardPage() {
                         </span>
                       </Tooltip>
                     )}
-                    <Tag color="blue" className="text-xs">
-                      胜率 {(trader.winRate * 100).toFixed(0)}%
-                    </Tag>
+                    {trader.winRate !== undefined && trader.winRate > 0 && (
+                      <Tag color="blue" className="text-xs">
+                        胜率 {(trader.winRate * 100).toFixed(0)}%
+                      </Tag>
+                    )}
                   </div>
                 </div>
               )) : (
@@ -290,17 +297,21 @@ export function DashboardPage() {
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-[#94A3B8] text-xs">BTC ETF 今日净流入</span>
-                <span className="text-[#10B981] font-semibold">+$150M</span>
+                <span className={`font-semibold ${etf && etf.net_flow >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                  {etf ? `${etf.net_flow >= 0 ? '+' : ''}$${Math.abs(etf.net_flow).toFixed(0)}M` : '+$150M'}
+                </span>
               </div>
               <Progress
-                percent={75}
-                strokeColor="#10B981"
+                percent={etf ? Math.min(100, Math.max(0, (etf.net_flow + 200) / 4)) : 75}
+                strokeColor={etf && etf.net_flow >= 0 ? "#10B981" : "#EF4444"}
                 trailColor="#334155"
                 showInfo={false}
               />
               <div className="flex justify-between items-center text-xs">
                 <span className="text-[#94A3B8]">7日趋势</span>
-                <span className="text-[#10B981]">持续流入 ↑</span>
+                <span className={etf && etf.net_flow >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}>
+                  {etf && etf.net_flow >= 0 ? '持续流入 ↑' : '持续流出 ↓'}
+                </span>
               </div>
             </div>
           </Card>
@@ -320,22 +331,34 @@ export function DashboardPage() {
               <Col xs={12} md={12}>
                 <div className="bg-[#0F172A] rounded p-3">
                   <div className="text-[#94A3B8] text-xs mb-1">黄金 (USD/oz)</div>
-                  <div className="font-semibold text-[#F8FAFC]">$2,020</div>
-                  <div className="text-[#10B981] text-xs">▲ +0.5%</div>
+                  <div className="font-semibold text-[#F8FAFC]">
+                    ${macro?.gold?.price?.toFixed(0) || '2,020'}
+                  </div>
+                  <div className={`text-xs ${macro?.gold?.change >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                    {macro?.gold?.change >= 0 ? '▲' : '▼'} {macro?.gold?.change?.toFixed(1) || '+0.5'}%
+                  </div>
                 </div>
               </Col>
               <Col xs={12} md={12}>
                 <div className="bg-[#0F172A] rounded p-3">
                   <div className="text-[#94A3B8] text-xs mb-1">原油 (USD/bbl)</div>
-                  <div className="font-semibold text-[#F8FAFC]">$78.3</div>
-                  <div className="text-[#EF4444] text-xs">▼ -0.3%</div>
+                  <div className="font-semibold text-[#F8FAFC]">
+                    ${macro?.oil?.price?.toFixed(1) || '78.3'}
+                  </div>
+                  <div className={`text-xs ${macro?.oil?.change >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                    {macro?.oil?.change >= 0 ? '▲' : '▼'} {macro?.oil?.change?.toFixed(1) || '-0.3'}%
+                  </div>
                 </div>
               </Col>
               <Col xs={12} md={12}>
                 <div className="bg-[#0F172A] rounded p-3">
                   <div className="text-[#94A3B8] text-xs mb-1">美元指数</div>
-                  <div className="font-semibold text-[#F8FAFC]">104.2</div>
-                  <div className="text-[#3B82F6] text-xs">▲ +0.1%</div>
+                  <div className="font-semibold text-[#F8FAFC]">
+                    {macro?.usd_index?.value?.toFixed(1) || '104.2'}
+                  </div>
+                  <div className={`text-xs ${macro?.usd_index?.change >= 0 ? 'text-[#3B82F6]' : 'text-[#EF4444]'}`}>
+                    {macro?.usd_index?.change >= 0 ? '▲' : '▼'} {macro?.usd_index?.change?.toFixed(1) || '+0.1'}%
+                  </div>
                 </div>
               </Col>
               <Col xs={12} md={12}>
@@ -363,10 +386,12 @@ export function DashboardPage() {
               <div>
                 <div className="flex justify-between mb-2">
                   <span className="text-[#94A3B8] text-xs">恐慌贪婪指数</span>
-                  <span className="text-[#10B981] text-xs font-semibold">72 [贪婪]</span>
+                  <span className={`text-xs font-semibold ${fearGreed && fearGreed.value >= 50 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                    {fearGreed ? `${fearGreed.value} [${fearGreed.classification}]` : '72 [贪婪]'}
+                  </span>
                 </div>
                 <Progress
-                  percent={72}
+                  percent={fearGreed?.value || 72}
                   strokeColor={{ '0%': '#EF4444', '50%': '#F97316', '100%': '#10B981' }}
                   trailColor="#334155"
                   showInfo={false}
@@ -376,18 +401,24 @@ export function DashboardPage() {
                 <Col xs={12} md={12}>
                   <div className="bg-[#0F172A] rounded p-2 text-center">
                     <div className="text-[#94A3B8] text-xs">新闻情绪</div>
-                    <div className="text-sm font-semibold text-[#10B981]">+0.35</div>
+                    <div className={`text-sm font-semibold ${risk.components.sentiment >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                      {risk.components.sentiment >= 0 ? '+' : ''}{risk.components.sentiment.toFixed(2)}
+                    </div>
                   </div>
                 </Col>
                 <Col xs={12} md={12}>
                   <div className="bg-[#0F172A] rounded p-2 text-center">
                     <div className="text-[#94A3B8] text-xs">社交情绪</div>
-                    <div className="text-sm font-semibold text-[#10B981]">+0.52</div>
+                    <div className={`text-sm font-semibold ${risk.components.flow >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                      {risk.components.flow >= 0 ? '+' : ''}{risk.components.flow.toFixed(2)}
+                    </div>
                   </div>
                 </Col>
               </Row>
               <div className="text-center">
-                <Tag color="green" className="text-xs">综合情绪: 偏多</Tag>
+                <Tag color={fearGreed && fearGreed.value >= 50 ? 'green' : 'red'} className="text-xs">
+                  综合情绪: {fearGreed ? (fearGreed.value >= 50 ? '偏多' : '偏空') : '偏多'}
+                </Tag>
               </div>
             </div>
           </Card>
@@ -408,7 +439,7 @@ export function DashboardPage() {
                   <div className="bg-[#0F172A] rounded p-3">
                     <div className="flex justify-between items-center mb-1">
                       <span className="text-[#94A3B8] text-xs">{factor.name}</span>
-                      <span className="text-[#94A3B8] text-xs">{(factor.weight * 100).toFixed(0)}%</span>
+                      <span className="text-[#94A3B8] text-xs">{factor.weight.toFixed(0)}%</span>
                     </div>
                     <div
                       className={`font-semibold text-lg ${
@@ -443,7 +474,7 @@ export function DashboardPage() {
               <Col xs={12} md={12}>
                 <div className="bg-[#0F172A] rounded p-3 text-center">
                   <div className="text-[#94A3B8] text-xs mb-1">置信度</div>
-                  <div className="text-lg font-semibold text-[#F59E0B]">{(signal.confidence * 100).toFixed(0)}%</div>
+                  <div className="text-lg font-semibold text-[#F59E0B]">{signal.confidence}%</div>
                 </div>
               </Col>
               <Col xs={12} md={12}>
@@ -527,7 +558,11 @@ export function DashboardPage() {
           >
             <div className="space-y-2 max-h-80 overflow-y-auto">
               {news.length > 0 ? news.slice(0, 10).map((item) => (
-                <div key={item.id} className="bg-[#0F172A] rounded p-3 hover:bg-[#334155]/50 transition-colors cursor-pointer">
+                <div 
+                  key={item.id} 
+                  className="bg-[#0F172A] rounded p-3 hover:bg-[#334155]/50 transition-colors cursor-pointer"
+                  onClick={() => item.url && window.open(item.url, '_blank')}
+                >
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="text-[#94A3B8] text-xs">{formatTimeAgo(item.published)}</span>
                     <Tag color="orange" className="text-xs">{item.source}</Tag>

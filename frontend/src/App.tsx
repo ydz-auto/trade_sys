@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { ConfigProvider, Layout, Spin } from 'antd'
+import { ConfigProvider, Layout } from 'antd'
 import { useState, useEffect } from 'react'
 import { DashboardPage } from './pages/DashboardPage'
 import { WeightConfigPage } from './pages/WeightConfigPage'
@@ -9,12 +9,18 @@ import { DecisionPage } from './pages/DecisionPage'
 import { ControlPage } from './pages/ControlPage'
 import { PositionsPage } from './pages/PositionsPage'
 import { ExecutionPage } from './pages/ExecutionPage'
+import { SystemMonitorPage } from './pages/SystemMonitorPage'
+import { AlphaLifecyclePage } from './pages/AlphaLifecyclePage'
+import { ReplayPage } from './pages/ReplayPage'
+import { FactorAnalyticsPage } from './pages/FactorAnalyticsPage'
+import { RiskPropagationPage } from './pages/RiskPropagationPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { AppSidebar } from './components/AppSidebar'
 import { AppHeader } from './components/AppHeader'
+import { EventTimeline } from './components/EventTimeline'
 import { useDataLoader } from './hooks'
 
-const { Content } = Layout
+const { Content, Footer } = Layout
 
 const isMobile = () => window.innerWidth < 768
 
@@ -35,14 +41,7 @@ function AppContent() {
     setCollapsed(newCollapsed)
   }
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#0F172A' }}>
-        <Spin size="large" />
-      </div>
-    )
-  }
-
+  // 不阻塞页面，立即显示布局
   if (error) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#0F172A' }}>
@@ -66,22 +65,30 @@ function AppContent() {
       />
       <Layout style={{ marginLeft, transition: 'margin-left 0.2s' }}>
         <AppHeader onMobileMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)} />
-        <Content style={{ padding: 24, overflow: 'auto', minHeight: 'calc(100vh - 64px)' }}>
+        <Content style={{ padding: 24, overflow: 'auto', minHeight: 'calc(100vh - 64px - 180px)' }}>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/factors" element={<WeightConfigPage />} />
             <Route path="/weights" element={<WeightConfigPage />} />
             <Route path="/versions" element={<WeightConfigPage />} />
+            <Route path="/factor-analytics" element={<FactorAnalyticsPage />} />
             <Route path="/regime" element={<RegimePage />} />
             <Route path="/risk" element={<RiskPage />} />
+            <Route path="/risk-propagation" element={<RiskPropagationPage />} />
             <Route path="/decision" element={<DecisionPage />} />
             <Route path="/control" element={<ControlPage />} />
             <Route path="/positions" element={<PositionsPage />} />
             <Route path="/execution" element={<ExecutionPage />} />
+            <Route path="/monitor" element={<SystemMonitorPage />} />
+            <Route path="/alpha" element={<AlphaLifecyclePage />} />
+            <Route path="/replay" element={<ReplayPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Content>
+        <Footer style={{ padding: 0, position: 'fixed', bottom: 0, left: marginLeft, right: 0, zIndex: 999 }}>
+          <EventTimeline />
+        </Footer>
       </Layout>
     </Layout>
   )
