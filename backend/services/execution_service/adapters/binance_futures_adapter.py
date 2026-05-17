@@ -29,6 +29,7 @@ from domain.execution.models import (
 )
 from services.execution_service.adapters.base import BaseExchangeAdapter
 from infrastructure.logging import get_logger
+from shared.config.defaults.infrastructure.external_apis import EXCHANGE_REST_APIS, EXCHANGE_WS_APIS
 
 logger = get_logger("execution_service.adapters.binance_futures")
 
@@ -44,19 +45,25 @@ class BinanceFuturesAdapter(BaseExchangeAdapter):
     - WebSocket 成交同步
     """
 
-    BASE_URL = "https://testnet.binancefuture.com"
-    WS_URL = "wss://stream.binancefuture.com/ws"
-
     def __init__(
         self,
         api_key: str = None,
         api_secret: str = None,
         testnet: bool = True,
+        timeout: int = 30,  # 增加超时配置
     ):
         super().__init__(Exchange.BINANCE)
         self.api_key = api_key or os.getenv("BINANCE_API_KEY", "")
         self.api_secret = api_secret or os.getenv("BINANCE_API_SECRET", "")
         self.testnet = testnet
+        self.timeout = timeout
+
+        if self.testnet:
+            self.BASE_URL = EXCHANGE_REST_APIS["binance"]["testnet_futures"]
+            self.WS_URL = EXCHANGE_WS_APIS["binance"]["testnet_futures"]
+        else:
+            self.BASE_URL = EXCHANGE_REST_APIS["binance"]["futures"]
+            self.WS_URL = EXCHANGE_WS_APIS["binance"]["futures"]
 
         self._session: Optional[aiohttp.ClientSession] = None
         self._orders: Dict[str, Order] = {}
@@ -128,14 +135,20 @@ class BinanceFuturesAdapter(BaseExchangeAdapter):
         params["signature"] = self._sign(params)
 
         try:
+            # 添加超时配置
+            timeout_config = aiohttp.ClientTimeout(total=self.timeout)
+            
             async with self._session.request(
-                method, url, params=params, headers=headers
+                method, url, params=params, headers=headers, timeout=timeout_config
             ) as response:
                 data = await response.json()
                 if response.status != 200:
                     logger.error(f"API error: {data}")
                     raise Exception(data.get("msg", "Unknown error"))
                 return data
+        except asyncio.TimeoutError:
+            logger.error(f"Request timeout after {self.timeout}s: {endpoint}")
+            raise
         except aiohttp.ClientError as e:
             logger.error(f"Request failed: {e}")
             raise

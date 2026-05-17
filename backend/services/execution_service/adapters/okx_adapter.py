@@ -53,23 +53,29 @@ class OKXAdapter(BaseExchangeAdapter):
         api_key: Optional[str] = None,
         api_secret: Optional[str] = None,
         passphrase: Optional[str] = None,
-        testnet: bool = True,
+        demo: bool = True,
         market_type: MarketType = MarketType.SWAP,
+        timeout: int = 30,  # 增加超时配置
     ):
         super().__init__(Exchange.OKX)
 
         self.api_key = api_key or os.getenv("OKX_API_KEY", "")
         self.api_secret = api_secret or os.getenv("OKX_API_SECRET", "")
         self.passphrase = passphrase or os.getenv("OKX_PASSPHRASE", "")
-        self.testnet = testnet
+        self.demo = demo
         self.market_type = market_type
+        self.timeout = timeout
 
-        # 测试网配置
-        if self.testnet:
-            self.BASE_URL = EXCHANGE_REST_APIS["okx"]["testnet"]
-            self.WS_PUBLIC_URL = EXCHANGE_WS_APIS["okx"]["testnet_public"]
-            self.WS_PRIVATE_URL = EXCHANGE_WS_APIS["okx"]["testnet_private"]
-            logger.info(f"Using OKX {'TESTNET' if testnet else 'MAINNET'}")
+        # Demo Trading 配置
+        if self.demo:
+            self.BASE_URL = EXCHANGE_REST_APIS["okx"]["demo"]
+            self.WS_PUBLIC_URL = EXCHANGE_WS_APIS["okx"]["demo_public"]
+            self.WS_PRIVATE_URL = EXCHANGE_WS_APIS["okx"]["demo_private"]
+            self.flag = "1"  # Demo Trading flag
+            logger.info(f"Using OKX DEMO TRADING")
+        else:
+            self.flag = "0"  # Live Trading flag
+            logger.info(f"Using OKX LIVE TRADING")
 
         self._session: Optional[aiohttp.ClientSession] = None
         self._orders: Dict[str, Order] = {}
@@ -99,6 +105,7 @@ class OKXAdapter(BaseExchangeAdapter):
             "OK-ACCESS-SIGN": signature,
             "OK-ACCESS-TIMESTAMP": timestamp,
             "OK-ACCESS-PASSPHRASE": self.passphrase,
+            "OK-ACCESS-FLAG": self.flag,
             "Content-Type": "application/json",
         }
 
@@ -156,14 +163,17 @@ class OKXAdapter(BaseExchangeAdapter):
         headers = self._get_headers(method, request_path, request_body)
 
         try:
+            # 添加超时配置
+            timeout_config = aiohttp.ClientTimeout(total=self.timeout)
+            
             if method.upper() == "GET":
-                async with self._session.get(url, params=params, headers=headers) as resp:
+                async with self._session.get(url, params=params, headers=headers, timeout=timeout_config) as resp:
                     data = await resp.json()
             elif method.upper() == "POST":
-                async with self._session.post(url, json=body, headers=headers) as resp:
+                async with self._session.post(url, json=body, headers=headers, timeout=timeout_config) as resp:
                     data = await resp.json()
             elif method.upper() == "DELETE":
-                async with self._session.delete(url, params=params, headers=headers) as resp:
+                async with self._session.delete(url, params=params, headers=headers, timeout=timeout_config) as resp:
                     data = await resp.json()
             else:
                 raise ValueError(f"Unsupported method: {method}")
@@ -172,6 +182,9 @@ class OKXAdapter(BaseExchangeAdapter):
                 raise Exception(f"OKX API Error: {data.get('code')} - {data.get('msg')}")
             return data.get("data", [])
 
+        except asyncio.TimeoutError:
+            logger.error(f"Request timeout after {self.timeout}s: {endpoint}")
+            raise
         except aiohttp.ClientError as e:
             logger.error(f"Request failed: {e}")
             raise

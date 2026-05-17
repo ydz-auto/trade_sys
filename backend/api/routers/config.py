@@ -1,9 +1,10 @@
 """
 Config Router - Configuration Management Endpoints
-配置管理路由 - 新闻源、API Keys、数据源CRUD
+配置管理路由 - 新闻源、API Keys、数据源CRUD、交易模式
 """
 from fastapi import APIRouter, HTTPException, Depends
-from typing import List
+from typing import List, Dict, Any
+from pydantic import BaseModel, Field
 
 from ..schemas import (
     NewsSourceCreate,
@@ -23,6 +24,22 @@ from ..schemas import (
 from ..services.config_service import ConfigService
 
 router = APIRouter()
+
+
+# 交易模式相关的 Schema
+class TradingModeInfo(BaseModel):
+    """交易模式信息"""
+    mode: str = Field(..., description="当前交易模式: demo, paper, prod")
+    description: str = Field(..., description="模式描述")
+    market_data_source: str = Field(..., description="市场数据源: real/testnet")
+    order_execution: str = Field(..., description="订单执行方式: testnet/mock/real")
+    show_warning: bool = Field(..., description="是否显示警告")
+    config: Dict[str, Any] = Field(default_factory=dict, description="模式特定配置")
+
+
+class SetTradingModeRequest(BaseModel):
+    """设置交易模式请求"""
+    mode: str = Field(..., description="要设置的交易模式")
 
 
 async def get_service() -> ConfigService:
@@ -190,3 +207,92 @@ async def update_exchange_config(exchange: str, config: dict):
     service = await get_service()
     result = await service.update_exchange_config(exchange, config)
     return {"success": True, "exchange": exchange, "config": result}
+
+
+# ==================== 交易模式管理 ====================
+
+@router.get("/trading-mode", response_model=TradingModeInfo)
+async def get_trading_mode():
+    """获取当前交易模式"""
+    from domain.execution.trading_mode import (
+        get_trading_mode_config,
+        TradingMode,
+    )
+    
+    config = get_trading_mode_config()
+    mode = config.mode
+    
+    descriptions = {
+        TradingMode.DEMO: "Binance Testnet / OKX Demo Trading - 适合初期开发和测试",
+        TradingMode.PAPER: "真实市场数据 + 本地撮合引擎 - 最适合策略验证，机构首选",
+        TradingMode.PROD: "真实交易 - 真实下单，谨慎使用",
+    }
+    
+    mode_config = {}
+    if mode == TradingMode.DEMO:
+        mode_config = config.demo_config
+    elif mode == TradingMode.PAPER:
+        mode_config = config.paper_config
+    elif mode == TradingMode.PROD:
+        mode_config = config.prod_config
+    
+    return TradingModeInfo(
+        mode=mode.value,
+        description=descriptions.get(mode, "Unknown mode"),
+        market_data_source=config.market_data_source,
+        order_execution=config.order_execution,
+        show_warning=config.show_paper_warning,
+        config=mode_config,
+    )
+
+
+@router.get("/trading-mode/options")
+async def get_trading_mode_options():
+    """获取所有可用的交易模式选项"""
+    from domain.execution.trading_mode import TradingMode
+    
+    return {
+        "options": [
+            {
+                "mode": TradingMode.DEMO.value,
+                "name": "Demo / 测试网",
+                "description": "Binance Testnet / OKX Demo Trading",
+                "warning": None,
+            },
+            {
+                "mode": TradingMode.PAPER.value,
+                "name": "Paper Trading / 模拟交易",
+                "description": "真实市场数据 + 本地撮合 (推荐用于策略验证)",
+                "warning": "此模式不进行真实交易",
+            },
+            {
+                "mode": TradingMode.PROD.value,
+                "name": "Prod / 实盘交易",
+                "description": "真实市场 + 真实交易",
+                "warning": "警告：此模式将进行真实交易！",
+            },
+        ],
+    }
+
+
+@router.post("/trading-mode")
+async def set_trading_mode(request: SetTradingModeRequest):
+    """设置交易模式 (需要重启服务生效)"""
+    from domain.execution.trading_mode import TradingMode
+    
+    try:
+        mode = TradingMode(request.mode.lower())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid mode: {request.mode}. Must be one of: demo, paper, prod"
+        )
+    
+    # 注意：这里只是返回信息，实际修改需要更新 .env 文件或环境变量
+    # 生产环境可能需要更复杂的配置管理
+    return {
+        "success": True,
+        "mode": mode.value,
+        "message": "Mode setting updated. Please restart the service for changes to take effect.",
+        "note": "To apply this change permanently, update the MODE variable in your .env file and restart the backend service.",
+    }

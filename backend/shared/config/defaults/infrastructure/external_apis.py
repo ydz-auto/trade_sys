@@ -22,7 +22,7 @@ EXCHANGE_REST_APIS = {
     },
     "okx": {
         "api": os.environ.get("OKX_API_URL", "https://www.okx.com"),
-        "testnet": os.environ.get("OKX_TESTNET_URL", "https://www.okx.com"),
+        "demo": os.environ.get("OKX_DEMO_URL", "https://www.okx.com"),
     },
     "bybit": {
         "api": os.environ.get("BYBIT_API_URL", "https://api.bybit.com"),
@@ -56,8 +56,8 @@ EXCHANGE_WS_APIS = {
     "okx": {
         "public": os.environ.get("OKX_PUBLIC_WS_URL", "wss://ws.okx.com:8443/ws/public"),
         "private": os.environ.get("OKX_PRIVATE_WS_URL", "wss://ws.okx.com:8443/ws/private"),
-        "testnet_public": os.environ.get("OKX_TESTNET_PUBLIC_WS_URL", "wss://wspap.okx.com:8443/ws/public"),
-        "testnet_private": os.environ.get("OKX_TESTNET_PRIVATE_WS_URL", "wss://wspap.okx.com:8443/ws/private"),
+        "demo_public": os.environ.get("OKX_DEMO_PUBLIC_WS_URL", "wss://wspap.okx.com:8443/ws/public?brokerId=9999"),
+        "demo_private": os.environ.get("OKX_DEMO_PRIVATE_WS_URL", "wss://wspap.okx.com:8443/ws/private?brokerId=9999"),
     },
     "bybit": {
         "public": os.environ.get("BYBIT_PUBLIC_WS_URL", "wss://stream.bybit.com/v5/public/spot"),
