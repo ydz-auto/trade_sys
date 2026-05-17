@@ -222,6 +222,18 @@ backend/
 | **ETF资金流** | ETFCollector | SoSoValue |
 | **新闻资讯** | NewsCollector | 多新闻源 |
 | **宏观数据** | MacroCollector | 多数据源 |
+| **Twitter 推送** | TwitterPushCollector | Chrome Extension |
+| **Telegram 消息** | TelegramAdapter | Telegram 频道 |
+
+### 5. 数据采集运行时 (Ingestion Runtime)
+
+| 组件 | 说明 |
+|---|---|
+| **WebSocket 价格采集** | Binance 实时价格、成交、强平 |
+| **Twitter Push 服务器** | WebSocket 服务器，接收 Chrome Extension 推送 |
+| **Telegram 监听器** | 监听新闻频道、KOL 群消息 |
+| **新闻采集** | 定时采集多源新闻 |
+| **Odaily 采集** | Odaily 星球日报数据采集 |
 
 ---
 

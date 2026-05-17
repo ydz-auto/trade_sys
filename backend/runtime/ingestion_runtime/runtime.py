@@ -8,11 +8,14 @@ Ingestion Runtime - 数据采集运行时
 - 健康检查
 - 指标收集
 - WebSocket 实时价格采集
+- Twitter Push WebSocket 服务器
+- Telegram 消息监听
 
 业务逻辑：调用 services/data_service/ 和 services/aggregation_service/
 """
 
 import asyncio
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -32,7 +35,7 @@ from runtime.shared import (
 )
 from infrastructure.messaging import Topics
 from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -42,6 +45,10 @@ class IngestionConfig(RuntimeConfig):
     collection_interval: int = 300
     enable_websocket: bool = True
     websocket_symbols: list = None
+    enable_twitter_push: bool = True
+    twitter_push_host: str = "localhost"
+    twitter_push_port: int = 8765
+    enable_telegram: bool = False
     
     def __post_init__(self):
         if self.websocket_symbols is None:
@@ -72,6 +79,13 @@ class IngestionRuntime(BaseRuntime):
         self.publisher: Optional[RuntimePublisher] = None
         self.ws_adapter = None
         self._ws_task: Optional[asyncio.Task] = None
+        
+        self.twitter_push_collector = None
+        self.twitter_push_server = None
+        self._twitter_push_task: Optional[asyncio.Task] = None
+        
+        self.telegram_adapter = None
+        self._telegram_task: Optional[asyncio.Task] = None
     
     async def initialize(self) -> None:
         """初始化运行时组件"""
@@ -125,10 +139,18 @@ class IngestionRuntime(BaseRuntime):
         if self.config.enable_websocket:
             await self._init_websocket()
         
+        if self.config.enable_twitter_push:
+            await self._init_twitter_push()
+        
+        if self.config.enable_telegram:
+            await self._init_telegram()
+        
         self.health_check.register_check("news_collector", self._check_news_collector)
         self.health_check.register_check("aggregator", self._check_aggregator)
         self.health_check.register_check("publisher", self._check_publisher)
         self.health_check.register_check("websocket", self._check_websocket)
+        self.health_check.register_check("twitter_push", self._check_twitter_push)
+        self.health_check.register_check("telegram", self._check_telegram)
         
         self.logger.info("Ingestion Runtime initialized successfully")
     
@@ -160,6 +182,72 @@ class IngestionRuntime(BaseRuntime):
             
         except Exception as e:
             self.logger.warning(f"WebSocket init failed: {e}")
+    
+    async def _init_twitter_push(self):
+        """初始化 Twitter Push WebSocket 服务器"""
+        try:
+            from services.data_service.collectors.twitter_push_collector import (
+                TwitterPushCollector,
+                TwitterPushConfig,
+            )
+            
+            self.twitter_push_collector = TwitterPushCollector(TwitterPushConfig(
+                host=self.config.twitter_push_host,
+                port=self.config.twitter_push_port,
+            ))
+            
+            self.twitter_push_collector.register_callback(self._on_twitter_event)
+            
+            self.logger.info(f"Twitter Push collector initialized on {self.config.twitter_push_host}:{self.config.twitter_push_port}")
+            
+        except Exception as e:
+            self.logger.warning(f"Twitter Push init failed: {e}")
+    
+    async def _init_telegram(self):
+        """初始化 Telegram 适配器"""
+        try:
+            from services.data_service.collectors.telegram_adapter import (
+                TelegramAdapter,
+                TelegramConfig,
+            )
+            import os
+            
+            config = TelegramConfig(
+                api_id=int(os.getenv("TG_API_ID", "0")) or None,
+                api_hash=os.getenv("TG_API_HASH") or None,
+            )
+            
+            self.telegram_adapter = TelegramAdapter(config)
+            self.telegram_adapter.on_event = self._on_telegram_event
+            
+            self.logger.info("Telegram adapter initialized")
+            
+        except Exception as e:
+            self.logger.warning(f"Telegram init failed: {e}")
+    
+    async def _on_twitter_event(self, event):
+        """处理 Twitter 事件"""
+        try:
+            self.metrics.increment("twitter_events")
+            
+            if self.publisher:
+                await self.publisher.publish(event.to_dict())
+                self.logger.info(f"Twitter event published: {event.title[:50]}...")
+                
+        except Exception as e:
+            self.logger.error(f"Error processing Twitter event: {e}")
+    
+    async def _on_telegram_event(self, event):
+        """处理 Telegram 事件"""
+        try:
+            self.metrics.increment("telegram_events")
+            
+            if self.publisher:
+                await self.publisher.publish(event.to_dict())
+                self.logger.info(f"Telegram event published: {event.title[:50]}...")
+                
+        except Exception as e:
+            self.logger.error(f"Error processing Telegram event: {e}")
     
     async def _on_price_update(self, event):
         """处理价格更新"""
@@ -219,6 +307,14 @@ class IngestionRuntime(BaseRuntime):
         """检查 WebSocket 连接"""
         return self.ws_adapter is not None and self.ws_adapter.is_connected
     
+    async def _check_twitter_push(self) -> bool:
+        """检查 Twitter Push"""
+        return self.twitter_push_collector is not None
+    
+    async def _check_telegram(self) -> bool:
+        """检查 Telegram"""
+        return self.telegram_adapter is not None and self.telegram_adapter.is_running
+    
     async def shutdown(self) -> None:
         """关闭运行时组件"""
         self.logger.info("Shutting down Ingestion Runtime...")
@@ -230,8 +326,25 @@ class IngestionRuntime(BaseRuntime):
             except asyncio.CancelledError:
                 pass
         
+        if self._twitter_push_task:
+            self._twitter_push_task.cancel()
+            try:
+                await self._twitter_push_task
+            except asyncio.CancelledError:
+                pass
+        
+        if self._telegram_task:
+            self._telegram_task.cancel()
+            try:
+                await self._telegram_task
+            except asyncio.CancelledError:
+                pass
+        
         if self.ws_adapter:
             await self.ws_adapter.disconnect()
+        
+        if self.telegram_adapter:
+            await self.telegram_adapter.stop()
         
         if self.publisher:
             await self.publisher.stop()
@@ -254,6 +367,14 @@ class IngestionRuntime(BaseRuntime):
             asyncio.create_task(self.odaily_consumer.start_consuming())
             self.logger.info("Odaily consumer started")
         
+        if self.config.enable_twitter_push and self.twitter_push_collector:
+            self._twitter_push_task = asyncio.create_task(self._run_twitter_push_server())
+            self.logger.info(f"Twitter Push server started on port {self.config.twitter_push_port}")
+        
+        if self.config.enable_telegram and self.telegram_adapter:
+            self._telegram_task = asyncio.create_task(self._run_telegram_listener())
+            self.logger.info("Telegram listener started")
+        
         while not self.context.is_shutdown_requested():
             try:
                 with self.metrics.timing("collection_cycle"):
@@ -268,6 +389,60 @@ class IngestionRuntime(BaseRuntime):
                 self.metrics.increment("errors")
                 await self.lifecycle.handle_error(e)
                 await asyncio.sleep(10)
+    
+    async def _run_twitter_push_server(self):
+        """运行 Twitter Push WebSocket 服务器"""
+        try:
+            import websockets
+            from websockets.server import WebSocketServerProtocol
+            
+            async def handle_connection(websocket: WebSocketServerProtocol, path: str):
+                client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
+                self.logger.info(f"Twitter Push client connected: {client_id}")
+                
+                try:
+                    async for message in websocket:
+                        try:
+                            data = json.loads(message)
+                            msg_type = data.get("type", "unknown")
+                            
+                            if msg_type == "ping":
+                                await websocket.send(json.dumps({
+                                    "type": "pong",
+                                    "timestamp": datetime.now().timestamp()
+                                }))
+                            elif msg_type == "tweet":
+                                tweet_data = data.get("data", {})
+                                event = self.twitter_push_collector.process_tweet(tweet_data)
+                                if event:
+                                    await websocket.send(json.dumps({
+                                        "type": "tweet_event",
+                                        "event": event.to_dict()
+                                    }))
+                        except json.JSONDecodeError:
+                            self.logger.error(f"Invalid JSON from {client_id}")
+                except websockets.exceptions.ConnectionClosed:
+                    self.logger.info(f"Twitter Push client disconnected: {client_id}")
+            
+            async with websockets.serve(
+                handle_connection,
+                self.config.twitter_push_host,
+                self.config.twitter_push_port,
+                ping_interval=30,
+                ping_timeout=10
+            ):
+                self.logger.info(f"Twitter Push WebSocket server listening on ws://{self.config.twitter_push_host}:{self.config.twitter_push_port}")
+                await asyncio.Future()
+                
+        except Exception as e:
+            self.logger.error(f"Twitter Push server error: {e}")
+    
+    async def _run_telegram_listener(self):
+        """运行 Telegram 监听器"""
+        try:
+            await self.telegram_adapter.listen()
+        except Exception as e:
+            self.logger.error(f"Telegram listener error: {e}")
     
     async def _run_websocket(self):
         """运行 WebSocket 连接"""
