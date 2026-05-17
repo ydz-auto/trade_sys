@@ -4,11 +4,9 @@ Odaily Consumer - 消费 raw.odaily topic 并进行增强理解
 数据流：
 raw.odaily (Kafka)
     ↓
-OdailyConsumer
+OdailyConsumer (LLM增强)
     ↓
-Understanding Engine (增强)
-    ↓
-enriched.odaily (Kafka)
+Redis (news:all:20) → API
 """
 
 import asyncio
@@ -18,6 +16,7 @@ from datetime import datetime
 
 from infrastructure.logging import get_logger
 from infrastructure.messaging import Topics
+from infrastructure.cache import get_redis_client
 from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 logger = get_logger("event_service.odaily_consumer")
@@ -46,6 +45,7 @@ class OdailyConsumer:
         self.bootstrap_servers = bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS
         self._hub: Optional[Any] = understanding_hub
         self._llm_pool = llm_pool
+        self._redis: Optional[Any] = None  # Redis 客户端
         
         # 导入 LLM 打分引擎
         try:
@@ -63,6 +63,15 @@ class OdailyConsumer:
     
     async def initialize(self):
         """初始化"""
+        # 初始化 Redis 连接
+        try:
+            from infrastructure.cache import init_redis
+            self._redis = await init_redis()
+            logger.info("Redis client initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Redis: {e}")
+            self._redis = None
+        
         logger.info("OdailyConsumer initialized")
     
     async def connect(self) -> None:
@@ -72,7 +81,7 @@ class OdailyConsumer:
         
         try:
             self._broker = KafkaBroker(self.bootstrap_servers)
-            self._app = FastStream(self._broker, title="TradeAgent Odaily Consumer", version="1.0.0")
+            self._app = FastStream(self._broker)
             self._running = True
             
             # 注册消费者
@@ -110,22 +119,55 @@ class OdailyConsumer:
             
             logger.debug(f"Processing Odaily message #{self._processed_count}: {msg.get('event_id', 'unknown')}")
             
-            # 解析消息
             data = msg.get("data", {})
             
-            # 使用 Understanding Engine 进行增强理解
             enriched = await self._enrich_odaily_data(data)
             
             if enriched:
-                logger.info(f"Successfully enriched Odaily event: {enriched.get('title')[:50]}...")
+                logger.info(f"Successfully enriched Odaily event: {enriched.get('title', '')[:50]}...")
                 
-                # 这里可以把增强后的数据发布到另一个 topic (enriched.odaily)
-                # TODO: 添加发布逻辑
-            else:
-                logger.debug("No enrichment needed for this Odaily event")
+                await self._store_to_redis(enriched)
                 
         except Exception as e:
             logger.error(f"Error handling Odaily message: {e}")
+    
+    async def _store_to_redis(self, enriched: Dict[str, Any]) -> None:
+        """将增强后的数据存储到 Redis (使用 List 原子操作)"""
+        try:
+            # 使用初始化时创建的 Redis 客户端
+            if not self._redis:
+                logger.warning("Redis client not available")
+                return
+            
+            # 检查连接状态，如果未连接则重新连接
+            if not self._redis._connected:
+                logger.warning("Redis client disconnected, reconnecting...")
+                await self._redis.connect()
+            
+            news_item = {
+                "id": enriched.get("original_id", ""),
+                "title": enriched.get("title", ""),
+                "content": enriched.get("content", ""),
+                "source": "Odaily",
+                "sentiment": enriched.get("sentiment", "neutral"),
+                "sentiment_score": enriched.get("confidence", 0.5),
+                "importance": enriched.get("importance", 0.5),
+                "symbols": enriched.get("symbols", []),
+                "narratives": enriched.get("narratives", []),
+                "published": int(datetime.now().timestamp()),
+                "url": enriched.get("metadata", {}).get("url"),
+            }
+            
+            news_json = json.dumps(news_item)
+            
+            await self._redis.lpush("news:latest", news_json)
+            
+            await self._redis.ltrim("news:latest", 0, 19)
+            
+            logger.info(f"Stored enriched news to Redis: {news_item['title'][:30]}...")
+            
+        except Exception as e:
+            logger.error(f"Failed to store to Redis: {e}")
     
     async def _enrich_odaily_data(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """使用 LLM 进行增强 + 智能打分"""
