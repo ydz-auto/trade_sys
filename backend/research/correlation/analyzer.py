@@ -250,24 +250,28 @@ class CorrelationAnalyzer:
         """单变量分析"""
         results = {}
         
-        # 获取特征列（排除目标变量）
         feature_cols = [c for c in feature_matrix.data.columns if c != feature_matrix.target_col]
         
         for feature in feature_cols:
+            corr_result = self.univariate.correlation_analysis(
+                feature_matrix.data, feature, feature_matrix.target_col
+            )
+            mi_result = self.univariate.mutual_information(
+                feature_matrix.data, feature, feature_matrix.target_col
+            )
+            granger_result = self.univariate.granger_causality(
+                feature_matrix.data, feature, feature_matrix.target_col
+            )
+            lag_result = self.univariate.lag_correlation(
+                feature_matrix.data, feature, feature_matrix.target_col,
+                max_lag=max(self.config.lag_windows)
+            )
+            
             results[feature] = {
-                "correlation": self.univariate.correlation_analysis(
-                    feature_matrix.data, feature, feature_matrix.target_col
-                ),
-                "mutual_info": self.univariate.mutual_information(
-                    feature_matrix.data, feature, feature_matrix.target_col
-                ),
-                "granger": self.univariate.granger_causality(
-                    feature_matrix.data, feature, feature_matrix.target_col
-                ),
-                "lag_correlation": self.univariate.lag_correlation(
-                    feature_matrix.data, feature, feature_matrix.target_col,
-                    max_lag=max(self.config.lag_windows)
-                )
+                "correlation": corr_result.to_dict() if hasattr(corr_result, 'to_dict') else corr_result,
+                "mutual_info": mi_result.to_dict() if hasattr(mi_result, 'to_dict') else mi_result,
+                "granger": {k: v.to_dict() if hasattr(v, 'to_dict') else v for k, v in granger_result.items()} if isinstance(granger_result, dict) else granger_result,
+                "lag_correlation": lag_result.to_dict() if hasattr(lag_result, 'to_dict') else lag_result,
             }
         
         return results
@@ -278,20 +282,20 @@ class CorrelationAnalyzer:
         
         results = {}
         
-        # LASSO回归
-        results["lasso"] = self.multivariate.lasso_regression(
+        lasso_result = self.multivariate.lasso_regression(
             feature_matrix.data, feature_cols, feature_matrix.target_col
         )
+        results["lasso"] = lasso_result.to_dict() if hasattr(lasso_result, 'to_dict') else lasso_result
         
-        # XGBoost + SHAP
-        results["xgboost"] = self.multivariate.xgboost_with_shap(
+        xgboost_result = self.multivariate.xgboost_with_shap(
             feature_matrix.data, feature_cols, feature_matrix.target_col
         )
+        results["xgboost"] = xgboost_result.to_dict() if hasattr(xgboost_result, 'to_dict') else xgboost_result
         
-        # 随机森林
-        results["random_forest"] = self.multivariate.random_forest_importance(
+        rf_result = self.multivariate.random_forest_importance(
             feature_matrix.data, feature_cols, feature_matrix.target_col
         )
+        results["random_forest"] = rf_result.to_dict() if hasattr(rf_result, 'to_dict') else rf_result
         
         return results
     

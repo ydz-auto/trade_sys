@@ -95,4 +95,141 @@ backend/
 │   ├── messaging/             # Kafka 消息
 │   ├── data_lake/             # 数据湖
 │   ├── observability/         # 可观测性
+│   ├── replay/                # 回放引擎
+│   ├── runtime/               # 运行时基础设施
+│   ├── snapshot/              # 快照系统
+│   └── verification/          # 验证系统
 │
+├── config/                     # 配置治理
+│   ├── environments/          # 环境配置 (dev/prod/replay)
+│   ├── infra/                 # 基础设施配置
+│   ├── runtime/               # 运行时配置
+│   ├── strategy/              # 策略配置
+│   └── feature_flags/         # 功能开关
+│
+├── deploy/                     # 部署治理
+│   ├── docker-compose.yml     # 统一部署配置
+│   ├── grafana/               # Grafana 监控配置
+│   ├── prometheus/            # Prometheus 监控配置
+│   └── tempo/                 # Tempo 链路追踪配置
+│
+├── research/                   # 研究层
+│   ├── backtest/              # 回测框架
+│   ├── correlation/           # 相关性分析
+│   ├── factor/                # 因子研究
+│   ├── pipeline/              # 特征流水线
+│   ├── experiment/            # 实验追踪
+│   └── strategy/              # 策略研究
+│
+└── scripts/                    # 脚本工具
+```
+
+---
+
+## Runtime 与 Services 的对应关系
+
+| Runtime | 调用的 Services | 说明 |
+|---|---|---|
+| `ingestion_runtime` | `data_service/`, `aggregation_service/` | 数据采集 + 聚合 |
+| `signal_runtime` | `fusion_service/`, `strategy_service/`, `event_service/` | 信号融合 + 策略决策 |
+| `execution_runtime` | `execution_service/`, `risk_service/`, `approval_service/` | 订单执行 + 风控 |
+| `projection_runtime` | `projection_worker/` | CQRS 投影 |
+| `correlation_runtime` | `correlation_worker/` | 相关性分析 |
+| `replay_runtime` | `repair_service/`, `backtest_service/` | 回放 + 回测 |
+| `narrative_runtime` | `llm_service/` | AI 叙事 |
+| `monitoring_runtime` | `monitoring/` | 监控 |
+| `scheduler_runtime` | 多个定时任务 | 调度 |
+
+---
+
+## 核心功能模块
+
+### 1. 交易系统 (Trading System)
+
+| 功能 | 说明 |
+|---|---|
+| **交易所支持** | Binance, OKX |
+| **市场类型** | 现货 (spot), USDT合约 (usdt_futures), 币本位合约 (coin_futures) |
+| **杠杆交易** | 1-125x 杠杆设置 |
+| **止盈止损** | 支持百分比和价格两种方式 |
+| **仓位模式** | 逐仓 (isolated), 全仓 (cross) |
+
+### 2. 回测系统 (Backtest System)
+
+| 功能 | 说明 |
+|---|---|
+| **数据源** | Redis 存储的历史数据 |
+| **信号源** | 真实生成的交易信号 |
+| **因子分析** | 多因子权重优化 |
+| **结果展示** | 收益率、夏普比率、最大回撤 |
+
+### 3. 风控引擎 (Risk Engine)
+
+| 风控类型 | 说明 |
+|---|---|
+| **止损检查** | 自动止损触发 |
+| **每日亏损限制** | 日亏损上限 |
+| **杠杆限制** | 最大杠杆控制 |
+| **仓位限制** | 单品种仓位上限 |
+| **冷却期** | 交易冷却时间 |
+| **黑名单** | 禁止交易品种 |
+
+### 4. 数据采集 (Data Collection)
+
+| 数据类型 | 采集器 | 数据源 |
+|---|---|---|
+| **价格数据** | ExchangeCollector | Binance, OKX, CoinGecko |
+| **ETF资金流** | ETFCollector | SoSoValue |
+| **新闻资讯** | NewsCollector | 多新闻源 |
+| **宏观数据** | MacroCollector | 多数据源 |
+
+---
+
+## 配置治理
+
+### 五层配置结构
+
+```
+config/
+├── environments/    # 环境配置 (dev/prod/replay)
+├── infra/           # 基础设施配置
+├── runtime/         # 运行时配置
+├── strategy/        # 策略配置
+└── feature_flags/   # 功能开关
+```
+
+---
+
+## 前端架构
+
+### 技术栈
+
+| 技术 | 版本 | 用途 |
+|---|---|---|
+| React | 18.x | UI 框架 |
+| TypeScript | 5.x | 类型安全 |
+| Vite | 5.x | 构建工具 |
+| Ant Design | 5.x | UI 组件库 |
+| TailwindCSS | 3.x | 样式框架 |
+| Zustand | 4.x | 状态管理 |
+
+---
+
+## 关键原则
+
+1. **services/ 保留业务逻辑** - 因子、信号、融合、风控、策略、执行等业务逻辑
+2. **runtime/ 负责运行时编排** - Kafka 消费/发布、重试、指标、健康检查等
+3. **runtime 调用 services** - runtime 是入口，调用 services 的业务逻辑
+4. **不删除 services** - 只是把运行时职责迁移到 runtime
+
+---
+
+## 相关文档
+
+- [AUDIT_SUMMARY.md](file:///Users/yangdezeng/00_crypto/00_trade_agent/20260506/doc/系统治理/AUDIT_SUMMARY.md) - 审计总结报告
+- [SERVICES_RESPONSIBILITY_MAPPING.md](file:///Users/yangdezeng/00_crypto/00_trade_agent/20260506/doc/系统治理/SERVICES_RESPONSIBILITY_MAPPING.md) - 服务职责映射
+- [01_Schema统一规范.md](file:///Users/yangdezeng/00_crypto/00_trade_agent/20260506/doc/系统治理/01_Schema统一规范.md) - Schema 统一规范
+
+---
+
+*文档更新日期: 2026-05-16*

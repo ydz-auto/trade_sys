@@ -27,7 +27,6 @@ from ..classifier.classifier import (
     get_event_classifier
 )
 from ..extractor.extractor import EventExtractor, get_event_extractor
-from ..skills.odaily.collector import OdailySkillCollector, get_odaily_collector
 
 logger = get_logger("event_service.engine")
 
@@ -77,7 +76,6 @@ class UnderstandingEngine:
         self.parser: DataParser = get_data_parser()
         self.classifier: EventClassifier = get_event_classifier()
         self.extractor: EventExtractor = get_event_extractor()
-        self.odaily: Optional[OdailySkillCollector] = None
 
         self.circuit_breaker = CircuitBreaker(CircuitBreakerConfig(
             name="understanding_engine_circuit",
@@ -92,7 +90,6 @@ class UnderstandingEngine:
 
     async def initialize(self):
         """初始化"""
-        self.odaily = get_odaily_collector()
         await self.update_context()
 
     async def understand(self, raw_data: Dict[str, Any], source_type: str = "news") -> EnrichedContent:

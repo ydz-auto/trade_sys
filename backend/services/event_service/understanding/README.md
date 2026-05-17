@@ -138,27 +138,21 @@ event_service/
 
 ## 🔧 核心模块
 
-### 1. Skills - 世界解释器
+### 1. Adapters - 数据源适配器
 
-Skills 是 "World Interpreter"，负责理解外部世界：
+数据源适配器负责从外部获取数据：
 
 ```python
-from event_service.understanding.skills.odaily import get_odaily_collector
+from services.data_service.adapters.odaily_adapter import get_odaily_adapter
 
-collector = get_odaily_collector()
+adapter = get_odaily_adapter()
 
-# M1: 今日必关注
-events = await collector.get_must_watch_events()
+# 获取新闻事件
+events = await adapter.collect()
 
-# M2: 市场分析
-analysis = await collector.get_market_analysis()
-print(f"Regime: {analysis.regime}")
-
-# M3: 明日事件
-tomorrow = await collector.get_tomorrow_events()
-
-# M4: 巨鲸信号
-whales = await collector.get_whale_alerts()
+for event in events:
+    print(f"Title: {event.title}")
+    print(f"Sentiment: {event.sentiment}")
 ```
 
 ### 2. Parser - 数据解析器

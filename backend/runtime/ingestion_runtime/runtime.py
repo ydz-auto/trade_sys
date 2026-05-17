@@ -65,6 +65,8 @@ class IngestionRuntime(BaseRuntime):
         self.health_check: Optional[RuntimeHealthCheck] = None
         
         self.news_collector = None
+        self.odaily_adapter = None
+        self.odaily_consumer = None
         self.market_collector = None
         self.aggregator = None
         self.publisher: Optional[RuntimePublisher] = None
@@ -87,12 +89,20 @@ class IngestionRuntime(BaseRuntime):
             self.logger.warning(f"News collector init failed: {e}")
         
         try:
-            from services.data_service.adapters.skill_adapter import OdailySkillAdapter
-            self.odaily_adapter = OdailySkillAdapter()
-            self.logger.info("Odaily skill adapter initialized")
+            from services.data_service.adapters.odaily_adapter import get_odaily_adapter
+            self.odaily_adapter = get_odaily_adapter()
+            self.logger.info("Odaily adapter initialized")
         except Exception as e:
             self.logger.warning(f"Odaily adapter init failed: {e}")
             self.odaily_adapter = None
+        
+        try:
+            from services.event_service.consumers.odaily_consumer import get_odaily_consumer
+            self.odaily_consumer = await get_odaily_consumer()
+            self.logger.info("Odaily consumer initialized")
+        except Exception as e:
+            self.logger.warning(f"Odaily consumer init failed: {e}")
+            self.odaily_consumer = None
         
         try:
             from services.aggregation_service.aggregators.candle.candle_aggregator import get_timeframe_aggregator
@@ -239,6 +249,11 @@ class IngestionRuntime(BaseRuntime):
         if self.ws_adapter:
             self._ws_task = asyncio.create_task(self._run_websocket())
         
+        if self.odaily_consumer:
+            await self.odaily_consumer.connect()
+            asyncio.create_task(self.odaily_consumer.start_consuming())
+            self.logger.info("Odaily consumer started")
+        
         while not self.context.is_shutdown_requested():
             try:
                 with self.metrics.timing("collection_cycle"):
@@ -351,25 +366,15 @@ class IngestionRuntime(BaseRuntime):
                 self.logger.error(f"Failed to publish news event: {e}")
     
     async def _publish_odaily_events(self, odaily_events: list) -> None:
-        """将Odaily事件发布到Kafka (raw.odaily topic) 并存储到 Redis"""
+        """将Odaily事件发布到Kafka (raw.odaily topic)
+        
+        数据流: 采集层 → Kafka(raw.odaily) → OdailyConsumer(LLM增强) → Redis → API
+        """
         from datetime import datetime
         import uuid
-        import json
         
         original_topic = self.publisher.config.topic
         self.publisher.config.topic = Topics.raw_odaily()
-        
-        redis_client = None
-        try:
-            from infrastructure.cache import get_redis_client
-            redis_client = get_redis_client()
-            if not redis_client.is_connected:
-                await redis_client.connect()
-                self.logger.info("Redis client connected successfully")
-        except Exception as e:
-            self.logger.warning(f"Redis client not available: {e}")
-        
-        news_for_redis = []
         
         try:
             for event in odaily_events:
@@ -395,26 +400,8 @@ class IngestionRuntime(BaseRuntime):
                     
                     await self.publisher.publish(event_dict, key=event.id)
                     
-                    news_for_redis.append({
-                        "id": event.id,
-                        "title": event.title,
-                        "content": event.content,
-                        "source": "Odaily",
-                        "sentiment": event.sentiment or "neutral",
-                        "sentiment_score": 0.5,
-                        "published": int(datetime.utcnow().timestamp()),
-                        "url": event.metadata.get("url") if event.metadata else None,
-                    })
-                    
                 except Exception as e:
                     self.logger.error(f"Failed to publish Odaily event: {e}")
-            
-            if redis_client and news_for_redis:
-                try:
-                    await redis_client.set("news:all:20", json.dumps(news_for_redis[:20]))
-                    self.logger.info(f"Stored {len(news_for_redis[:20])} news to Redis")
-                except Exception as e:
-                    self.logger.error(f"Failed to store news to Redis: {e}")
                     
         finally:
             self.publisher.config.topic = original_topic

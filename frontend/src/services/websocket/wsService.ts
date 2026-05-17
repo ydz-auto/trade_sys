@@ -44,7 +44,7 @@ class WebSocketService {
   constructor() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
-    this.url = `${protocol}//${host}/ws`
+    this.url = `${protocol}//${host}/api/ws`
   }
 
   connect(): Promise<void> {

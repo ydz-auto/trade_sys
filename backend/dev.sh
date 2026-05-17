@@ -21,6 +21,7 @@ declare -A RUNTIMES=(
     ["narrative"]="runtime.narrative_runtime"
     ["monitoring"]="runtime.monitoring_runtime"
     ["scheduler"]="runtime.scheduler_runtime"
+    ["governor"]="runtime.governor_runtime"
 )
 
 declare -A RUNTIME_NAMES=(
@@ -32,6 +33,7 @@ declare -A RUNTIME_NAMES=(
     ["narrative"]="AI叙事运行时"
     ["monitoring"]="监控运行时"
     ["scheduler"]="调度运行时"
+    ["governor"]="Runtime Governor"
 )
 
 LOG_DIR="$SCRIPT_DIR/logs"
@@ -60,10 +62,10 @@ show_help() {
     echo "  stop-all           停止所有 runtime"
     echo ""
     echo -e "${YELLOW}基础设施:${NC}"
-    echo "  infra-up           启动基础设施 (Kafka, Redis)"
+    echo "  infra-up           启动基础设施 (Kafka KRaft, Redis)"
     echo "  infra-down         停止基础设施"
     echo "  infra-status       查看基础设施状态"
-    echo "  fix-kafka          修复Kafka集群ID不匹配问题"
+    echo "  fix-kafka          重置 Kafka (删除所有数据)"
     echo ""
     echo -e "${YELLOW}其他:${NC}"
     echo "  api                启动 API 服务器"
@@ -257,39 +259,27 @@ stop_all() {
 }
 
 infra_up() {
-    echo -e "${GREEN}正在启动基础设施...${NC}"
+    echo -e "${GREEN}正在启动基础设施 (KRaft 模式)...${NC}"
     cd "$SCRIPT_DIR/deploy"
     
-    echo -e "${CYAN}步骤 1/3: 启动所有基础设施...${NC}"
-    docker compose up -d zookeeper kafka redis
+    echo -e "${CYAN}步骤 1/2: 启动所有基础设施...${NC}"
+    docker compose up -d kafka redis
     
-    echo -e "${CYAN}步骤 2/3: 等待服务就绪...${NC}"
+    echo -e "${CYAN}步骤 2/2: 等待服务就绪...${NC}"
     local max_wait=30
     local waited=0
     local kafka_healthy=0
-    local zk_running=0
     local redis_running=0
     
     while [ $waited -lt $max_wait ]; do
-        # 检查 Kafka
         if [ $kafka_healthy -eq 0 ]; then
             local kafka_health=$(docker inspect --format='{{.State.Health.Status}}' kafka 2>/dev/null || echo "unknown")
             if [ "$kafka_health" = "healthy" ]; then
                 kafka_healthy=1
-                echo -e "${GREEN}✓ Kafka 已就绪${NC}"
+                echo -e "${GREEN}✓ Kafka (KRaft) 已就绪${NC}"
             fi
         fi
         
-        # 检查 ZooKeeper
-        if [ $zk_running -eq 0 ]; then
-            local zk_status=$(docker inspect --format='{{.State.Status}}' zookeeper 2>/dev/null || echo "unknown")
-            if [ "$zk_status" = "running" ]; then
-                zk_running=1
-                echo -e "${GREEN}✓ ZooKeeper 已就绪${NC}"
-            fi
-        fi
-        
-        # 检查 Redis
         if [ $redis_running -eq 0 ]; then
             local redis_status=$(docker inspect --format='{{.State.Status}}' redis 2>/dev/null || echo "unknown")
             if [ "$redis_status" = "running" ]; then
@@ -298,8 +288,7 @@ infra_up() {
             fi
         fi
         
-        # 检查是否都就绪
-        if [ $kafka_healthy -eq 1 ] && [ $zk_running -eq 1 ] && [ $redis_running -eq 1 ]; then
+        if [ $kafka_healthy -eq 1 ] && [ $redis_running -eq 1 ]; then
             break
         fi
         
@@ -308,37 +297,11 @@ infra_up() {
         waited=$((waited + 2))
     done
     
-    echo -e "${CYAN}步骤 3/3: 启动 Kafka UI...${NC}"
+    echo -e "${CYAN}启动 Kafka UI...${NC}"
     docker compose up -d kafka-ui
     
-    # 检查 Kafka 是否有集群ID问题并自动修复
-    local kafka_logs=$(docker logs kafka 2>&1 | tail -20)
-    if echo "$kafka_logs" | grep -q "InconsistentClusterIdException"; then
-        echo ""
-        echo -e "${RED}===========================================${NC}"
-        echo -e "${RED}⚠ Kafka 集群ID不匹配问题检测到${NC}"
-        echo -e "${RED}===========================================${NC}"
-        echo ""
-        echo -e "${CYAN}正在自动修复...${NC}"
-        
-        # 调用修复脚本
-        cd "$SCRIPT_DIR/deploy"
-        echo "y" | ./fix-kafka-id.sh fix
-        
-        # 等待 Kafka 启动
-        echo ""
-        echo -e "${CYAN}等待 Kafka 重新启动...${NC}"
-        sleep 5
-        local kafka_health=$(docker inspect --format='{{.State.Health.Status}}' kafka 2>/dev/null || echo "unknown")
-        if [ "$kafka_health" = "healthy" ]; then
-            echo -e "${GREEN}✓ Kafka 修复成功并已启动${NC}"
-        else
-            echo -e "${RED}✗ Kafka 修复失败，请手动检查${NC}"
-        fi
-    fi
-    
     echo ""
-    echo -e "${GREEN}基础设施已启动:${NC}"
+    echo -e "${GREEN}基础设施已启动 (KRaft 模式):${NC}"
     echo "  Kafka: localhost:9092"
     echo "  Redis: localhost:6379"
     echo "  Kafka UI: http://localhost:8080"
@@ -346,7 +309,7 @@ infra_up() {
 
 fix_kafka_dev() {
     echo -e "${RED}===========================================${NC}"
-    echo -e "${RED}⚠ 这将删除所有 Kafka/ZooKeeper 数据！${NC}"
+    echo -e "${RED}⚠ 这将删除所有 Kafka 数据！${NC}"
     echo -e "${RED}===========================================${NC}"
     echo ""
     read -p "确定要继续吗? (type 'YES' to confirm): " confirm
@@ -359,9 +322,9 @@ fix_kafka_dev() {
     echo -e "${YELLOW}正在停止并删除数据卷...${NC}"
     docker compose down -v
     sleep 2
-    echo -e "${YELLOW}正在重新启动...${NC}"
-    docker compose up -d
-    echo -e "${GREEN}已重置 Kafka/ZooKeeper${NC}"
+    echo -e "${YELLOW}正在重新启动 KRaft 集群...${NC}"
+    docker compose up -d kafka redis kafka-ui
+    echo -e "${GREEN}已重置 Kafka (KRaft 模式)${NC}"
 }
 
 infra_down() {
@@ -372,9 +335,9 @@ infra_down() {
 }
 
 infra_status() {
-    echo -e "${CYAN}基础设施状态:${NC}"
+    echo -e "${CYAN}基础设施状态 (KRaft 模式):${NC}"
     cd "$SCRIPT_DIR/deploy"
-    docker compose ps zookeeper kafka redis 2>/dev/null || echo "  未启动"
+    docker compose ps kafka redis 2>/dev/null || echo "  未启动"
 }
 
 start_api() {
@@ -390,9 +353,9 @@ show_menu() {
         print_header
         echo "请选择操作:"
         echo ""
-        echo "  1) 启动基础设施 (Kafka, Redis)"
+        echo "  1) 启动基础设施 (Kafka KRaft, Redis)"
         echo "  2) 停止基础设施"
-        echo "  3) 修复Kafka集群ID问题 (开发环境)"
+        echo "  3) 重置 Kafka (删除所有数据)"
         echo "  4) 启动所有 Runtime"
         echo "  5) 停止所有 Runtime"
         echo "  6) 查看 Runtime 状态"
@@ -483,10 +446,6 @@ case "${1:-menu}" in
         infra_status
         ;;
     fix-kafka)
-        cd "$SCRIPT_DIR/deploy"
-        ./fix-kafka-id.sh fix
-        ;;
-    fix-kafka-dev)
         fix_kafka_dev
         ;;
     api)

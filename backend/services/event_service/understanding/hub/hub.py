@@ -5,7 +5,6 @@ Understanding Hub - 理解中心
 职责：
 - 整合 Parser、Classifier、Extractor、Engine
 - 提供情报报告生成
-- 管理 Odaily Skill 和其他 Skill
 - 生成交易上下文
 """
 
@@ -20,14 +19,6 @@ from infrastructure.resilience import (
 )
 
 from ..engine.engine import UnderstandingEngine, MarketContext, EnrichedContent, get_understanding_engine
-from ..skills.odaily.collector import (
-    OdailySkillCollector,
-    DailyIntelligence,
-    CryptoEvent,
-    WhaleActivity,
-    TomorrowEvent,
-    get_odaily_collector
-)
 
 logger = get_logger("event_service.hub")
 
@@ -79,7 +70,6 @@ class UnderstandingHub:
 
     def __init__(self):
         self.engine: Optional[UnderstandingEngine] = None
-        self.odaily: Optional[OdailySkillCollector] = None
 
         self.circuit_breaker = CircuitBreaker(CircuitBreakerConfig(
             name="understanding_hub_circuit",
@@ -96,7 +86,6 @@ class UnderstandingHub:
     async def initialize(self):
         """初始化"""
         self.engine = await get_understanding_engine()
-        self.odaily = get_odaily_collector()
 
     def register_component(self, name: str, component: Any):
         """注册组件"""

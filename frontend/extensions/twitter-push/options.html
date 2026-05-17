@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>TradeAgent Twitter Push - 设置</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #fff;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        h1 img {
+            width: 32px;
+            height: 32px;
+        }
+        
+        .subtitle {
+            color: #888;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #4fc3f7;
+        }
+        
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        label {
+            display: block;
+            font-size: 13px;
+            color: #aaa;
+            margin-bottom: 6px;
+        }
+        
+        input[type="text"],
+        input[type="number"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            color: #fff;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+        
+        input[type="text"]:focus,
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #4fc3f7;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        .checkbox-label {
+            font-size: 14px;
+            color: #ddd;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #4fc3f7 0%, #29b6f6 100%);
+            color: #000;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(79, 195, 247, 0.4);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            margin-left: 10px;
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            display: none;
+        }
+        
+        .status.success {
+            display: block;
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid rgba(76, 175, 80, 0.5);
+            color: #81c784;
+        }
+        
+        .status.error {
+            display: block;
+            background: rgba(244, 67, 54, 0.2);
+            border: 1px solid rgba(244, 67, 54, 0.5);
+            color: #e57373;
+        }
+        
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+        
+        .connection-status.connected {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+        
+        .connection-status.disconnected {
+            background: rgba(244, 67, 54, 0.2);
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        
+        .connected .status-dot {
+            background: #4caf50;
+            box-shadow: 0 0 8px #4caf50;
+        }
+        
+        .disconnected .status-dot {
+            background: #f44336;
+            box-shadow: 0 0 8px #f44336;
+        }
+        
+        .status-text {
+            font-size: 13px;
+        }
+        
+        .connected .status-text {
+            color: #81c784;
+        }
+        
+        .disconnected .status-text {
+            color: #e57373;
+        }
+        
+        .test-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 8px 16px;
+            font-size: 12px;
+        }
+        
+        .test-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .help-text {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #555;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            <img src="icons/icon48.png" alt="Logo">
+            Twitter Push 设置
+        </h1>
+        <p class="subtitle">配置 TradeAgent Twitter 推送通知扩展</p>
+        
+        <div class="card">
+            <div class="card-title">📡 连接状态</div>
+            <div id="connectionStatus" class="connection-status disconnected">
+                <span class="status-dot"></span>
+                <span class="status-text">未连接</span>
+                <button id="testConnection" class="btn test-btn" style="margin-left: auto;">测试连接</button>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-title">⚙️ 服务器配置</div>
+            
+            <div class="form-group">
+                <label for="wsUrl">WebSocket 服务器地址</label>
+                <input type="text" id="wsUrl" placeholder="ws://localhost:8765/twitter-push">
+                <p class="help-text">例如: ws://localhost:8765/twitter-push 或 ws://your-server.com:8765/twitter-push</p>
+            </div>
+            
+            <div class="form-group">
+                <label for="reconnectInterval">重连间隔 (毫秒)</label>
+                <input type="number" id="reconnectInterval" value="3000" min="1000" max="30000">
+            </div>
+            
+            <div class="form-group">
+                <label for="maxReconnectAttempts">最大重连次数</label>
+                <input type="number" id="maxReconnectAttempts" value="10" min="1" max="100">
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-title">🔔 通知设置</div>
+            
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="enableNotifications" checked>
+                    <label class="checkbox-label" for="enableNotifications">启用桌面通知</label>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="enableSound" checked>
+                    <label class="checkbox-label" for="enableSound">启用通知声音</label>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="autoReconnect" checked>
+                    <label class="checkbox-label" for="autoReconnect">断开后自动重连</label>
+                </div>
+            </div>
+        </div>
+        
+        <div style="display: flex; align-items: center;">
+            <button id="save" class="btn btn-primary">保存设置</button>
+            <button id="reset" class="btn btn-secondary">恢复默认</button>
+        </div>
+        
+        <div id="status" class="status"></div>
+        
+        <div class="footer">
+            TradeAgent Twitter Push Extension v1.0.0
+        </div>
+    </div>
+    
+    <script src="options.js"></script>
+</body>
+</html>

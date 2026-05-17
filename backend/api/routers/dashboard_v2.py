@@ -45,7 +45,7 @@ class RegimeResponse(BaseModel):
 
 
 class RiskResponse(BaseModel):
-    total: int
+    total: float
     level: str
     components: dict
 
@@ -236,7 +236,7 @@ async def get_risk():
     risk_state = await reader.get_risk_state()
     
     return RiskResponse(
-        total=risk_state.get("score", 0),
+        total=float(risk_state.get("score", 0) or 0),
         level=risk_state.get("level", "unknown"),
         components=risk_state.get("components", {}),
     )
@@ -319,11 +319,14 @@ async def get_news(
     
     if redis:
         try:
-            news_data = await redis.get("news:all")
-            if news_data:
-                if isinstance(news_data, str):
-                    news_data = json.loads(news_data)
-                all_news = news_data
+            news_items = await redis.lrange("news:latest", 0, pageSize - 1)
+            if news_items:
+                all_news = []
+                for item in news_items:
+                    if isinstance(item, str):
+                        all_news.append(json.loads(item))
+                    else:
+                        all_news.append(item)
         except Exception as e:
             logger.error(f"Redis error: {e}")
     

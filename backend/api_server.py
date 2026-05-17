@@ -17,9 +17,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from api import api_router
 
 from infrastructure.logging import get_logger
-from infrastructure.runtime_governor import (
+from infrastructure.runtime import (
     get_runtime_governor,
-    get_websocket_runtime,
     RuntimeMode,
 )
 from infrastructure.websocket import get_ws_gateway
@@ -30,35 +29,30 @@ logger = get_logger("api_server")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=" * 60)
-    logger.info("  Starting Runtime Governor...")
+    logger.info("  Starting API Server...")
     logger.info("=" * 60)
     
     governor = get_runtime_governor()
-    ws_runtime = get_websocket_runtime(governor)
-    
     await governor.start()
-    await ws_runtime.start()
     
     ws_gateway = await get_ws_gateway()
-    import asyncio
     asyncio.create_task(ws_gateway.run_redis_subscriber())
     logger.info("WebSocket Gateway Redis subscriber started")
     
-    logger.info("Runtime Governor started successfully")
+    logger.info("API Server started successfully")
     logger.info(f"  Mode: {governor.get_mode().value}")
     logger.info(f"  Queue size: {governor.priority_queue.size()}")
     
     yield
     
     logger.info("=" * 60)
-    logger.info("  Shutting down Runtime Governor...")
+    logger.info("  Shutting down API Server...")
     logger.info("=" * 60)
     
     await ws_gateway.shutdown()
-    await ws_runtime.stop()
     await governor.stop()
     
-    logger.info("Runtime Governor stopped")
+    logger.info("API Server stopped")
 
 
 app = FastAPI(

@@ -183,13 +183,29 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
     wsService.subscribe(channelNames)
     
     wsService.on('channel:dashboard', (data) => {
-      if (data.type === 'state_update') {
+      if (data.type === 'data_update') {
+        set({ dashboard: data.data })
+      } else if (data.type === 'state_update') {
         set({ dashboard: data.data })
       }
     })
 
     wsService.on('channel:decision', (data) => {
-      if (data.type === 'new_decision') {
+      if (data.type === 'data_update') {
+        const decision = data.data
+        if (decision && decision.symbol) {
+          set((state) => ({
+            decisions: {
+              ...state.decisions,
+              latest: {
+                ...state.decisions.latest,
+                [decision.symbol]: decision,
+              },
+              history: [decision, ...state.decisions.history].slice(0, 100),
+            },
+          }))
+        }
+      } else if (data.type === 'new_decision') {
         const decision = data.decision
         set((state) => ({
           decisions: {
@@ -205,7 +221,14 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
     })
 
     wsService.on('channel:risk', (data) => {
-      if (data.type === 'risk_check') {
+      if (data.type === 'data_update') {
+        set((state) => ({
+          risk: {
+            ...state.risk,
+            ...data.data,
+          },
+        }))
+      } else if (data.type === 'risk_check') {
         set((state) => ({
           risk: {
             ...state.risk,
@@ -216,7 +239,21 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
     })
 
     wsService.on('channel:position', (data) => {
-      if (data.type === 'position_update') {
+      if (data.type === 'data_update') {
+        const position = data.data
+        const symbol = data.event_type === 'position' ? (position?.symbol || 'BTC') : 'BTC'
+        if (position) {
+          set((state) => ({
+            positions: {
+              ...state.positions,
+              current: {
+                ...state.positions.current,
+                [symbol]: position,
+              },
+            },
+          }))
+        }
+      } else if (data.type === 'position_update') {
         const position = data.position
         if (position) {
           set((state) => ({
@@ -233,7 +270,12 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
     })
 
     wsService.on('channel:timeline', (data) => {
-      if (data.type === 'new_event') {
+      if (data.type === 'data_update') {
+        const event = data.data
+        if (event) {
+          get().addTimelineEvent(event)
+        }
+      } else if (data.type === 'new_event') {
         get().addTimelineEvent(data.event)
       }
     })

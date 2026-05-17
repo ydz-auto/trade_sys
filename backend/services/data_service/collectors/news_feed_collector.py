@@ -25,6 +25,14 @@ from infrastructure.resilience import (
     create_default_chain
 )
 
+# 导入中文源配置
+try:
+    from shared.config.defaults.business.news_sources import RSS_NEWS_SOURCES
+    HAVE_CONFIG = True
+except ImportError:
+    HAVE_CONFIG = False
+    RSS_NEWS_SOURCES = {}
+
 logger = get_logger("collectors.news_feed")
 
 
@@ -86,18 +94,30 @@ class RSSFeedCollector:
     
     def _init_default_sources(self):
         """初始化默认源"""
-        default_sources = {
-            "cointelegraph": "https://cointelegraph.com/rss",
-            "cryptonews": "https://cryptonews.com/news/feed/",
-            "decrypt": "https://decrypt.co/feed",
-            "theblock": "https://www.theblock.co/rss.xml",
-            "bitcoinist": "https://bitcoinist.com/feed/",
-            "dailyhodl": "https://dailyhodl.com/feed/",
-            "coindesk": "https://www.coindesk.com/arc/outboundfeeds/rss/",
-        }
-        
-        for name, url in default_sources.items():
-            self.add_source(name, url)
+        # 优先从配置文件加载
+        if HAVE_CONFIG and RSS_NEWS_SOURCES:
+            for name, url in RSS_NEWS_SOURCES.items():
+                # 中文源优先级稍高
+                priority = 1 if name in ["odaily", "jinse", "chainnews", "panews", "theblockbeats", "aicoin", "bajie", "cryptoforecast"] else 2
+                self.add_source(name, url, enabled=True, priority=priority)
+            logger.info(f"Loaded {len(RSS_NEWS_SOURCES)} RSS sources from config")
+        else:
+            # 回退到默认源
+            default_sources = {
+                "cointelegraph": "https://cointelegraph.com/rss",
+                "cryptonews": "https://cryptonews.com/news/feed/",
+                "decrypt": "https://decrypt.co/feed",
+                "theblock": "https://www.theblock.co/rss.xml",
+                "bitcoinist": "https://bitcoinist.com/feed/",
+                "dailyhodl": "https://dailyhodl.com/feed/",
+                "coindesk": "https://www.coindesk.com/arc/outboundfeeds/rss/",
+                # 添加常用中文源
+                "odaily": "https://www.odaily.com/feed",
+                "jinse": "https://www.jinse.com/rss.xml",
+            }
+            
+            for name, url in default_sources.items():
+                self.add_source(name, url)
     
     def add_source(
         self,
@@ -148,23 +168,12 @@ class RSSFeedCollector:
         )
     
     async def _collect_source(self, source: RSSFeedSource) -> List[NewsArticle]:
-        """采集单个源"""
-        async def _fetch():
-            return await self._fetch_feed(source)
-        
-        fallback_chain = create_default_chain(
-            primary_name=source.name,
-            static_value=[]
-        )
-        
+        """采集单个源 - 简化版"""
         try:
-            result = await source.circuit_breaker.execute(
-                lambda: source.retry_policy.execute(_fetch)
-            )
-            return result
+            return await self._fetch_feed(source)
         except Exception as e:
-            logger.warning(f"Source {source.name} failed, using fallback: {e}")
-            return await fallback_chain.execute(_fetch)
+            logger.warning(f"Failed to collect from {source.name}: {e}")
+            return []
     
     async def _fetch_feed(self, source: RSSFeedSource) -> List[NewsArticle]:
         """实际获取 RSS Feed"""

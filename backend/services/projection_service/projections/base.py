@@ -17,7 +17,6 @@ from dataclasses import dataclass, field
 
 from infrastructure.logging import get_logger
 from infrastructure.cache.redis_client import RedisClient, get_redis_client, init_redis
-from infrastructure.websocket.manager import ws_manager
 from infrastructure.messaging.schema_registry import get_schema_registry, BaseEventV2
 
 
@@ -233,15 +232,13 @@ class BaseProjection(ABC):
             return False
     
     async def push_websocket(self, channel: str, data: Dict[str, Any]) -> None:
-        """推送 WebSocket 消息"""
+        """推送 WebSocket 消息（通过 Redis Pub/Sub）"""
         try:
-            message = {
-                "channel": channel,
-                "data": data,
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-            await ws_manager.broadcast(message)
-            self._stats.ws_pushes += 1
+            if self.redis:
+                await self.redis.publish(channel, json.dumps(data))
+                self._stats.ws_pushes += 1
+            else:
+                self.logger.warning(f"Redis not available, cannot push to {channel}")
         except Exception as e:
             self.logger.error(f"WebSocket push failed: {e}")
     

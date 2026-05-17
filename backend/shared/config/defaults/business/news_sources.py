@@ -3,36 +3,70 @@
 按地区和类型分类，覆盖全球主要加密货币媒体
 """
 
+# RSS Feed 源
 RSS_NEWS_SOURCES = {
     # 英文媒体
-    "coindesk": "https://www.coindesk.com/arc/outboundfeeds/rss/",
     "cointelegraph": "https://cointelegraph.com/rss",
     "cryptonews": "https://cryptonews.com/news/feed/",
     "theblock": "https://www.theblock.co/rss.xml",
     "decrypt": "https://decrypt.co/feed",
-    "coinmarketcap": "https://coinmarketcap.com/alexandria RSS",
     "bitcoinist": "https://bitcoinist.com/feed/",
-    " CCN": "https://www.ccn.com/feed/",
-    "newsBTC": "https://www.newsbtc.com/feed/",
-    "dailyHODL": "https://dailyhodl.com/feed/",
-    "blockworks": "https://blockworks.co/news/feed",
-
-    # 中文媒体
-    "jinse": "https://jinse.cc/rss",
-    "odaily": "https://www.odaily.com/feed",
-    "chainnews": "https://www.chainnews.com/rss",
-    "aicoin": "https://www.aicoin.com/rss/news",
-    "bihu": "https://mp.weixin.qq.com/rss?openid=",
-
-    # DeFi / 合约
     "defiprime": "https://defiprime.com/feed.xml",
-    "thedefiant": "https://thedefiant.io/feed/",
-
+    
+    # 中文加密媒体 - 使用正确的源
+    "odaily": "https://www.odaily.news/feed",
+    
     # 监管
     "cointelegraph_regulation": "https://cointelegraph.com/rss",
 }
 
-# REST API 来源
+# 中文加密媒体配置（有些需要专门适配器）
+CHINESE_MEDIA_CONFIG = {
+    "odaily": {
+        "name": "星球日报",
+        "url": "https://www.odaily.news",
+        "api_path": "/api/v1/news",
+        "enabled": True
+    },
+    "jinse": {
+        "name": "金色财经", 
+        "url": "https://www.jinse.com",
+        "api_path": "/openapi/v1/information",
+        "enabled": True
+    },
+    "chainnews": {
+        "name": "链闻",
+        "url": "https://www.chainnews.com",
+        "enabled": True
+    },
+    "panews": {
+        "name": "PANews",
+        "url": "https://www.panews.com",
+        "enabled": True
+    },
+    "theblockbeats": {
+        "name": "区块律动",
+        "url": "https://www.theblockbeats.info",
+        "enabled": True
+    },
+    "aicoin": {
+        "name": "AICoin",
+        "url": "https://www.aicoin.com",
+        "enabled": True
+    },
+    "8btc": {
+        "name": "巴比特",
+        "url": "https://www.8btc.com",
+        "enabled": True
+    },
+    "techflow": {
+        "name": "深潮",
+        "url": "https://www.techflowpost.com",
+        "enabled": True
+    }
+}
+
+# REST API 源
 REST_NEWS_SOURCES = [
     {
         "name": "cryptopanic",
@@ -66,4 +100,18 @@ REDDIT_KEYWORDS = [
     "ethereum",
     "cryptocurrency",
     "blockchain",
+]
+
+# 中文加密媒体预设列表
+CHINESE_CRYPTO_MEDIA = [
+    "Odaily 星球日报",
+    "Jinse 金色财经",
+    "ChainNews 链闻",
+    "PANews",
+    "TheBlockBeats 律动",
+    "AICoin",
+    "8BTC 巴比特",
+    "CryptoForecast",
+    "TechFlow 深潮",
+    "BlockBeats 区块律动",
 ]

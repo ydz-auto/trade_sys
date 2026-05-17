@@ -360,26 +360,27 @@ async def _build_news(state: Dict[str, Any]) -> List[NewsItem]:
     if redis:
         try:
             import json
-            news_key = "news:all:20"
-            news_list = await redis.get(news_key)
+            news_items = await redis.lrange("news:latest", 0, 9)
             
-            if news_list:
-                if isinstance(news_list, str):
-                    news_list = json.loads(news_list)
-                
-                return [
-                    NewsItem(
+            if news_items:
+                result = []
+                for item in news_items:
+                    if isinstance(item, str):
+                        n = json.loads(item)
+                    else:
+                        n = item
+                    
+                    result.append(NewsItem(
                         id=n.get("id", ""),
                         title=n.get("title", ""),
                         content=n.get("content", ""),
                         source=n.get("source", "unknown"),
                         sentiment=n.get("sentiment", "neutral"),
                         sentiment_score=n.get("sentiment_score", 0.5),
-                        published=n.get("published_at", int(datetime.utcnow().timestamp())),
+                        published=n.get("published", int(datetime.utcnow().timestamp())),
                         url=n.get("url"),
-                    )
-                    for n in news_list[:10]
-                ]
+                    ))
+                return result
         except Exception:
             pass
     

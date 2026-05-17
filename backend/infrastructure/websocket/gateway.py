@@ -12,10 +12,12 @@ WebSocket Gateway - 实时状态推送
 - channel:timeline   → 事件时间线
 - channel:signal     → 信号更新
 - channel:order      → 订单更新
+- channel:prices     → 价格更新
 """
 
 import asyncio
 import json
+import time
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Set
 from dataclasses import dataclass, field
@@ -37,6 +39,23 @@ class ConnectionState(str, Enum):
 
 
 @dataclass
+class ThrottleConfig:
+    """频道节流配置（毫秒）"""
+    prices: int = 100
+    dashboard: int = 1000
+    position: int = 500
+    risk: int = 500
+    signal: int = 1000
+    decision: int = 1000
+    timeline: int = 5000
+    order: int = 100
+    
+    def get_interval(self, channel: str) -> int:
+        channel_type = channel.replace("channel:", "")
+        return getattr(self, channel_type, 1000)
+
+
+@dataclass
 class WSConnection:
     """WebSocket 连接信息"""
     websocket: WebSocket
@@ -55,17 +74,30 @@ class WSGateway:
     WebSocket Gateway
     
     管理所有 WebSocket 连接，推送实时状态
+    
+    功能：
+    - 连接管理
+    - 频道订阅
+    - 消息广播
+    - Redis Pub/Sub 订阅
+    - 推送节流控制
     """
     
-    def __init__(self):
+    DEFAULT_THROTTLE = ThrottleConfig()
+    
+    def __init__(self, max_connections: int = 1000):
         self.connections: Dict[str, WSConnection] = {}
         self.channel_subscribers: Dict[str, Set[str]] = {}
         self.redis: Optional[RedisClient] = None
         self._running = False
+        self._max_connections = max_connections
+        self._throttle_state: Dict[str, float] = {}
+        self._throttle_config = self.DEFAULT_THROTTLE
         self._stats = {
             "total_connections": 0,
             "active_connections": 0,
             "messages_sent": 0,
+            "messages_dropped": 0,
             "errors": 0,
         }
     
@@ -105,6 +137,11 @@ class WSGateway:
         Returns:
             connection_id
         """
+        if len(self.connections) >= self._max_connections:
+            logger.warning("Max connections reached, rejecting new connection")
+            await websocket.close(code=1013, reason="Server busy")
+            raise RuntimeError("Max connections reached")
+        
         await websocket.accept()
         
         connection_id = f"conn_{id(websocket)}"
@@ -198,6 +235,19 @@ class WSGateway:
             "channels": list(connection.subscribed_channels),
         })
     
+    def _should_send_channel(self, channel: str) -> bool:
+        """检查是否应该发送到该频道（节流控制）"""
+        interval_ms = self._throttle_config.get_interval(channel)
+        
+        now = time.time() * 1000
+        last_send = self._throttle_state.get(channel, 0)
+        
+        if now - last_send < interval_ms:
+            return False
+        
+        self._throttle_state[channel] = now
+        return True
+    
     async def broadcast(self, channel: str, message: Dict[str, Any]) -> int:
         """
         广播消息到频道
@@ -205,6 +255,10 @@ class WSGateway:
         Returns:
             发送成功的连接数
         """
+        if not self._should_send_channel(channel):
+            self._stats["messages_dropped"] += 1
+            return 0
+        
         subscribers = self.channel_subscribers.get(channel, set())
         
         if not subscribers:
@@ -217,7 +271,6 @@ class WSGateway:
         }
         
         success_count = 0
-        disconnected = []
         
         for connection_id in subscribers:
             connection = self.connections.get(connection_id)
@@ -307,34 +360,45 @@ class WSGateway:
             logger.warning("Redis not available, skipping pub/sub")
             return
         
-        try:
-            pubsub = self.redis.client.pubsub()
-            await pubsub.subscribe(*ProjectionChannels.all())
-            
-            logger.info(f"Subscribed to Redis channels: {ProjectionChannels.all()}")
-            
-            msg_count = 0
-            async for message in pubsub.listen():
-                if not self._running:
-                    break
+        while self._running:
+            try:
+                pubsub = self.redis.client.pubsub(ignore_subscribe_messages=True)
+                await pubsub.subscribe(*ProjectionChannels.all())
                 
-                if message["type"] == "message":
-                    channel = message["channel"]
-                    data = message["data"]
+                logger.info(f"Subscribed to Redis channels: {ProjectionChannels.all()}")
+                
+                msg_count = 0
+                async for message in pubsub.listen():
+                    if not self._running:
+                        break
                     
-                    try:
-                        if isinstance(data, str):
-                            data = json.loads(data)
-                    except json.JSONDecodeError:
-                        pass
-                    
-                    await self.broadcast(channel, data)
-                    msg_count += 1
-                    if msg_count % 100 == 0:
-                        logger.info(f"[WS-GATEWAY] Processed {msg_count} messages")
+                    if message["type"] == "message":
+                        channel = message["channel"]
+                        data = message["data"]
+                        
+                        try:
+                            if isinstance(data, str):
+                                data = json.loads(data)
+                        except json.JSONDecodeError:
+                            pass
+                        
+                        await self.broadcast(channel, data)
+                        msg_count += 1
+                        if msg_count % 100 == 0:
+                            logger.info(f"[WS-GATEWAY] Processed {msg_count} messages")
 
-        except Exception as e:
-            logger.error(f"Redis subscriber error: {e}")
+            except Exception as e:
+                logger.error(f"Redis subscriber error: {e}")
+                if self._running:
+                    logger.info("Reconnecting to Redis in 5 seconds...")
+                    await asyncio.sleep(5)
+                else:
+                    break
+    
+    def set_throttle_config(self, config: ThrottleConfig) -> None:
+        """设置节流配置"""
+        self._throttle_config = config
+        logger.info(f"Throttle config updated: {config}")
     
     @property
     def stats(self) -> Dict[str, Any]:
@@ -344,6 +408,11 @@ class WSGateway:
             "channels": {
                 channel: len(subscribers)
                 for channel, subscribers in self.channel_subscribers.items()
+            },
+            "throttle_config": {
+                "prices": self._throttle_config.prices,
+                "dashboard": self._throttle_config.dashboard,
+                "position": self._throttle_config.position,
             },
         }
 

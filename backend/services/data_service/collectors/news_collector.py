@@ -17,6 +17,14 @@ from infrastructure.llm import get_llm_pool, LLMPoolManager
 from .base_collector import BaseCollector, CollectorResult, CollectorStatus
 from infrastructure.resilience import CircuitBreakerConfig, RetryConfig
 
+# 导入新闻源配置
+try:
+    from shared.config.defaults.business.news_sources import RSS_NEWS_SOURCES
+    HAS_NEWS_CONFIG = True
+except ImportError:
+    HAS_NEWS_CONFIG = False
+    RSS_NEWS_SOURCES = {}
+
 logger = get_logger("collectors.news")
 
 
@@ -134,12 +142,17 @@ class NewsCollector(BaseCollector):
                 self.use_llm = False
 
     def _init_sources(self) -> Dict[str, str]:
+        if HAS_NEWS_CONFIG and RSS_NEWS_SOURCES:
+            logger.info(f"Loading {len(RSS_NEWS_SOURCES)} news sources from config")
+            return RSS_NEWS_SOURCES.copy()
+        
         return {
             "cointelegraph": "https://cointelegraph.com/rss",
             "cryptonews": "https://cryptonews.com/news/feed/",
             "decrypt": "https://decrypt.co/feed",
             "theblock": "https://www.theblock.co/rss.xml",
             "bitcoinist": "https://bitcoinist.com/feed/",
+            "odaily": "https://www.odaily.news/feed",  # 中文源
         }
 
     async def collect(self) -> CollectorResult:

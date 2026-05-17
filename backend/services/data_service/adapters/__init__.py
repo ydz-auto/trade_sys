@@ -4,28 +4,30 @@ Adapters Module - 适配器层
 所有数据源适配器都在这里注册。
 
 数据源列表：
-- OdailySkillAdapter: ClawHub Odaily Skill (M1-M5)
+- OdailyAdapter: Odaily 星球日报 (通过 odaily-skill)
 - CryptoPanicAdapter: CryptoPanic 新闻聚合
 - WhaleAlertAdapter: 链上巨鲸监控
-- TwitterAdapter: Twitter/X (真实 API 支持)
-- NewsAdapter: 通用新闻适配器
+- TwitterAdapter: Twitter/X
+- QQAdapter: QQ 数据
 
 使用示例：
-    from adapters import get_adapter_registry
+    from adapters import get_adapter_registry, OdailyAdapter
     
     registry = get_adapter_registry()
+    registry.register(OdailyAdapter())
     events = await registry.collect_all()
 """
 
-from .skill_adapter import (
-    SkillAdapter,
+from .base import (
+    BaseAdapter,
     AdapterConfig,
     AdapterRegistry,
-    OdailySkillAdapter,
-    NewsAdapter,
-    PANewsAdapter,
-    get_adapter_registry
+    get_adapter_registry,
 )
+
+from .odaily_adapter import OdailyAdapter, get_odaily_adapter
+
+OdailySkillAdapter = OdailyAdapter
 
 from .cryptopanic_adapter import CryptoPanicAdapter
 from .whale_alert_adapter import WhaleAlertAdapter
@@ -33,20 +35,17 @@ from .twitter_adapter import TwitterAdapter
 from .qq_adapter import QQAdapter
 
 __all__ = [
-    # 基础类
-    "SkillAdapter",
+    "BaseAdapter",
     "AdapterConfig",
     "AdapterRegistry",
     "get_adapter_registry",
     
-    # 新闻适配器
+    "OdailyAdapter",
     "OdailySkillAdapter",
-    "CryptoPanicAdapter",
-    "NewsAdapter",
-    "PANewsAdapter",
+    "get_odaily_adapter",
     
-    # 社交/链上适配器
-    "TwitterAdapter",
+    "CryptoPanicAdapter",
     "WhaleAlertAdapter",
+    "TwitterAdapter",
     "QQAdapter",
 ]

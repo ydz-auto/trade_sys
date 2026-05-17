@@ -141,6 +141,10 @@ class RedisClient:
     async def lrange(self, key: str, start: int = 0, end: int = -1) -> List[str]:
         return await self.client.lrange(key, start, end)
 
+    async def ltrim(self, key: str, start: int, end: int) -> bool:
+        """裁剪列表，只保留指定范围内的元素"""
+        return await self.client.ltrim(key, start, end)
+
     async def lpop(self, key: str) -> Optional[str]:
         return await self.client.lpop(key)
 

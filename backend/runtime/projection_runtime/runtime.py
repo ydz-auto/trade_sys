@@ -209,25 +209,6 @@ class ProjectionRuntime(BaseRuntime):
                     self.logger.error(f"Error in {projection.name}: {e}")
         
         self.metrics.increment("events_processed")
-        
-        if self._redis:
-            try:
-                channel = event.get("channel") or self.EVENT_TYPE_TO_CHANNEL.get(event_type, "channel:dashboard")
-                projection_data = event.get("data", {})
-                
-                payload = {
-                    "type": "data_update",
-                    "event_type": event_type,
-                    "channel": channel,
-                    "data": projection_data,
-                    "timestamp": event.get("timestamp", ""),
-                }
-                
-                await self._redis.publish(channel, json.dumps(payload))
-                self.metrics.increment("events_published")
-                self.logger.info(f"[REDIS-PUB] event={event_type} channel={channel}")
-            except Exception as e:
-                self.logger.warning(f"Failed to publish to Redis: {e}")
     
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""
