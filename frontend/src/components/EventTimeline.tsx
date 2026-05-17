@@ -8,11 +8,15 @@
  *   09:34 LONG signal generated
  *   09:35 Risk approved
  *   09:35 Order executed
+ * 
+ * 支持折叠/展开模式：
+ *   - 折叠时：单行滚动显示最新事件
+ *   - 展开时：完整列表显示
  */
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { Card, Tag, Button, Empty, Spin, Space, Typography } from 'antd'
-import { ReloadOutlined, ClockCircleOutlined } from '@ant-design/icons'
+import { ReloadOutlined, ClockCircleOutlined, UpOutlined, DownOutlined, ExpandOutlined, CompressOutlined } from '@ant-design/icons'
 import { useTimeline } from '../hooks/useRealtime'
 import { useTimelineHistory } from '../hooks/useTimelineHistory'
 
@@ -23,6 +27,8 @@ interface EventTimelineProps {
   symbol?: string
   showFilters?: boolean
   enableInfiniteScroll?: boolean
+  collapsible?: boolean
+  defaultCollapsed?: boolean
 }
 
 const severityColors: Record<string, string> = {
@@ -46,10 +52,15 @@ const eventTypeIcons: Record<string, string> = {
 }
 
 export function EventTimeline({ 
-  maxHeight = '300px',
+  maxHeight = '400px',
   symbol,
   enableInfiniteScroll = true,
+  collapsible = true,
+  defaultCollapsed = true,
 }: EventTimelineProps) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed)
+  const [currentEventIndex, setCurrentEventIndex] = useState(0)
+  
   const realtimeEvents = useTimeline(100)
   const { 
     events: historyEvents, 
@@ -71,6 +82,17 @@ export function EventTimeline({
     ? mergeEvents(filteredRealtimeEvents, historyEvents)
     : filteredRealtimeEvents
 
+  const currentEvent = allEvents[currentEventIndex]
+
+  useEffect(() => {
+    if (collapsed && allEvents.length > 0) {
+      const interval = setInterval(() => {
+        setCurrentEventIndex(prev => (prev + 1) % allEvents.length)
+      }, 3000)
+      return () => clearInterval(interval)
+    }
+  }, [collapsed, allEvents.length])
+
   const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
     const [target] = entries
     if (target.isIntersecting && hasMore && !loading) {
@@ -79,6 +101,8 @@ export function EventTimeline({
   }, [hasMore, loading, loadMore])
 
   useEffect(() => {
+    if (collapsed) return
+    
     const option = {
       root: null,
       rootMargin: '20px',
@@ -96,32 +120,73 @@ export function EventTimeline({
         observerRef.current.disconnect()
       }
     }
-  }, [handleObserver])
+  }, [handleObserver, collapsed])
 
-  return (
-    <Card
-      size="small"
-      title={
-        <Space>
-          <ClockCircleOutlined />
-          <span>Event Timeline</span>
-          <Tag color="blue">{allEvents.length} events</Tag>
-        </Space>
-      }
-      extra={
+  const toggleCollapse = () => {
+    setCollapsed(!collapsed)
+    if (!collapsed) {
+      setCurrentEventIndex(0)
+    }
+  }
+
+  const renderCollapsedView = () => (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        padding: '8px 16px',
+        cursor: 'pointer',
+      }}
+      onClick={toggleCollapse}
+    >
+      <span style={{ fontSize: '18px', lineHeight: 1 }}>
+        {currentEvent ? (eventTypeIcons[currentEvent.event_type] || '📌') : '📌'}
+      </span>
+      
+      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Text style={{ fontSize: '12px', color: '#64748B', fontFamily: 'monospace' }}>
+            {currentEvent?.display_time || currentEvent?.timestamp?.split('T')[1]?.split('.')[0] || '--:--:--'}
+          </Text>
+          {currentEvent?.symbol && (
+            <Tag style={{ fontSize: '10px', padding: '0 4px', margin: 0 }}>
+              {currentEvent.symbol}
+            </Tag>
+          )}
+        </div>
+        
+        <Text 
+          style={{ 
+            fontSize: '13px',
+            color: currentEvent ? (severityColors[currentEvent.severity] || '#E2E8F0') : '#64748B',
+            display: 'block',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {currentEvent?.title || 'No events yet. Waiting for runtime activity...'}
+        </Text>
+      </div>
+
+      <Space>
+        <Tag color="blue">{allEvents.length}</Tag>
         <Button 
           type="text" 
           size="small" 
-          icon={<ReloadOutlined />} 
-          onClick={refresh}
-        >
-          Refresh
-        </Button>
-      }
-      styles={{
-        body: { padding: '8px 0', maxHeight, overflowY: 'auto' }
-      }}
-    >
+          icon={<ExpandOutlined />}
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleCollapse()
+          }}
+        />
+      </Space>
+    </div>
+  )
+
+  const renderExpandedView = () => (
+    <>
       {allEvents.length === 0 && !loading ? (
         <Empty 
           description="No events yet" 
@@ -228,6 +293,46 @@ export function EventTimeline({
           )}
         </>
       )}
+    </>
+  )
+
+  return (
+    <Card
+      size="small"
+      title={
+        <Space onClick={collapsible ? toggleCollapse : undefined} style={{ cursor: collapsible ? 'pointer' : 'default' }}>
+          <ClockCircleOutlined />
+          <span>Event Timeline</span>
+          {collapsed && <Tag color="blue">{allEvents.length}</Tag>}
+        </Space>
+      }
+      extra={
+        <Space>
+          <Button 
+            type="text" 
+            size="small" 
+            icon={<ReloadOutlined />} 
+            onClick={refresh}
+          />
+          {collapsible && (
+            <Button 
+              type="text" 
+              size="small" 
+              icon={collapsed ? <ExpandOutlined /> : <CompressOutlined />}
+              onClick={toggleCollapse}
+            />
+          )}
+        </Space>
+      }
+      styles={{
+        body: { 
+          padding: collapsed ? 0 : '8px 0', 
+          maxHeight: collapsed ? 'auto' : maxHeight, 
+          overflowY: collapsed ? 'visible' : 'auto' 
+        }
+      }}
+    >
+      {collapsed ? renderCollapsedView() : renderExpandedView()}
     </Card>
   )
 }
