@@ -1,10 +1,9 @@
-import { Layout, Button, Segmented, Popconfirm, Dropdown, App } from 'antd'
+import { Layout, Button, Dropdown, App } from 'antd'
 import { ReloadOutlined, MenuOutlined, SyncOutlined } from '@ant-design/icons'
 import { useState, useEffect } from 'react'
-import { useTradingStore } from '../store/tradingStore'
-import type { SystemMode } from '../types'
 import type { MenuProps } from 'antd'
 import api from '../services/api'
+import { TradingModeSwitcher } from './TradingModeSwitcher'
 
 const { Header } = Layout
 const { useApp } = App
@@ -22,9 +21,7 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({ onMobileMenuToggle }: AppHeaderProps) {
-  const { mode, setMode } = useTradingStore()
   const { message } = useApp()
-  const [showConfirm, setShowConfirm] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshType, setRefreshType] = useState<string | null>(null)
@@ -84,19 +81,6 @@ export function AppHeader({ onMobileMenuToggle }: AppHeaderProps) {
     },
   ]
 
-  const handleModeChange = (newMode: string) => {
-    if (newMode === 'LIVE' && mode !== 'LIVE') {
-      setShowConfirm(true)
-      return
-    }
-    setMode(newMode as SystemMode)
-  }
-
-  const confirmLive = () => {
-    setMode('LIVE')
-    setShowConfirm(false)
-  }
-
   const getTitle = () => {
     const path = window.location.pathname
     const titles: Record<string, string> = {
@@ -149,19 +133,13 @@ export function AppHeader({ onMobileMenuToggle }: AppHeaderProps) {
       <div style={{ 
         display: 'flex', 
         alignItems: 'center', 
-        gap: 6,
+        gap: 8,
         flexShrink: 0
       }}>
-        <Segmented
-          value={mode}
-          onChange={handleModeChange}
-          options={[
-            { label: '回测', value: 'BACKTEST' },
-            { label: '模拟', value: 'SIMULATION' },
-            { label: '实盘', value: 'LIVE' },
-          ]}
-          size="small"
-        />
+        {/* 新的交易模式选择器 */}
+        <div style={{ marginRight: 4 }}>
+          <TradingModeSwitcher />
+        </div>
 
         <Dropdown menu={{ items: refreshMenuItems }} placement="bottomRight">
           <Button
@@ -172,20 +150,6 @@ export function AppHeader({ onMobileMenuToggle }: AppHeaderProps) {
           />
         </Dropdown>
       </div>
-
-      {showConfirm && (
-        <Popconfirm
-          title="确认切换到实盘模式"
-          description="切换到实盘模式将使用真实资金进行交易。请确保您已了解相关风险。"
-          onConfirm={confirmLive}
-          onCancel={() => setShowConfirm(false)}
-          okText="确认实盘"
-          cancelText="取消"
-          okButtonProps={{ danger: true }}
-        >
-          <div />
-        </Popconfirm>
-      )}
     </Header>
   )
 }
