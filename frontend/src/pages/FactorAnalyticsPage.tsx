@@ -126,11 +126,16 @@ export function FactorAnalyticsPage() {
   return (
     <div className="space-y-4">
       <Title level={4}>📊 因子分析</Title>
-      <Alert
-        message="因子分析系统"
-        description="分析因子贡献、相关性、历史表现，帮助优化因子配置。"
-        type="info"
-        showIcon
+      <Card.Meta
+        title={<span style={{ fontSize: 16, fontWeight: 600 }}>因子分析系统</span>}
+        description={
+          <div style={{ marginTop: 8, fontSize: 14, color: '#666' }}>
+            <p style={{ marginBottom: 4 }}>• 分析因子贡献、相关性、历史表现</p>
+            <p style={{ marginBottom: 4 }}>• 帮助优化因子配置和权重分配</p>
+            <p style={{ marginBottom: 0 }}>• 识别冗余因子，提高策略效率</p>
+          </div>
+        }
+        style={{ marginBottom: 16 }}
       />
 
       {/* 关键统计概览 */}

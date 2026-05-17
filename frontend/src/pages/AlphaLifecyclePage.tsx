@@ -295,11 +295,16 @@ export function AlphaLifecyclePage() {
         </Space>
       </div>
 
-      <Alert
-        message="Alpha Lifecycle System"
-        description="管理策略提案、系统快照和因子变更记录。所有变更都会被追踪，确保可复现性。"
-        type="info"
-        showIcon
+      <Card.Meta
+        title={<span style={{ fontSize: 16, fontWeight: 600 }}>Alpha Lifecycle System</span>}
+        description={
+          <div style={{ marginTop: 8, fontSize: 14, color: '#666' }}>
+            <p style={{ marginBottom: 4 }}>• 管理策略提案、系统快照和因子变更记录</p>
+            <p style={{ marginBottom: 4 }}>• 所有变更都会被追踪，确保可复现性</p>
+            <p style={{ marginBottom: 0 }}>• 支持提案审核、回滚和历史版本对比</p>
+          </div>
+        }
+        style={{ marginBottom: 16 }}
       />
 
       <Card>

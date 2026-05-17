@@ -24,3 +24,115 @@ body {
 .ant-empty-description {
   color: #94A3B8 !important;
 }
+
+.ant-alert-description {
+  color: #CBD5E1 !important;
+  font-size: 14px !important;
+}
+
+.ant-alert-message {
+  color: #F1F5F9 !important;
+  font-weight: 500 !important;
+}
+
+.ant-input::placeholder,
+.ant-input-password::placeholder,
+.ant-input-textarea textarea::placeholder {
+  color: #64748B !important;
+}
+
+.ant-select-selection-placeholder {
+  color: #64748B !important;
+}
+
+.ant-card-meta-description {
+  color: #94A3B8 !important;
+}
+
+.ant-card-meta-title {
+  color: #F1F5F9 !important;
+}
+
+.ant-form-item-label > label {
+  color: #E2E8F0 !important;
+}
+
+.ant-modal-content {
+  background-color: #1E293B !important;
+}
+
+.ant-modal-header {
+  background-color: #1E293B !important;
+  border-bottom: 1px solid #334155 !important;
+}
+
+.ant-modal-title {
+  color: #F1F5F9 !important;
+}
+
+.ant-modal-close-x {
+  color: #94A3B8 !important;
+}
+
+.ant-modal-close:hover {
+  color: #F1F5F9 !important;
+}
+
+.ant-table {
+  background: transparent !important;
+}
+
+.ant-table-thead > tr > th {
+  background-color: #1E293B !important;
+  color: #94A3B8 !important;
+  border-bottom: 1px solid #334155 !important;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid #334155 !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background-color: #334155 !important;
+}
+
+.ant-dropdown-menu {
+  background-color: #1E293B !important;
+}
+
+.ant-dropdown-menu-item {
+  color: #E2E8F0 !important;
+}
+
+.ant-dropdown-menu-item:hover {
+  background-color: #334155 !important;
+}
+
+.ant-select-dropdown {
+  background-color: #1E293B !important;
+}
+
+.ant-select-item {
+  color: #E2E8F0 !important;
+}
+
+.ant-select-item-option-active {
+  background-color: #334155 !important;
+}
+
+.ant-select-item-option-selected {
+  background-color: #3B82F6 !important;
+  color: #FFFFFF !important;
+}
+
+.ant-popover-inner {
+  background-color: #1E293B !important;
+}
+
+.ant-popover-title {
+  color: #F1F5F9 !important;
+}
+
+.ant-popover-inner-content {
+  color: #CBD5E1 !important;
+}

@@ -151,11 +151,16 @@ export function RiskPropagationPage() {
   return (
     <div className="space-y-4">
       <Title level={4}>⚠️ 风险传播链</Title>
-      <Alert
-        message="风险传播监控系统"
-        description="追踪风险从数据源到仓位的传播路径，提供完整的风险可视化。"
-        type="info"
-        showIcon
+      <Card.Meta
+        title={<span style={{ fontSize: 16, fontWeight: 600 }}>风险传播监控系统</span>}
+        description={
+          <div style={{ marginTop: 8, fontSize: 14, color: '#666' }}>
+            <p style={{ marginBottom: 4 }}>• 追踪风险从数据源到仓位的传播路径</p>
+            <p style={{ marginBottom: 4 }}>• 提供完整的风险可视化和影响分析</p>
+            <p style={{ marginBottom: 0 }}>• 自动触发风险缓解措施和告警通知</p>
+          </div>
+        }
+        style={{ marginBottom: 16 }}
       />
 
       {/* 关键指标概览 */}
