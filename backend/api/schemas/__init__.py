@@ -48,6 +48,16 @@ from .config import (
     LlmConfigResponse,
     DataSourceConfig,
     DataSourceListResponse,
+    TwitterAccountConfig,
+    TwitterCookieConfigResponse,
+    TwitterAccountCreate,
+    TwitterAccountUpdate,
+    TwitterConfigUpdate,
+    TelegramChannelConfig,
+    TelegramConfigResponse,
+    TelegramChannelCreate,
+    TelegramChannelUpdate,
+    TelegramConfigUpdate,
 )
 
 __all__ = [
@@ -101,4 +111,14 @@ __all__ = [
     "LlmConfigResponse",
     "DataSourceConfig",
     "DataSourceListResponse",
+    "TwitterAccountConfig",
+    "TwitterCookieConfigResponse",
+    "TwitterAccountCreate",
+    "TwitterAccountUpdate",
+    "TwitterConfigUpdate",
+    "TelegramChannelConfig",
+    "TelegramConfigResponse",
+    "TelegramChannelCreate",
+    "TelegramChannelUpdate",
+    "TelegramConfigUpdate",
 ]

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Card, Table, Button, Modal, Form, Input, Select, Switch, Space, Tag, Popconfirm, message, Tabs, InputNumber, Divider, Alert, Typography } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
-import { configApi } from '../services/api/configApiService'
+import { Card, Table, Button, Modal, Form, Input, Select, Switch, Space, Tag, Popconfirm, message, Tabs, InputNumber, Divider, Alert, Typography, Badge } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckCircleOutlined, ExclamationCircleOutlined, TwitterOutlined, SendOutlined } from '@ant-design/icons'
+import { configApi, TwitterAccount, TwitterConfig, TelegramChannel, TelegramConfig } from '../services/api/configApiService'
 import type { NewsSource, CreateNewsSource, UpdateNewsSource, ApiKey, CreateApiKey, UpdateApiKey, LlmConfig, LlmProvider } from '../services/api/configApi'
 
 const { Text } = Typography
@@ -12,6 +12,8 @@ export function DataConfigPage() {
   const [newsSources, setNewsSources] = useState<NewsSource[]>([])
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
   const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null)
+  const [twitterConfig, setTwitterConfig] = useState<TwitterConfig | null>(null)
+  const [telegramConfig, setTelegramConfig] = useState<TelegramConfig | null>(null)
 
   const [newsModalVisible, setNewsModalVisible] = useState(false)
   const [newsModalMode, setNewsModalMode] = useState<'create' | 'edit'>('create')
@@ -34,6 +36,8 @@ export function DataConfigPage() {
         loadNewsSources(),
         loadApiKeys(),
         loadLlmConfig(),
+        loadTwitterConfig(),
+        loadTelegramConfig(),
       ])
     } catch (error) {
       message.error('加载配置失败')
@@ -66,6 +70,24 @@ export function DataConfigPage() {
       setLlmConfig(res)
     } catch (error) {
       console.error('Failed to load LLM config:', error)
+    }
+  }
+
+  const loadTwitterConfig = async () => {
+    try {
+      const res = await configApi.getTwitterConfig()
+      setTwitterConfig(res)
+    } catch (error) {
+      console.error('Failed to load Twitter config:', error)
+    }
+  }
+
+  const loadTelegramConfig = async () => {
+    try {
+      const res = await configApi.getTelegramConfig()
+      setTelegramConfig(res)
+    } catch (error) {
+      console.error('Failed to load Telegram config:', error)
     }
   }
 
@@ -435,6 +457,268 @@ export function DataConfigPage() {
               ))}
             </div>
           )}
+        </Card>
+      ),
+    },
+    {
+      key: 'twitter',
+      label: (
+        <span>
+          <TwitterOutlined /> Twitter
+          {twitterConfig?.has_auth ? (
+            <Badge status="success" style={{ marginLeft: 8 }} />
+          ) : (
+            <Badge status="default" style={{ marginLeft: 8 }} />
+          )}
+        </span>
+      ),
+      children: (
+        <Card
+          title="Twitter Cookie Monitor 配置"
+          extra={
+            <Space>
+              <Button icon={<ReloadOutlined />} onClick={loadTwitterConfig}>刷新</Button>
+            </Space>
+          }
+        >
+          <Alert
+            message={
+              <Space>
+                <span>Twitter Cookie Monitor</span>
+                {twitterConfig?.has_auth ? (
+                  <Tag color="green">已配置认证</Tag>
+                ) : (
+                  <Tag color="warning">未配置认证</Tag>
+                )}
+              </Space>
+            }
+            description={
+              <div>
+                <p>使用 Cookie API 采集 Twitter 数据，无需浏览器，适合云服务器部署。</p>
+                <p>配置环境变量: TWITTER_AUTH_TOKEN, TWITTER_CT0</p>
+              </div>
+            }
+            type={twitterConfig?.has_auth ? 'success' : 'warning'}
+            style={{ marginBottom: 16 }}
+          />
+          
+          <Space style={{ marginBottom: 16 }}>
+            <Text>启用监控:</Text>
+            <Switch 
+              checked={twitterConfig?.enabled} 
+              onChange={async (checked) => {
+                await configApi.updateTwitterConfig({ enabled: checked })
+                loadTwitterConfig()
+              }}
+            />
+            <Divider type="vertical" />
+            <Text>轮询间隔:</Text>
+            <InputNumber 
+              value={twitterConfig?.poll_interval || 60} 
+              min={30} 
+              max={300}
+              onChange={async (value) => {
+                if (value) {
+                  await configApi.updateTwitterConfig({ poll_interval: value })
+                  loadTwitterConfig()
+                }
+              }}
+            />
+            <Text>秒</Text>
+          </Space>
+
+          <Divider>监控账号列表</Divider>
+          <Table
+            dataSource={twitterConfig?.accounts || []}
+            columns={[
+              {
+                title: '用户名',
+                dataIndex: 'username',
+                key: 'username',
+                render: (username: string) => <a href={`https://twitter.com/${username}`} target="_blank" rel="noreferrer">@{username}</a>,
+              },
+              {
+                title: '显示名',
+                dataIndex: 'display_name',
+                key: 'display_name',
+              },
+              {
+                title: '优先级',
+                dataIndex: 'priority',
+                key: 'priority',
+                width: 80,
+              },
+              {
+                title: 'P0',
+                dataIndex: 'is_p0',
+                key: 'is_p0',
+                width: 60,
+                render: (isP0: boolean) => isP0 ? <Tag color="red">P0</Tag> : null,
+              },
+              {
+                title: '状态',
+                dataIndex: 'enabled',
+                key: 'enabled',
+                width: 80,
+                render: (enabled: boolean) => (
+                  <Switch 
+                    size="small" 
+                    checked={enabled} 
+                    onChange={async (checked) => {
+                      const account = twitterConfig?.accounts.find(a => a.username === arguments[1]?.username)
+                      if (account) {
+                        await configApi.updateTwitterAccount(account.username, { enabled: checked })
+                        loadTwitterConfig()
+                      }
+                    }}
+                  />
+                ),
+              },
+              {
+                title: '操作',
+                key: 'action',
+                width: 100,
+                render: (_: unknown, record: TwitterAccount) => (
+                  <Popconfirm
+                    title="确认删除？"
+                    onConfirm={async () => {
+                      await configApi.deleteTwitterAccount(record.username)
+                      message.success('删除成功')
+                      loadTwitterConfig()
+                    }}
+                  >
+                    <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                  </Popconfirm>
+                ),
+              },
+            ]}
+            rowKey="username"
+            pagination={false}
+            size="small"
+          />
+        </Card>
+      ),
+    },
+    {
+      key: 'telegram',
+      label: (
+        <span>
+          <SendOutlined /> Telegram
+          {telegramConfig?.has_api_credentials ? (
+            <Badge status="success" style={{ marginLeft: 8 }} />
+          ) : (
+            <Badge status="default" style={{ marginLeft: 8 }} />
+          )}
+        </span>
+      ),
+      children: (
+        <Card
+          title="Telegram 监控配置"
+          extra={
+            <Space>
+              <Button icon={<ReloadOutlined />} onClick={loadTelegramConfig}>刷新</Button>
+            </Space>
+          }
+        >
+          <Alert
+            message={
+              <Space>
+                <span>Telegram 监控</span>
+                {telegramConfig?.has_api_credentials ? (
+                  <Tag color="green">已配置 API</Tag>
+                ) : (
+                  <Tag color="warning">未配置 API</Tag>
+                )}
+              </Space>
+            }
+            description={
+              <div>
+                <p>监控 Telegram 频道消息，获取加密货币相关资讯。</p>
+                <p>配置环境变量: TG_API_ID, TG_API_HASH</p>
+              </div>
+            }
+            type={telegramConfig?.has_api_credentials ? 'success' : 'warning'}
+            style={{ marginBottom: 16 }}
+          />
+
+          <Space style={{ marginBottom: 16 }}>
+            <Text>启用监控:</Text>
+            <Switch 
+              checked={telegramConfig?.enabled} 
+              onChange={async (checked) => {
+                await configApi.updateTelegramConfig({ enabled: checked })
+                loadTelegramConfig()
+              }}
+            />
+          </Space>
+
+          <Divider>监控频道列表</Divider>
+          <Table
+            dataSource={telegramConfig?.channels || []}
+            columns={[
+              {
+                title: '频道 ID',
+                dataIndex: 'channel_id',
+                key: 'channel_id',
+                render: (channelId: string) => <a href={`https://t.me/${channelId}`} target="_blank" rel="noreferrer">@{channelId}</a>,
+              },
+              {
+                title: '频道名称',
+                dataIndex: 'channel_name',
+                key: 'channel_name',
+              },
+              {
+                title: '优先级',
+                dataIndex: 'priority',
+                key: 'priority',
+                width: 80,
+              },
+              {
+                title: '状态',
+                dataIndex: 'enabled',
+                key: 'enabled',
+                width: 80,
+                render: (enabled: boolean) => (
+                  <Switch 
+                    size="small" 
+                    checked={enabled} 
+                    onChange={async (checked) => {
+                      const channel = telegramConfig?.channels.find(c => c.channel_id === arguments[1]?.channel_id)
+                      if (channel) {
+                        await configApi.updateTelegramChannel(channel.channel_id, { enabled: checked })
+                        loadTelegramConfig()
+                      }
+                    }}
+                  />
+                ),
+              },
+              {
+                title: '操作',
+                key: 'action',
+                width: 100,
+                render: (_: unknown, record: TelegramChannel) => (
+                  <Popconfirm
+                    title="确认删除？"
+                    onConfirm={async () => {
+                      await configApi.deleteTelegramChannel(record.channel_id)
+                      message.success('删除成功')
+                      loadTelegramConfig()
+                    }}
+                  >
+                    <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                  </Popconfirm>
+                ),
+              },
+            ]}
+            rowKey="channel_id"
+            pagination={false}
+            size="small"
+          />
+
+          <Divider>全局关键词</Divider>
+          <div>
+            {telegramConfig?.keywords.map(k => <Tag key={k}>{k}</Tag>)}
+          </div>
         </Card>
       ),
     },

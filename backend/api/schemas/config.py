@@ -147,3 +147,90 @@ class DataSourceConfig(BaseModel):
 class DataSourceListResponse(BaseModel):
     """数据源列表响应"""
     sources: List[DataSourceConfig]
+
+
+class TwitterAccountConfig(BaseModel):
+    """Twitter 账号配置"""
+    username: str = Field(..., description="Twitter 用户名")
+    display_name: Optional[str] = Field(None, description="显示名称")
+    enabled: bool = Field(default=True, description="是否启用")
+    priority: int = Field(default=1, ge=1, le=10, description="优先级")
+    keywords: List[str] = Field(default=[], description="关键词过滤")
+    is_p0: bool = Field(default=False, description="是否为 P0 账号")
+
+
+class TwitterCookieConfigResponse(BaseModel):
+    """Twitter Cookie 配置响应"""
+    enabled: bool = Field(default=True, description="是否启用 Cookie Monitor")
+    poll_interval: int = Field(default=60, description="轮询间隔(秒)")
+    has_auth: bool = Field(default=False, description="是否已配置认证")
+    accounts: List[TwitterAccountConfig] = Field(default=[], description="监控账号列表")
+    stats: Dict[str, Any] = Field(default_factory=dict, description="统计信息")
+
+
+class TwitterAccountCreate(BaseModel):
+    """创建 Twitter 账号"""
+    username: str = Field(..., description="Twitter 用户名")
+    display_name: Optional[str] = None
+    enabled: bool = True
+    priority: int = 1
+    keywords: List[str] = []
+    is_p0: bool = False
+
+
+class TwitterAccountUpdate(BaseModel):
+    """更新 Twitter 账号"""
+    display_name: Optional[str] = None
+    enabled: Optional[bool] = None
+    priority: Optional[int] = None
+    keywords: Optional[List[str]] = None
+    is_p0: Optional[bool] = None
+
+
+class TwitterConfigUpdate(BaseModel):
+    """更新 Twitter 配置"""
+    enabled: Optional[bool] = None
+    poll_interval: Optional[int] = None
+
+
+class TelegramChannelConfig(BaseModel):
+    """Telegram 频道配置"""
+    channel_id: str = Field(..., description="频道 ID 或用户名")
+    channel_name: Optional[str] = Field(None, description="频道名称")
+    enabled: bool = Field(default=True, description="是否启用")
+    priority: int = Field(default=1, ge=1, le=10, description="优先级")
+    keywords: List[str] = Field(default=[], description="关键词过滤")
+
+
+class TelegramConfigResponse(BaseModel):
+    """Telegram 配置响应"""
+    enabled: bool = Field(default=False, description="是否启用")
+    has_api_credentials: bool = Field(default=False, description="是否已配置 API 凭证")
+    channels: List[TelegramChannelConfig] = Field(default=[], description="监控频道列表")
+    keywords: List[str] = Field(default=[], description="全局关键词")
+    crypto_keywords: List[str] = Field(default=[], description="加密货币关键词")
+    stats: Dict[str, Any] = Field(default_factory=dict, description="统计信息")
+
+
+class TelegramChannelCreate(BaseModel):
+    """创建 Telegram 频道"""
+    channel_id: str = Field(..., description="频道 ID 或用户名")
+    channel_name: Optional[str] = None
+    enabled: bool = True
+    priority: int = 1
+    keywords: List[str] = []
+
+
+class TelegramChannelUpdate(BaseModel):
+    """更新 Telegram 频道"""
+    channel_name: Optional[str] = None
+    enabled: Optional[bool] = None
+    priority: Optional[int] = None
+    keywords: Optional[List[str]] = None
+
+
+class TelegramConfigUpdate(BaseModel):
+    """更新 Telegram 配置"""
+    enabled: Optional[bool] = None
+    keywords: Optional[List[str]] = None
+    crypto_keywords: Optional[List[str]] = None

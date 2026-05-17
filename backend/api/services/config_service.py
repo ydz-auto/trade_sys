@@ -29,6 +29,8 @@ class ConfigService:
     EXCHANGE_CONFIG_KEY = "config:exchanges"
     STRATEGY_CONFIG_KEY = "config:strategy"
     API_URLS_KEY = "config:api_urls"
+    TWITTER_CONFIG_KEY = "config:twitter"
+    TELEGRAM_CONFIG_KEY = "config:telegram"
     
     ENCRYPTION_KEY_ENV = "CONFIG_ENCRYPTION_KEY"
 
@@ -493,6 +495,266 @@ class ConfigService:
         await self.redis.set_json(self.DATA_SOURCES_KEY, sources)
         logger.info("Updated data sources")
         return sources
+
+    async def get_twitter_config(self) -> Dict:
+        """获取 Twitter Cookie Monitor 配置"""
+        data = await self.redis.get(self.TWITTER_CONFIG_KEY)
+        if data:
+            if isinstance(data, str):
+                config = json.loads(data)
+            else:
+                config = data
+        else:
+            config = self._get_default_twitter_config()
+        
+        import os
+        has_auth = bool(os.getenv("TWITTER_AUTH_TOKEN") and os.getenv("TWITTER_CT0"))
+        
+        config["has_auth"] = has_auth
+        
+        try:
+            from services.data_service.collectors.twitter_cookie_monitor import get_twitter_cookie_monitor
+            monitor = get_twitter_cookie_monitor()
+            config["stats"] = monitor.get_stats()
+        except Exception:
+            config["stats"] = {}
+        
+        return config
+    
+    def _get_default_twitter_config(self) -> Dict:
+        """获取默认 Twitter 配置"""
+        return {
+            "enabled": True,
+            "poll_interval": 60,
+            "accounts": [
+                {"username": "elonmusk", "display_name": "Elon Musk", "enabled": True, "priority": 1, "keywords": [], "is_p0": True},
+                {"username": "cz_binance", "display_name": "CZ", "enabled": True, "priority": 1, "keywords": [], "is_p0": True},
+                {"username": "VitalikButerin", "display_name": "Vitalik Buterin", "enabled": True, "priority": 1, "keywords": [], "is_p0": True},
+                {"username": "saylor", "display_name": "Michael Saylor", "enabled": True, "priority": 1, "keywords": [], "is_p0": True},
+                {"username": "binance", "display_name": "Binance", "enabled": True, "priority": 2, "keywords": [], "is_p0": False},
+                {"username": "Cointelegraph", "display_name": "Cointelegraph", "enabled": True, "priority": 2, "keywords": [], "is_p0": False},
+            ]
+        }
+    
+    async def update_twitter_config(self, updates: Dict) -> Dict:
+        """更新 Twitter 配置"""
+        config = await self.get_twitter_config()
+        config.update(updates)
+        config.pop("has_auth", None)
+        config.pop("stats", None)
+        await self.redis.set_json(self.TWITTER_CONFIG_KEY, config)
+        logger.info("Updated Twitter config")
+        return config
+    
+    async def get_twitter_accounts(self) -> List[Dict]:
+        """获取 Twitter 监控账号列表"""
+        config = await self.get_twitter_config()
+        return config.get("accounts", [])
+    
+    async def create_twitter_account(self, account_data: Dict) -> Dict:
+        """添加 Twitter 监控账号"""
+        config = await self.redis.get(self.TWITTER_CONFIG_KEY)
+        if config:
+            if isinstance(config, str):
+                config = json.loads(config)
+        else:
+            config = self._get_default_twitter_config()
+        
+        username = account_data.get("username", "").lstrip("@").lower()
+        
+        accounts = config.get("accounts", [])
+        for acc in accounts:
+            if acc.get("username", "").lower() == username:
+                return acc
+        
+        new_account = {
+            "username": username,
+            "display_name": account_data.get("display_name", username),
+            "enabled": account_data.get("enabled", True),
+            "priority": account_data.get("priority", 2),
+            "keywords": account_data.get("keywords", []),
+            "is_p0": account_data.get("is_p0", False),
+        }
+        
+        accounts.append(new_account)
+        config["accounts"] = accounts
+        await self.redis.set_json(self.TWITTER_CONFIG_KEY, config)
+        logger.info(f"Added Twitter account: @{username}")
+        
+        return new_account
+    
+    async def update_twitter_account(self, username: str, updates: Dict) -> Optional[Dict]:
+        """更新 Twitter 监控账号"""
+        config = await self.redis.get(self.TWITTER_CONFIG_KEY)
+        if config:
+            if isinstance(config, str):
+                config = json.loads(config)
+        else:
+            return None
+        
+        username = username.lstrip("@").lower()
+        accounts = config.get("accounts", [])
+        
+        for i, acc in enumerate(accounts):
+            if acc.get("username", "").lower() == username:
+                accounts[i].update(updates)
+                config["accounts"] = accounts
+                await self.redis.set_json(self.TWITTER_CONFIG_KEY, config)
+                logger.info(f"Updated Twitter account: @{username}")
+                return accounts[i]
+        
+        return None
+    
+    async def delete_twitter_account(self, username: str) -> bool:
+        """删除 Twitter 监控账号"""
+        config = await self.redis.get(self.TWITTER_CONFIG_KEY)
+        if config:
+            if isinstance(config, str):
+                config = json.loads(config)
+        else:
+            return False
+        
+        username = username.lstrip("@").lower()
+        accounts = config.get("accounts", [])
+        original_len = len(accounts)
+        
+        accounts = [acc for acc in accounts if acc.get("username", "").lower() != username]
+        
+        if len(accounts) < original_len:
+            config["accounts"] = accounts
+            await self.redis.set_json(self.TWITTER_CONFIG_KEY, config)
+            logger.info(f"Deleted Twitter account: @{username}")
+            return True
+        
+        return False
+
+    async def get_telegram_config(self) -> Dict:
+        """获取 Telegram 配置"""
+        data = await self.redis.get(self.TELEGRAM_CONFIG_KEY)
+        if data:
+            if isinstance(data, str):
+                config = json.loads(data)
+            else:
+                config = data
+        else:
+            config = self._get_default_telegram_config()
+        
+        import os
+        has_api = bool(os.getenv("TG_API_ID") and os.getenv("TG_API_HASH"))
+        config["has_api_credentials"] = has_api
+        
+        try:
+            from services.data_service.collectors.telegram_adapter import TelegramAdapter
+            config["stats"] = {"is_running": False}
+        except Exception:
+            config["stats"] = {}
+        
+        return config
+    
+    def _get_default_telegram_config(self) -> Dict:
+        """获取默认 Telegram 配置"""
+        return {
+            "enabled": False,
+            "channels": [
+                {"channel_id": "WuBlockchain", "channel_name": "吴说区块链", "enabled": True, "priority": 1, "keywords": []},
+                {"channel_id": "jinse_lab", "channel_name": "金十数据", "enabled": True, "priority": 1, "keywords": []},
+                {"channel_id": "PANews", "channel_name": "PANews", "enabled": True, "priority": 2, "keywords": []},
+                {"channel_id": "odaily", "channel_name": "Odaily星球日报", "enabled": True, "priority": 2, "keywords": []},
+            ],
+            "keywords": ["BTC", "ETH", "Bitcoin", "Ethereum", "ETF", "SEC"],
+            "crypto_keywords": ["BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "DOT", "AVAX", "LINK"],
+        }
+    
+    async def update_telegram_config(self, updates: Dict) -> Dict:
+        """更新 Telegram 配置"""
+        config = await self.get_telegram_config()
+        config.update(updates)
+        config.pop("has_api_credentials", None)
+        config.pop("stats", None)
+        await self.redis.set_json(self.TELEGRAM_CONFIG_KEY, config)
+        logger.info("Updated Telegram config")
+        return config
+    
+    async def get_telegram_channels(self) -> List[Dict]:
+        """获取 Telegram 监控频道列表"""
+        config = await self.get_telegram_config()
+        return config.get("channels", [])
+    
+    async def create_telegram_channel(self, channel_data: Dict) -> Dict:
+        """添加 Telegram 监控频道"""
+        config = await self.redis.get(self.TELEGRAM_CONFIG_KEY)
+        if config:
+            if isinstance(config, str):
+                config = json.loads(config)
+        else:
+            config = self._get_default_telegram_config()
+        
+        channel_id = channel_data.get("channel_id", "").lstrip("@")
+        
+        channels = config.get("channels", [])
+        for ch in channels:
+            if ch.get("channel_id", "").lower() == channel_id.lower():
+                return ch
+        
+        new_channel = {
+            "channel_id": channel_id,
+            "channel_name": channel_data.get("channel_name", channel_id),
+            "enabled": channel_data.get("enabled", True),
+            "priority": channel_data.get("priority", 2),
+            "keywords": channel_data.get("keywords", []),
+        }
+        
+        channels.append(new_channel)
+        config["channels"] = channels
+        await self.redis.set_json(self.TELEGRAM_CONFIG_KEY, config)
+        logger.info(f"Added Telegram channel: {channel_id}")
+        
+        return new_channel
+    
+    async def update_telegram_channel(self, channel_id: str, updates: Dict) -> Optional[Dict]:
+        """更新 Telegram 监控频道"""
+        config = await self.redis.get(self.TELEGRAM_CONFIG_KEY)
+        if config:
+            if isinstance(config, str):
+                config = json.loads(config)
+        else:
+            return None
+        
+        channel_id = channel_id.lstrip("@")
+        channels = config.get("channels", [])
+        
+        for i, ch in enumerate(channels):
+            if ch.get("channel_id", "").lower() == channel_id.lower():
+                channels[i].update(updates)
+                config["channels"] = channels
+                await self.redis.set_json(self.TELEGRAM_CONFIG_KEY, config)
+                logger.info(f"Updated Telegram channel: {channel_id}")
+                return channels[i]
+        
+        return None
+    
+    async def delete_telegram_channel(self, channel_id: str) -> bool:
+        """删除 Telegram 监控频道"""
+        config = await self.redis.get(self.TELEGRAM_CONFIG_KEY)
+        if config:
+            if isinstance(config, str):
+                config = json.loads(config)
+        else:
+            return False
+        
+        channel_id = channel_id.lstrip("@")
+        channels = config.get("channels", [])
+        original_len = len(channels)
+        
+        channels = [ch for ch in channels if ch.get("channel_id", "").lower() != channel_id.lower()]
+        
+        if len(channels) < original_len:
+            config["channels"] = channels
+            await self.redis.set_json(self.TELEGRAM_CONFIG_KEY, config)
+            logger.info(f"Deleted Telegram channel: {channel_id}")
+            return True
+        
+        return False
 
 
 _config_service: Optional[ConfigService] = None

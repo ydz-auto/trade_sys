@@ -20,6 +20,14 @@ from ..schemas import (
     LlmProviderConfig,
     DataSourceConfig,
     DataSourceListResponse,
+    TwitterCookieConfigResponse,
+    TwitterAccountCreate,
+    TwitterAccountUpdate,
+    TwitterConfigUpdate,
+    TelegramConfigResponse,
+    TelegramChannelCreate,
+    TelegramChannelUpdate,
+    TelegramConfigUpdate,
 )
 from ..services.config_service import ConfigService
 
@@ -288,11 +296,117 @@ async def set_trading_mode(request: SetTradingModeRequest):
             detail=f"Invalid mode: {request.mode}. Must be one of: demo, paper, prod"
         )
     
-    # 注意：这里只是返回信息，实际修改需要更新 .env 文件或环境变量
-    # 生产环境可能需要更复杂的配置管理
     return {
         "success": True,
         "mode": mode.value,
         "message": "Mode setting updated. Please restart the service for changes to take effect.",
         "note": "To apply this change permanently, update the MODE variable in your .env file and restart the backend service.",
     }
+
+
+# ==================== Twitter Cookie Monitor 配置 ====================
+
+@router.get("/twitter", response_model=TwitterCookieConfigResponse)
+async def get_twitter_config():
+    """获取 Twitter Cookie Monitor 配置"""
+    service = await get_service()
+    config = await service.get_twitter_config()
+    return TwitterCookieConfigResponse(**config)
+
+
+@router.put("/twitter")
+async def update_twitter_config(config: TwitterConfigUpdate):
+    """更新 Twitter Cookie Monitor 配置"""
+    service = await get_service()
+    result = await service.update_twitter_config(config.model_dump(exclude_none=True))
+    return {"success": True, "config": result}
+
+
+@router.get("/twitter/accounts")
+async def list_twitter_accounts():
+    """获取 Twitter 监控账号列表"""
+    service = await get_service()
+    accounts = await service.get_twitter_accounts()
+    return {"accounts": accounts, "total": len(accounts)}
+
+
+@router.post("/twitter/accounts", status_code=201)
+async def create_twitter_account(account: TwitterAccountCreate):
+    """添加 Twitter 监控账号"""
+    service = await get_service()
+    result = await service.create_twitter_account(account.model_dump())
+    return {"success": True, "account": result}
+
+
+@router.put("/twitter/accounts/{username}")
+async def update_twitter_account(username: str, updates: TwitterAccountUpdate):
+    """更新 Twitter 监控账号"""
+    service = await get_service()
+    result = await service.update_twitter_account(username, updates.model_dump(exclude_none=True))
+    if not result:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return {"success": True, "account": result}
+
+
+@router.delete("/twitter/accounts/{username}")
+async def delete_twitter_account(username: str):
+    """删除 Twitter 监控账号"""
+    service = await get_service()
+    success = await service.delete_twitter_account(username)
+    if not success:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return {"success": True, "message": f"Account @{username} deleted"}
+
+
+# ==================== Telegram 配置 ====================
+
+@router.get("/telegram", response_model=TelegramConfigResponse)
+async def get_telegram_config():
+    """获取 Telegram 配置"""
+    service = await get_service()
+    config = await service.get_telegram_config()
+    return TelegramConfigResponse(**config)
+
+
+@router.put("/telegram")
+async def update_telegram_config(config: TelegramConfigUpdate):
+    """更新 Telegram 配置"""
+    service = await get_service()
+    result = await service.update_telegram_config(config.model_dump(exclude_none=True))
+    return {"success": True, "config": result}
+
+
+@router.get("/telegram/channels")
+async def list_telegram_channels():
+    """获取 Telegram 监控频道列表"""
+    service = await get_service()
+    channels = await service.get_telegram_channels()
+    return {"channels": channels, "total": len(channels)}
+
+
+@router.post("/telegram/channels", status_code=201)
+async def create_telegram_channel(channel: TelegramChannelCreate):
+    """添加 Telegram 监控频道"""
+    service = await get_service()
+    result = await service.create_telegram_channel(channel.model_dump())
+    return {"success": True, "channel": result}
+
+
+@router.put("/telegram/channels/{channel_id}")
+async def update_telegram_channel(channel_id: str, updates: TelegramChannelUpdate):
+    """更新 Telegram 监控频道"""
+    service = await get_service()
+    result = await service.update_telegram_channel(channel_id, updates.model_dump(exclude_none=True))
+    if not result:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    return {"success": True, "channel": result}
+
+
+@router.delete("/telegram/channels/{channel_id}")
+async def delete_telegram_channel(channel_id: str):
+    """删除 Telegram 监控频道"""
+    service = await get_service()
+    success = await service.delete_telegram_channel(channel_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    return {"success": True, "message": f"Channel {channel_id} deleted"}
