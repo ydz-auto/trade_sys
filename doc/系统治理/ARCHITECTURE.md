@@ -1,7 +1,20 @@
 # 系统架构文档
 
-**更新日期**: 2026-05-16  
-**架构版本**: Runtime-Oriented Architecture
+**更新日期**: 2026-05-17  
+**架构版本**: Runtime-Oriented Architecture v2.0
+
+---
+
+## 架构演进历史
+
+### Phase 1-4 重构完成 (2026-05-17)
+
+| Phase | 内容 | 状态 |
+|-------|------|------|
+| Phase 1 | 统一 WebSocket 和 Redis Pub/Sub | ✅ 完成 |
+| Phase 2 | Subscription Runtime 和 Backpressure | ✅ 完成 |
+| Phase 3 | Runtime 隔离和 Event Sourcing | ✅ 完成 |
+| Phase 4 | Full Event Sourcing 和分布式治理 | ✅ 完成 |
 
 ---
 
@@ -37,6 +50,24 @@
 │  - tracing              (链路追踪)                                           │
 │  - healthcheck          (健康检查)                                           │
 │  - lifecycle            (生命周期管理)                                        │
+│  - backpressure         (背压控制)                                           │
+│  - subscription         (订阅管理)                                           │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                │
+                                │ 使用
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     infrastructure/runtime/                                  │
+│                                                                              │
+│  运行时基础设施：                                                              │
+│  - governor             (运行时治理器)                                        │
+│  - priority_queue       (优先级队列)                                         │
+│  - subscription_manager (订阅管理器)                                         │
+│  - degradation          (降级策略)                                           │
+│  - circuit_breaker      (熔断器管理)                                         │
+│  - recovery             (运行时恢复)                                         │
+│  - distributed_governance (分布式治理)                                       │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -96,9 +127,18 @@ backend/
 │   ├── data_lake/             # 数据湖
 │   ├── observability/         # 可观测性
 │   ├── replay/                # 回放引擎
-│   ├── runtime/               # 运行时基础设施
+│   ├── runtime/               # ⭐ 运行时基础设施 (Phase 2-4)
+│   │   ├── governor.py        # 运行时治理器
+│   │   ├── priority_queue.py  # 优先级队列
+│   │   ├── subscription_manager.py # 订阅管理器
+│   │   ├── degradation.py     # 降级策略
+│   │   ├── circuit_breaker_manager.py # 熔断器
+│   │   ├── recovery.py        # 运行时恢复 (Phase 4)
+│   │   └── distributed_governance.py # 分布式治理 (Phase 4)
 │   ├── snapshot/              # 快照系统
-│   └── verification/          # 验证系统
+│   ├── verification/          # 验证系统
+│   └── websocket/             # WebSocket 网关 (Phase 1)
+│       └── gateway.py         # 统一 WS Gateway
 │
 ├── config/                     # 配置治理
 │   ├── environments/          # 环境配置 (dev/prod/replay)
@@ -224,6 +264,97 @@ config/
 
 ---
 
+## Phase 1-4 新增组件
+
+### Phase 1: 统一 WebSocket 和 Redis Pub/Sub
+
+| 组件 | 位置 | 说明 |
+|------|------|------|
+| `WSGateway` | `infrastructure/websocket/gateway.py` | 统一 WebSocket 网关，支持节流、重连 |
+| `ThrottleConfig` | `infrastructure/websocket/gateway.py` | 节流配置 |
+| Redis Pub/Sub | `services/projection_service/projections/base.py` | 跨进程消息推送 |
+
+### Phase 2: Subscription Runtime 和 Backpressure
+
+| 组件 | 位置 | 说明 |
+|------|------|------|
+| `SubscriptionManager` | `infrastructure/runtime/subscription_manager.py` | 订阅管理器 |
+| `PriorityQueue` | `infrastructure/runtime/priority_queue.py` | 优先级队列 |
+| `DegradationStrategy` | `infrastructure/runtime/degradation.py` | 降级策略 |
+| `CircuitBreakerManager` | `infrastructure/runtime/circuit_breaker_manager.py` | 熔断器管理 |
+| `RuntimeGovernor` | `infrastructure/runtime/governor.py` | 运行时治理器 |
+
+### Phase 3: Runtime 隔离和 Event Sourcing
+
+| 组件 | 位置 | 说明 |
+|------|------|------|
+| `ReplayRuntime` | `runtime/replay_runtime/` | 回放运行时，支持回测和修复 |
+| `ExecutionStateMachine` | `services/execution_service/state_machine/` | 执行状态机 |
+
+### Phase 4: Full Event Sourcing 和分布式治理
+
+| 组件 | 位置 | 说明 |
+|------|------|------|
+| `RuntimeRecovery` | `infrastructure/runtime/recovery.py` | 运行时恢复，支持检查点和状态恢复 |
+| `DistributedRuntimeGovernance` | `infrastructure/runtime/distributed_governance.py` | 分布式治理，支持主节点选举和故障转移 |
+
+---
+
+## 数据流架构
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Frontend (React)                                   │
+│                                                                              │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                      │
+│  │  WebSocket  │◄───│  Zustand    │◄───│  Components │                      │
+│  │  Client     │    │  Store      │    │             │                      │
+│  └──────┬──────┘    └─────────────┘    └─────────────┘                      │
+└─────────┼───────────────────────────────────────────────────────────────────┘
+          │
+          │ WebSocket Connection
+          ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     WSGateway (infrastructure/websocket/)                    │
+│                                                                              │
+│  - 连接管理、节流控制、重连逻辑                                                 │
+│  - 订阅管理 (SubscriptionManager)                                            │
+│  - Redis Pub/Sub 订阅                                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+          │
+          │ Redis Pub/Sub
+          ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     Runtime Layer (runtime/)                                 │
+│                                                                              │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐              │
+│  │ ingestion_runtime│  │ signal_runtime  │  │execution_runtime│              │
+│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘              │
+│           │                    │                    │                        │
+│           └────────────────────┼────────────────────┘                        │
+│                                │                                             │
+│                                ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────┐        │
+│  │              RuntimeGovernor (infrastructure/runtime/)           │        │
+│  │                                                                  │        │
+│  │  - 优先级队列 (PriorityQueue)                                    │        │
+│  │  - 背压控制 (Backpressure)                                       │        │
+│  │  - 降级策略 (DegradationStrategy)                                │        │
+│  │  - 熔断器 (CircuitBreakerManager)                                │        │
+│  └─────────────────────────────────────────────────────────────────┘        │
+└─────────────────────────────────────────────────────────────────────────────┘
+          │
+          │ 调用
+          ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     Services Layer (services/)                               │
+│                                                                              │
+│  业务逻辑：因子计算、信号生成、风控规则、执行逻辑等                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## 相关文档
 
 - [AUDIT_SUMMARY.md](file:///Users/yangdezeng/00_crypto/00_trade_agent/20260506/doc/系统治理/AUDIT_SUMMARY.md) - 审计总结报告
@@ -232,4 +363,4 @@ config/
 
 ---
 
-*文档更新日期: 2026-05-16*
+*文档更新日期: 2026-05-17*
