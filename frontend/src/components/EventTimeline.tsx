@@ -11,8 +11,12 @@
  */
 
 import { useEffect, useRef, useCallback } from 'react'
+import { Card, Tag, Button, Empty, Spin, Space, Typography } from 'antd'
+import { ReloadOutlined, ClockCircleOutlined } from '@ant-design/icons'
 import { useTimeline } from '../hooks/useRealtime'
 import { useTimelineHistory } from '../hooks/useTimelineHistory'
+
+const { Text } = Typography
 
 interface EventTimelineProps {
   maxHeight?: string
@@ -22,10 +26,10 @@ interface EventTimelineProps {
 }
 
 const severityColors: Record<string, string> = {
-  info: 'text-blue-400',
-  success: 'text-green-400',
-  warning: 'text-yellow-400',
-  error: 'text-red-400',
+  info: '#3B82F6',
+  success: '#10B981',
+  warning: '#F59E0B',
+  error: '#EF4444',
 }
 
 const eventTypeIcons: Record<string, string> = {
@@ -42,7 +46,7 @@ const eventTypeIcons: Record<string, string> = {
 }
 
 export function EventTimeline({ 
-  maxHeight = '600px',
+  maxHeight = '300px',
   symbol,
   enableInfiniteScroll = true,
 }: EventTimelineProps) {
@@ -95,95 +99,136 @@ export function EventTimeline({
   }, [handleObserver])
 
   return (
-    <div className="bg-gray-900 rounded-lg p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-white">Event Timeline</h2>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-400">
-            {allEvents.length} events
-          </span>
-          {enableInfiniteScroll && (
-            <button
-              onClick={refresh}
-              className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+    <Card
+      size="small"
+      title={
+        <Space>
+          <ClockCircleOutlined />
+          <span>Event Timeline</span>
+          <Tag color="blue">{allEvents.length} events</Tag>
+        </Space>
+      }
+      extra={
+        <Button 
+          type="text" 
+          size="small" 
+          icon={<ReloadOutlined />} 
+          onClick={refresh}
+        >
+          Refresh
+        </Button>
+      }
+      styles={{
+        body: { padding: '8px 0', maxHeight, overflowY: 'auto' }
+      }}
+    >
+      {allEvents.length === 0 && !loading ? (
+        <Empty 
+          description="No events yet" 
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          style={{ padding: '20px 0' }}
+        />
+      ) : (
+        <>
+          {allEvents.map((event) => (
+            <div
+              key={event.event_id}
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+                padding: '8px 16px',
+                borderBottom: '1px solid #1E293B',
+                transition: 'background-color 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#1E293B'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent'
+              }}
             >
-              Refresh
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div 
-        className="space-y-2 overflow-y-auto"
-        style={{ maxHeight }}
-      >
-        {allEvents.length === 0 && !loading ? (
-          <div className="text-gray-500 text-center py-8">
-            No events yet. Waiting for runtime activity...
-          </div>
-        ) : (
-          <>
-            {allEvents.map((event) => (
-              <div
-                key={event.event_id}
-                className="flex items-start gap-3 p-2 rounded hover:bg-gray-800 transition-colors"
-              >
-                <span className="text-lg">
-                  {eventTypeIcons[event.event_type] || '📌'}
-                </span>
-                
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500 font-mono">
-                      {event.display_time || event.timestamp.split('T')[1]?.split('.')[0] || event.timestamp}
-                    </span>
-                    <span className="text-xs text-gray-600">
+              <span style={{ fontSize: '18px', lineHeight: 1 }}>
+                {eventTypeIcons[event.event_type] || '📌'}
+              </span>
+              
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                  <Text style={{ fontSize: '12px', color: '#64748B', fontFamily: 'monospace' }}>
+                    {event.display_time || event.timestamp.split('T')[1]?.split('.')[0] || event.timestamp}
+                  </Text>
+                  {event.symbol && (
+                    <Tag style={{ fontSize: '10px', padding: '0 4px', margin: 0 }}>
                       {event.symbol}
-                    </span>
-                  </div>
-                  
-                  <p className={`text-sm ${severityColors[event.severity] || 'text-gray-300'}`}>
-                    {event.title}
-                  </p>
-                  
-                  {event.description && (
-                    <p className="text-xs text-gray-500 truncate">
-                      {event.description}
-                    </p>
+                    </Tag>
+                  )}
+                  {event.event_type && (
+                    <Tag 
+                      style={{ fontSize: '10px', padding: '0 4px', margin: 0 }}
+                      color="default"
+                    >
+                      {event.event_type}
+                    </Tag>
                   )}
                 </div>
+                
+                <Text 
+                  style={{ 
+                    fontSize: '13px',
+                    color: severityColors[event.severity] || '#E2E8F0',
+                    display: 'block',
+                  }}
+                >
+                  {event.title}
+                </Text>
+                
+                {event.description && (
+                  <Text 
+                    style={{ 
+                      fontSize: '12px', 
+                      color: '#64748B',
+                      display: 'block',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {event.description}
+                  </Text>
+                )}
               </div>
-            ))}
+            </div>
+          ))}
 
-            {enableInfiniteScroll && (
-              <div ref={loadMoreRef} className="py-4 text-center">
-                {loading && (
-                  <div className="text-gray-400 text-sm">
-                    Loading more events...
-                  </div>
-                )}
-                {!hasMore && allEvents.length > 0 && (
-                  <div className="text-gray-500 text-sm">
-                    No more events
-                  </div>
-                )}
-                {error && (
-                  <div className="text-red-400 text-sm">
+          {enableInfiniteScroll && (
+            <div ref={loadMoreRef} style={{ padding: '16px', textAlign: 'center' }}>
+              {loading && (
+                <Spin size="small" />
+              )}
+              {!hasMore && allEvents.length > 0 && (
+                <Text style={{ fontSize: '12px', color: '#64748B' }}>
+                  No more events
+                </Text>
+              )}
+              {error && (
+                <div>
+                  <Text style={{ fontSize: '12px', color: '#EF4444' }}>
                     {error}
-                    <button 
-                      onClick={loadMore}
-                      className="ml-2 text-blue-400 hover:text-blue-300"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
+                  </Text>
+                  <Button 
+                    type="link" 
+                    size="small"
+                    onClick={loadMore}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
   )
 }
 
