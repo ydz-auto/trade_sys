@@ -19,6 +19,7 @@ from .multivariate_analysis import MultivariateAnalyzer
 from .llm_enhancement import LLMEnhancement
 from .scoring import CorrelationScorer, SignalAssessment
 from .visualization import CorrelationVisualizer
+from .storage import CorrelationStorage, get_correlation_storage
 
 __all__ = [
     "CorrelationAnalyzer",
@@ -32,4 +33,6 @@ __all__ = [
     "CorrelationScorer",
     "SignalAssessment",
     "CorrelationVisualizer",
+    "CorrelationStorage",
+    "get_correlation_storage",
 ]

@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any, Callable, Type, Union
 from pydantic import BaseModel
 
 from infrastructure.logging import get_logger
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 logger = get_logger("middleware.kafka")
 
 try:
@@ -111,11 +112,11 @@ _consumer = None
 _faststream = None
 
 
-def get_kafka_broker(bootstrap_servers: str = "localhost:9092"):
+def get_kafka_broker(bootstrap_servers: str = None):
     global _broker
     if _broker is None:
         from faststream.kafka import KafkaBroker
-        _broker = KafkaBroker(bootstrap_servers)
+        _broker = KafkaBroker(bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS)
     return _broker
 
 
@@ -135,10 +136,10 @@ def get_kafka_consumer(broker=None) -> KafkaConsumer:
     return _consumer
 
 
-async def init_kafka(bootstrap_servers: str = "localhost:9092"):
+async def init_kafka(bootstrap_servers: str = None):
     global _faststream
     broker = get_kafka_broker(bootstrap_servers)
-    _faststream = FastStreamKafka(bootstrap_servers, client_id="tradeagent-data-service")
+    _faststream = FastStreamKafka(bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS, client_id="tradeagent-data-service")
     _faststream.create_broker()
     return _faststream
 

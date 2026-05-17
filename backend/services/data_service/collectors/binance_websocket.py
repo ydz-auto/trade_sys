@@ -36,6 +36,7 @@ from infrastructure.resilience import (
     DataChannelType,
     PriceData
 )
+from shared.config.defaults.infrastructure.external_apis import EXCHANGE_WS_APIS
 
 logger = get_logger("binance_ws.adapter")
 
@@ -89,8 +90,8 @@ class BinanceWebSocketAdapter:
     - Mock数据生成
     """
     
-    BASE_URL = "wss://stream.binance.com:9443/ws"
-    TESTNET_URL = "wss://testnet.binance.vision/ws"
+    BASE_URL = EXCHANGE_WS_APIS["binance"]["spot"]
+    TESTNET_URL = EXCHANGE_WS_APIS["binance"]["testnet_spot"]
     
     def __init__(self, config: BinanceConfig = None):
         self.config = config or BinanceConfig()

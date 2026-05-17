@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional
 from domain.execution.models import Order, OrderCreated, OrderFilled, PositionUpdated
 from infrastructure.logging import get_logger
 from infrastructure.messaging import get_broker, Topics
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 logger = get_logger("execution_service.publishers.order")
 
@@ -25,8 +26,7 @@ class OrderPublisher:
     async def _get_broker(self):
         """获取 broker 实例"""
         if self._broker is None:
-            import os
-            bootstrap_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+            bootstrap_servers = KAFKA_BOOTSTRAP_SERVERS
             self._broker = get_broker(bootstrap_servers)
         return self._broker
 

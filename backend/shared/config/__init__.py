@@ -97,6 +97,15 @@ from shared.config.manager import (
     get_user_config_manager,
     get_datasource_config_manager,
 )
+from shared.config.unified import (
+    get_config,
+    get_exchange_credentials,
+    get_llm_credentials,
+    get_api_url,
+    get_strategy_weights,
+    DEFAULT_API_URLS,
+    DEFAULT_STRATEGY_CONFIG,
+)
 
 __all__ = [
     "ConfigCategory",
@@ -166,4 +175,11 @@ __all__ = [
     "get_strategy_config_manager",
     "get_user_config_manager",
     "get_datasource_config_manager",
+    "get_config",
+    "get_exchange_credentials",
+    "get_llm_credentials",
+    "get_api_url",
+    "get_strategy_weights",
+    "DEFAULT_API_URLS",
+    "DEFAULT_STRATEGY_CONFIG",
 ]

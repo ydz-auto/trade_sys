@@ -8,6 +8,7 @@ from typing import Optional, Callable, Awaitable
 from datetime import datetime
 
 from infrastructure.logging import get_logger
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 logger = get_logger("event_service.consumer")
 
 try:
@@ -23,10 +24,10 @@ except ImportError:
 class RawDataConsumer:
     def __init__(
         self,
-        bootstrap_servers: str = "localhost:9092",
+        bootstrap_servers: Optional[str] = None,
         event_handler: Optional[Callable] = None
     ):
-        self.bootstrap_servers = bootstrap_servers
+        self.bootstrap_servers = bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS
         self._broker: Optional[KafkaBroker] = None
         self._app: Optional[FastStream] = None
         self._event_handler = event_handler
@@ -71,12 +72,12 @@ _raw_data_consumer: Optional[RawDataConsumer] = None
 
 
 def get_raw_data_consumer(
-    bootstrap_servers: str = "localhost:9092",
+    bootstrap_servers: Optional[str] = None,
     event_handler: Optional[Callable] = None
 ) -> RawDataConsumer:
     global _raw_data_consumer
     if _raw_data_consumer is None:
-        _raw_data_consumer = RawDataConsumer(bootstrap_servers, event_handler)
+        _raw_data_consumer = RawDataConsumer(bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS, event_handler)
     return _raw_data_consumer
 
 

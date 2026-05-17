@@ -36,17 +36,23 @@ class ConsumerGroup:
 
 @dataclass
 class KafkaConsumerConfig:
-    """Kafka Consumer 统一配置"""
-    session_timeout_ms: int = 30000
-    heartbeat_interval_ms: int = 10000
+    """Kafka Consumer 统一配置
+    
+    优化配置以增强容错能力和处理 leader 切换
+    """
+    session_timeout_ms: int = 45000
+    heartbeat_interval_ms: int = 15000
     max_poll_records: int = 500
     max_poll_interval_ms: int = 300000
     enable_auto_commit: bool = True
     auto_commit_interval_ms: int = 5000
     auto_offset_reset: str = "latest"
-    request_timeout_ms: int = 40000
-    retry_attempts: int = 10
+    request_timeout_ms: int = 60000
+    retry_attempts: int = 15
     retry_delay_ms: int = 3000
+    metadata_max_age_ms: int = 300000
+    connections_max_idle_ms: int = 540000
+    api_version_request_timeout_ms: int = 20000
 
 
 @dataclass

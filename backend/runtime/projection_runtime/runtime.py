@@ -31,6 +31,7 @@ from runtime.shared import (
 )
 from infrastructure.messaging import Topics
 from infrastructure.messaging.kafka_config import ConsumerGroup
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 
 class ProjectionConfig(RuntimeConfig):
@@ -68,9 +69,8 @@ class ProjectionRuntime(BaseRuntime):
         self.health_check = RuntimeHealthCheck("projection")
         
         try:
-            import os
             import asyncio
-            kafka_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+            kafka_servers = KAFKA_BOOTSTRAP_SERVERS
             self.logger.info(f"Connecting to Kafka at: {kafka_servers}")
             
             await asyncio.sleep(5)
@@ -93,6 +93,7 @@ class ProjectionRuntime(BaseRuntime):
                 DecisionProjection,
                 RiskProjection,
                 PositionProjection,
+                EventTimelineProjection,
             )
             
             self.projections = [
@@ -100,6 +101,7 @@ class ProjectionRuntime(BaseRuntime):
                 DecisionProjection(),
                 RiskProjection(),
                 PositionProjection(),
+                EventTimelineProjection(),
             ]
             
             for projection in self.projections:

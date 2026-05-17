@@ -24,6 +24,7 @@ from infrastructure.pipeline import (
     DataSource,
     create_rss_pipeline
 )
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 logger = get_logger("test_unified_pipeline")
 
@@ -125,7 +126,7 @@ async def test_publisher():
     )
     
     # 创建发布者
-    publisher = UnifiedPublisher(config, "localhost:9092")
+    publisher = UnifiedPublisher(config, KAFKA_BOOTSTRAP_SERVERS)
     
     try:
         await publisher.start()
@@ -188,7 +189,7 @@ async def test_pipeline():
     pipeline = DataPipeline(
         config=config,
         data_source=data_source,
-        kafka_bootstrap_servers="localhost:9092",
+        kafka_bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
         message_handler=message_handler
     )
     

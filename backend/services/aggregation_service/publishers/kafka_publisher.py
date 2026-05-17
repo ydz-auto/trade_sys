@@ -4,11 +4,11 @@ Kafka Publisher - Kafka 发布器
 """
 
 import json
-import os
 from typing import Optional, List
 
 from infrastructure.logging import get_logger
 from infrastructure.messaging import get_broker
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 from services.aggregation_service.models.candle_model import Candle
 from services.aggregation_service.models.orderbook_model import OrderBookFeature
@@ -25,7 +25,7 @@ class KafkaPublisher:
 
     async def initialize(self):
         """初始化"""
-        bootstrap_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+        bootstrap_servers = KAFKA_BOOTSTRAP_SERVERS
         self.broker = get_broker(bootstrap_servers)
         await self.broker.start()
         self._initialized = True

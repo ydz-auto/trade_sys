@@ -35,6 +35,7 @@ from domain.execution.models import (
 )
 from services.execution_service.adapters.base import BaseExchangeAdapter
 from infrastructure.logging import get_logger
+from shared.config.defaults.infrastructure.external_apis import EXCHANGE_REST_APIS, EXCHANGE_WS_APIS
 
 logger = get_logger("execution_service.adapters.okx")
 
@@ -43,9 +44,9 @@ class OKXAdapter(BaseExchangeAdapter):
     """OKX 交易所适配器"""
 
     # API 基础 URL
-    BASE_URL = "https://www.okx.com"
-    WS_PUBLIC_URL = "wss://ws.okx.com:8443/ws/public"
-    WS_PRIVATE_URL = "wss://ws.okx.com:8443/ws/private"
+    BASE_URL = EXCHANGE_REST_APIS["okx"]["api"]
+    WS_PUBLIC_URL = EXCHANGE_WS_APIS["okx"]["public"]
+    WS_PRIVATE_URL = EXCHANGE_WS_APIS["okx"]["private"]
 
     def __init__(
         self,
@@ -65,9 +66,9 @@ class OKXAdapter(BaseExchangeAdapter):
 
         # 测试网配置
         if self.testnet:
-            self.BASE_URL = "https://www.okx.com"
-            self.WS_PUBLIC_URL = "wss://wspap.okx.com:8443/ws/public"
-            self.WS_PRIVATE_URL = "wss://wspap.okx.com:8443/ws/private"
+            self.BASE_URL = EXCHANGE_REST_APIS["okx"]["testnet"]
+            self.WS_PUBLIC_URL = EXCHANGE_WS_APIS["okx"]["testnet_public"]
+            self.WS_PRIVATE_URL = EXCHANGE_WS_APIS["okx"]["testnet_private"]
             logger.info(f"Using OKX {'TESTNET' if testnet else 'MAINNET'}")
 
         self._session: Optional[aiohttp.ClientSession] = None

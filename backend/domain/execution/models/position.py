@@ -35,8 +35,13 @@ class Position:
     liquidation_price: float = 0.0
     entry_time: Optional[datetime] = None
     
-    # 新增：爆仓相关计算
+    # 爆仓相关计算
     maintenance_margin_rate: float = MAINTENANCE_MARGIN_RATE  # 维持保证金率
+    
+    # 资金费率相关（永续合约）
+    funding_rate: float = 0.0  # 当前资金费率
+    funding_fee_estimate: float = 0.0  # 预估资金费（USDT）
+    next_funding_time: Optional[datetime] = None  # 下次结算时间
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -53,10 +58,14 @@ class Position:
             "margin": self.margin,
             "liquidation_price": self.liquidation_price,
             "entry_time": self.entry_time.isoformat() if self.entry_time else None,
-            # 新增：爆仓相关
+            # 爆仓相关
             "liquidation_distance_pct": self.liquidation_distance_pct,
             "margin_ratio": self.margin_ratio,
             "risk_level": self.risk_level,
+            # 资金费率相关
+            "funding_rate": self.funding_rate,
+            "funding_fee_estimate": self.funding_fee_estimate,
+            "next_funding_time": self.next_funding_time.isoformat() if self.next_funding_time else None,
         }
 
     @classmethod
@@ -76,6 +85,9 @@ class Position:
             liquidation_price=data.get("liquidation_price", 0.0),
             entry_time=datetime.fromisoformat(data["entry_time"]) if data.get("entry_time") else None,
             maintenance_margin_rate=data.get("maintenance_margin_rate", MAINTENANCE_MARGIN_RATE),
+            funding_rate=data.get("funding_rate", 0.0),
+            funding_fee_estimate=data.get("funding_fee_estimate", 0.0),
+            next_funding_time=datetime.fromisoformat(data["next_funding_time"]) if data.get("next_funding_time") else None,
         )
 
     def update_price(self, current_price: float) -> None:
@@ -156,3 +168,38 @@ class Position:
     def is_flat(self) -> bool:
         """是否无持仓"""
         return abs(self.quantity) < 1e-8
+    
+    def calculate_funding_fee(self, funding_rate: float) -> float:
+        """计算预估资金费
+        
+        资金费 = 持仓价值 * 资金费率
+        - 多头：资金费率 > 0 时支付，< 0 时收取
+        - 空头：资金费率 > 0 时收取，< 0 时支付
+        
+        Args:
+            funding_rate: 当前资金费率（如 0.0001 = 0.01%）
+        
+        Returns:
+            预估资金费（正数=支付，负数=收取）
+        """
+        position_value = self.position_value
+        if position_value <= 0:
+            return 0.0
+        
+        # 资金费 = 持仓价值 * 资金费率
+        # 多头：正费率支付，负费率收取
+        # 空头：正费率收取，负费率支付（所以乘以 -1）
+        if self.is_long():
+            fee = position_value * funding_rate
+        else:
+            fee = -position_value * funding_rate
+        
+        return fee
+    
+    def update_funding_rate(self, funding_rate: float, next_funding_time: datetime = None) -> None:
+        """更新资金费率"""
+        self.funding_rate = funding_rate
+        self.funding_fee_estimate = self.calculate_funding_fee(funding_rate)
+        if next_funding_time:
+            self.next_funding_time = next_funding_time
+        self.updated_at = datetime.now()

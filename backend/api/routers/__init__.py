@@ -3,7 +3,7 @@ Routers Package - FastAPI Endpoints
 """
 from fastapi import APIRouter
 from .health import router as health_router
-from .dashboard import router as dashboard_router
+from .dashboard_v2 import router as dashboard_router
 from .prices import router as prices_router
 from .data import router as data_router
 from .factors import router as factors_router

@@ -193,6 +193,11 @@ class ProjectionChannels:
         return f"{cls.NAMESPACE}:{domain}"
 
     @classmethod
+    def prices(cls) -> str:
+        """价格实时推送频道（高频）"""
+        return cls._channel("prices")
+
+    @classmethod
     def dashboard(cls) -> str:
         """Dashboard 更新频道"""
         return cls._channel("dashboard")
@@ -233,6 +238,7 @@ class ProjectionChannels:
     def all(cls) -> list:
         """所有频道"""
         return [
+            cls.prices(),
             cls.dashboard(),
             cls.decision(),
             cls.risk(),

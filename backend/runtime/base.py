@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from infrastructure.logging import get_logger
 from infrastructure.logging.logger import LoggerFactory
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 
 class RuntimeState(Enum):
@@ -43,7 +44,7 @@ class RuntimeConfig:
     version: str = "1.0.0"
     environment: str = "dev"
     
-    kafka_bootstrap_servers: str = "localhost:9092"
+    kafka_bootstrap_servers: str = field(default_factory=lambda: KAFKA_BOOTSTRAP_SERVERS)
     redis_url: str = "redis://localhost:6379/0"
     
     log_level: str = "INFO"
@@ -60,7 +61,7 @@ class RuntimeConfig:
             name=os.environ.get("RUNTIME_NAME", "unknown"),
             version=os.environ.get("RUNTIME_VERSION", "1.0.0"),
             environment=os.environ.get("ENVIRONMENT", "dev"),
-            kafka_bootstrap_servers=os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+            kafka_bootstrap_servers=os.environ.get("KAFKA_BOOTSTRAP_SERVERS", KAFKA_BOOTSTRAP_SERVERS),
             redis_url=os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
             log_level=os.environ.get("LOG_LEVEL", "INFO"),
             metrics_enabled=os.environ.get("METRICS_ENABLED", "true").lower() == "true",

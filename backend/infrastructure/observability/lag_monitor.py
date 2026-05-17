@@ -17,6 +17,7 @@ from collections import deque
 from enum import Enum
 
 from infrastructure.logging import get_logger
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 try:
     from aiokafka import AIOKafkaAdminClient, AIOKafkaConsumer
@@ -104,14 +105,14 @@ class ConsumerLagMonitor:
     
     def __init__(
         self,
-        bootstrap_servers: str = "localhost:9092",
+        bootstrap_servers: str = None,
         thresholds: Optional[LagThreshold] = None,
         history_size: int = 100,
     ):
         if not KAFKA_ADMIN_AVAILABLE:
             raise RuntimeError("aiokafka not installed. Run: pip install aiokafka")
         
-        self.bootstrap_servers = bootstrap_servers
+        self.bootstrap_servers = bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS
         self.thresholds = thresholds or LagThreshold()
         self.history_size = history_size
         
@@ -325,11 +326,11 @@ _lag_monitor: Optional[ConsumerLagMonitor] = None
 
 
 async def get_lag_monitor(
-    bootstrap_servers: str = "localhost:9092",
+    bootstrap_servers: str = None,
 ) -> ConsumerLagMonitor:
     """获取 Lag Monitor 实例"""
     global _lag_monitor
     if _lag_monitor is None:
-        _lag_monitor = ConsumerLagMonitor(bootstrap_servers=bootstrap_servers)
+        _lag_monitor = ConsumerLagMonitor(bootstrap_servers=bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS)
         await _lag_monitor.start()
     return _lag_monitor

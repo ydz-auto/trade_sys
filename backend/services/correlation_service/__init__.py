@@ -2,7 +2,7 @@
 Correlation Service - 多数据源相关性分析定时任务
 
 对接现有 TaskScheduler，定时执行相关性分析。
-分析结果存入本地文件 + 可选推送 Kafka。
+分析结果存入本地文件 + ClickHouse + 可选推送 Kafka。
 
 用法:
     python -m services.correlation_service
@@ -11,7 +11,6 @@ Correlation Service - 多数据源相关性分析定时任务
 import asyncio
 import json
 import sys
-import os
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Any
@@ -27,21 +26,12 @@ from services.data_service.pipeline.scheduler import (
     TaskPriority,
     get_scheduler,
 )
+from shared.config import get_config_manager
 
 
-# ──────────────────────────────────────────────
-# 配置
-# ──────────────────────────────────────────────
-
-DEFAULT_SYMBOLS = os.environ.get("CORRELATION_SYMBOLS", "BTC,ETH").split(",")
-DEFAULT_TIMEFRAMES = os.environ.get("CORRELATION_TIMEFRAMES", "1h,4h").split(",")
-DEFAULT_INTERVAL = int(os.environ.get("CORRELATION_INTERVAL", "3600"))  # 默认1小时
-OUTPUT_DIR = os.environ.get("CORRELATION_OUTPUT_DIR", "./data/correlation_results")
-
-# Kafka 推送开关
-KAFKA_ENABLED = os.environ.get("CORRELATION_KAFKA_ENABLED", "false").lower() == "true"
-KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-KAFKA_TOPIC = os.environ.get("CORRELATION_KAFKA_TOPIC", "tradeagent.correlation_results")
+def _get_config(key: str, default: Any = None) -> Any:
+    config_manager = get_config_manager()
+    return config_manager.get(key, default)
 
 
 class CorrelationWorker:
@@ -50,7 +40,7 @@ class CorrelationWorker:
 
     功能：
     1. 定时执行多数据源相关性分析
-    2. 结果存储（JSON + 可视化）
+    2. 结果存储（JSON + 可视化 + ClickHouse）
     3. 可选 Kafka 推送
     4. 强信号告警
     """
@@ -59,39 +49,46 @@ class CorrelationWorker:
         self,
         symbols: Optional[List[str]] = None,
         timeframes: Optional[List[str]] = None,
-        interval: int = DEFAULT_INTERVAL,
-        output_dir: str = OUTPUT_DIR,
-        kafka_enabled: bool = KAFKA_ENABLED,
+        interval: Optional[int] = None,
+        output_dir: Optional[str] = None,
+        kafka_enabled: Optional[bool] = None,
+        storage_enabled: Optional[bool] = None,
     ):
-        self.symbols = symbols or DEFAULT_SYMBOLS
-        self.timeframes = timeframes or DEFAULT_TIMEFRAMES
-        self.interval = interval
-        self.output_dir = Path(output_dir)
+        self.symbols = symbols or _get_config("correlation.symbols", ["BTC", "ETH"])
+        self.timeframes = timeframes or _get_config("correlation.timeframes", ["1h", "4h"])
+        self.interval = interval or _get_config("correlation.interval", 3600)
+        self.output_dir = Path(output_dir or _get_config("correlation.output_dir", "./data/correlation_results"))
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.kafka_enabled = kafka_enabled
+        self.kafka_enabled = kafka_enabled if kafka_enabled is not None else _get_config("correlation.kafka.enabled", False)
+        self.storage_enabled = storage_enabled if storage_enabled is not None else _get_config("correlation.storage.enabled", True)
+        self.kafka_topic = _get_config("correlation.kafka.topic", "tradeagent.correlation_results")
 
         self._broker = None
         self._scheduler: Optional[TaskScheduler] = None
         self._running = False
-        self._results_cache: Dict[str, Dict] = {}  # symbol:timeframe -> latest result
+        self._results_cache: Dict[str, Dict] = {}
 
         logger.info(
             f"CorrelationWorker initialized: symbols={self.symbols}, "
-            f"timeframes={self.timeframes}, interval={self.interval}s"
+            f"timeframes={self.timeframes}, interval={self.interval}s, "
+            f"kafka={self.kafka_enabled}, storage={self.storage_enabled}"
         )
 
     async def initialize(self):
         """初始化 Worker"""
-        from research.correlation import CorrelationAnalyzer, CorrelationConfig
+        from research.correlation import CorrelationAnalyzer, CorrelationConfig, get_correlation_storage
 
         self._analyzer_cls = CorrelationAnalyzer
         self._config_cls = CorrelationConfig
+        self._storage = get_correlation_storage()
 
         # 初始化 Kafka（如果启用）
         if self.kafka_enabled:
             try:
                 from infrastructure.messaging import get_broker
-                self._broker = get_broker(KAFKA_BOOTSTRAP)
+                from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+                kafka_bootstrap = _get_config("kafka.bootstrap_servers", KAFKA_BOOTSTRAP_SERVERS)
+                self._broker = get_broker(kafka_bootstrap)
                 logger.info("Kafka broker connected for correlation results")
             except Exception as e:
                 logger.warning(f"Failed to connect Kafka, disabling: {e}")
@@ -163,6 +160,10 @@ class CorrelationWorker:
             result_path = result.save()
             result_dict = result.to_dict()
 
+            # 保存到 ClickHouse
+            if self.storage_enabled:
+                await self._storage.save_result(result_dict)
+
             # 缓存最新结果
             cache_key = f"{symbol}:{timeframe}"
             self._results_cache[cache_key] = result_dict
@@ -205,7 +206,7 @@ class CorrelationWorker:
 
             await self._broker.publish(
                 message=message,
-                topic=KAFKA_TOPIC,
+                topic=self.kafka_topic,
                 key=f"{symbol}_{timeframe}",
             )
             logger.debug(f"Published correlation result to Kafka: {symbol} {timeframe}")
@@ -290,21 +291,23 @@ async def main():
     print("=" * 60)
     print("Correlation Worker - 多数据源相关性分析")
     print("=" * 60)
-    print(f"Symbols: {DEFAULT_SYMBOLS}")
-    print(f"Timeframes: {DEFAULT_TIMEFRAMES}")
-    print(f"Interval: {DEFAULT_INTERVAL}s")
-    print(f"Output: {OUTPUT_DIR}")
-    print(f"Kafka: {'enabled' if KAFKA_ENABLED else 'disabled'}")
-    print("=" * 60)
 
     worker = CorrelationWorker()
+    
+    print(f"Symbols: {worker.symbols}")
+    print(f"Timeframes: {worker.timeframes}")
+    print(f"Interval: {worker.interval}s")
+    print(f"Output: {worker.output_dir}")
+    print(f"Kafka: {'enabled' if worker.kafka_enabled else 'disabled'}")
+    print(f"Storage: {'enabled' if worker.storage_enabled else 'disabled'}")
+    print("=" * 60)
 
     # 先执行一次
     print("\n[correlation_service] Running initial analysis...")
     await worker.run_once()
 
     # 启动定时调度
-    print(f"\n[correlation_service] Starting scheduler (interval={DEFAULT_INTERVAL}s)...")
+    print(f"\n[correlation_service] Starting scheduler (interval={worker.interval}s)...")
     await worker.start()
 
     try:

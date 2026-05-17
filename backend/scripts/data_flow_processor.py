@@ -17,6 +17,7 @@ try:
     from infrastructure.cache.redis_client import init_redis, get_redis_client
     from services.projection_service.state_keys import ProjectionKeys
     from infrastructure.logging import get_logger
+    from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
     logger = get_logger('data_flow_processor')
 except ImportError as e:
     print(f"Import error: {e}")
@@ -40,7 +41,7 @@ class DataFlowProcessor:
         logger.info("✅ Redis connected")
         
         # 创建Kafka消费者 - 使用简化的配置
-        bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+        bootstrap_servers = KAFKA_BOOTSTRAP_SERVERS
         logger.info(f"Connecting to Kafka: {bootstrap_servers}")
         
         self.consumer = AIOKafkaConsumer(

@@ -1,6 +1,8 @@
 from typing import Optional, Dict, Any, Callable, Type, Union, TYPE_CHECKING
 from pydantic import BaseModel
 
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+
 try:
     from faststream import FastStream
     from faststream.kafka import KafkaBroker
@@ -18,11 +20,11 @@ _broker: Optional[Any] = None
 
 
 class KafkaBrokerWrapper:
-    def __init__(self, bootstrap_servers: str = "localhost:9092"):
+    def __init__(self, bootstrap_servers: str = None):
         if not FASTSTREAM_AVAILABLE:
             raise RuntimeError("FastStream not installed. Run: pip install faststream[kafka]")
 
-        self.bootstrap_servers = bootstrap_servers
+        self.bootstrap_servers = bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS
         self._broker: Optional[Any] = None
         self._app: Optional[Any] = None
         self._publishers: Dict[str, Any] = {}
@@ -114,7 +116,7 @@ _broker_instance: Optional["KafkaBrokerWrapper"] = None
 def get_broker(bootstrap_servers: str = None) -> "KafkaBrokerWrapper":
     global _broker_instance
     if _broker_instance is None:
-        servers = bootstrap_servers or os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+        servers = bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS
         _broker_instance = KafkaBrokerWrapper(servers)
     return _broker_instance
 

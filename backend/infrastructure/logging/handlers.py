@@ -12,6 +12,8 @@ from logging.handlers import RotatingFileHandler as LoggingRotatingFileHandler
 from logging import LogRecord
 import logging
 
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+
 
 class BaseHandler(logging.Handler):
     def __init__(self, level: int = logging.INFO):
@@ -125,12 +127,12 @@ class ElasticsearchHandler(logging.Handler):
 class KafkaHandler(logging.Handler):
     def __init__(
         self,
-        bootstrap_servers: str = "localhost:9092",
+        bootstrap_servers: str = None,
         topic: str = "tradeagent-logs",
         level: int = logging.INFO,
     ):
         super().__init__(level)
-        self.bootstrap_servers = bootstrap_servers
+        self.bootstrap_servers = bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS
         self.topic = topic
         self._producer = None
 

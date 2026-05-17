@@ -586,6 +586,22 @@ export function DashboardPage() {
                         </Col>
                       </Row>
                     )}
+                    {pos.fundingRate !== undefined && (
+                      <Row gutter={[8, 8]}>
+                        <Col xs={12} md={12}>
+                          <div className="text-[#94A3B8] text-xs">资金费率</div>
+                          <div className={`text-sm font-semibold ${pos.fundingRate >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                            {pos.fundingRate >= 0 ? '+' : ''}{(pos.fundingRate * 100).toFixed(4)}%
+                          </div>
+                        </Col>
+                        <Col xs={12} md={12}>
+                          <div className="text-[#94A3B8] text-xs">预估资金费</div>
+                          <div className={`text-sm ${pos.fundingFeeEstimate !== undefined && pos.fundingFeeEstimate >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                            {pos.fundingFeeEstimate !== undefined ? `$${pos.fundingFeeEstimate.toFixed(2)}` : '-'}
+                          </div>
+                        </Col>
+                      </Row>
+                    )}
                     {pos.riskLevel === 'DANGER' && (
                       <div className="mt-2 p-2 bg-[#EF4444]/20 rounded text-xs text-[#EF4444] text-center">
                         ⚠️ 爆仓风险极高，请及时处理！

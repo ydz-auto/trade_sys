@@ -28,13 +28,13 @@ class EventProducer:
         self._publisher: Optional[KafkaPublisher] = None
         self._connected = False
 
-    async def connect(self, bootstrap_servers: str = "localhost:9092") -> None:
+    async def connect(self, bootstrap_servers: Optional[str] = None) -> None:
         if not FASTSTREAM_AVAILABLE:
             logger.warning("FastStream not available, Kafka will be disabled")
             return
 
         try:
-            self._broker = get_kafka_broker(bootstrap_servers)
+            self._broker = get_kafka_broker(bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS)
             self._publisher = get_kafka_publisher(self._broker)
             self._connected = True
             logger.info("Event producer connected to Kafka")

@@ -18,6 +18,7 @@ from datetime import datetime
 
 from infrastructure.logging import get_logger
 from infrastructure.messaging import Topics
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 logger = get_logger("event_service.odaily_consumer")
 
@@ -38,11 +39,11 @@ class OdailyConsumer:
     
     def __init__(
         self,
-        bootstrap_servers: str = "localhost:9092",
+        bootstrap_servers: Optional[str] = None,
         understanding_hub: Optional[Any] = None,
         llm_pool: Optional[Any] = None
     ):
-        self.bootstrap_servers = bootstrap_servers
+        self.bootstrap_servers = bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS
         self._hub: Optional[Any] = understanding_hub
         self._llm_pool = llm_pool
         
@@ -320,12 +321,12 @@ _odaily_consumer: Optional[OdailyConsumer] = None
 
 
 async def get_odaily_consumer(
-    bootstrap_servers: str = "localhost:9092",
+    bootstrap_servers: Optional[str] = None,
     understanding_hub: Optional[Any] = None
 ) -> OdailyConsumer:
     """获取 Odaily Consumer 实例"""
     global _odaily_consumer
     if _odaily_consumer is None:
-        _odaily_consumer = OdailyConsumer(bootstrap_servers, understanding_hub)
+        _odaily_consumer = OdailyConsumer(bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS, understanding_hub)
         await _odaily_consumer.initialize()
     return _odaily_consumer

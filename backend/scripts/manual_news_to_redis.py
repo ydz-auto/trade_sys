@@ -13,6 +13,7 @@ from aiokafka import AIOKafkaConsumer
 from infrastructure.cache.redis_client import init_redis, get_redis_client
 from infrastructure.logging import get_logger
 from services.projection_service.state_keys import ProjectionKeys
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 logger = get_logger("manual_news_to_redis")
 
@@ -26,7 +27,7 @@ async def main():
     
     consumer = AIOKafkaConsumer(
         "tradeagent.events",
-        bootstrap_servers="localhost:9092",
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
         group_id="manual_news_writer",
         auto_offset_reset="earliest",
         value_deserializer=lambda m: json.loads(m.decode("utf-8")) if m else None,

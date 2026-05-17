@@ -311,7 +311,7 @@ infra_up() {
     echo -e "${CYAN}步骤 3/3: 启动 Kafka UI...${NC}"
     docker compose up -d kafka-ui
     
-    # 检查 Kafka 是否有集群ID问题（但不自动删除数据卷）
+    # 检查 Kafka 是否有集群ID问题并自动修复
     local kafka_logs=$(docker logs kafka 2>&1 | tail -20)
     if echo "$kafka_logs" | grep -q "InconsistentClusterIdException"; then
         echo ""
@@ -319,16 +319,22 @@ infra_up() {
         echo -e "${RED}⚠ Kafka 集群ID不匹配问题检测到${NC}"
         echo -e "${RED}===========================================${NC}"
         echo ""
-        echo -e "${YELLOW}注意: 开发环境可以删除数据卷解决${NC}"
-        echo -e "${YELLOW}      生产环境请不要删除数据！${NC}"
+        echo -e "${CYAN}正在自动修复...${NC}"
+        
+        # 调用修复脚本
+        cd "$SCRIPT_DIR/deploy"
+        echo "y" | ./fix-kafka-id.sh fix
+        
+        # 等待 Kafka 启动
         echo ""
-        echo "开发环境修复步骤:"
-        echo "  cd $SCRIPT_DIR/deploy"
-        echo "  docker compose down -v  # ⚠ 删除所有数据卷！"
-        echo "  docker compose up -d"
-        echo ""
-        echo "或使用: ./dev.sh fix-kafka-dev"
-        echo ""
+        echo -e "${CYAN}等待 Kafka 重新启动...${NC}"
+        sleep 5
+        local kafka_health=$(docker inspect --format='{{.State.Health.Status}}' kafka 2>/dev/null || echo "unknown")
+        if [ "$kafka_health" = "healthy" ]; then
+            echo -e "${GREEN}✓ Kafka 修复成功并已启动${NC}"
+        else
+            echo -e "${RED}✗ Kafka 修复失败，请手动检查${NC}"
+        fi
     fi
     
     echo ""
@@ -477,8 +483,8 @@ case "${1:-menu}" in
         infra_status
         ;;
     fix-kafka)
-        cd "$SCRIPT_DIR/docker"
-        ./fix-kafka.sh fix
+        cd "$SCRIPT_DIR/deploy"
+        ./fix-kafka-id.sh fix
         ;;
     fix-kafka-dev)
         fix_kafka_dev

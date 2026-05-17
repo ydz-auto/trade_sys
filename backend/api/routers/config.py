@@ -172,3 +172,21 @@ async def update_data_sources(sources: List[DataSourceConfig]):
     service = await get_service()
     result = await service.update_data_sources([s.model_dump() for s in sources])
     return {"success": True, "sources": result}
+
+
+@router.get("/exchanges/{exchange}")
+async def get_exchange_config(exchange: str):
+    """获取交易所配置"""
+    service = await get_service()
+    config = await service.get_exchange_config(exchange)
+    if not config:
+        raise HTTPException(status_code=404, detail="Exchange config not found")
+    return {"exchange": exchange, "config": config}
+
+
+@router.put("/exchanges/{exchange}")
+async def update_exchange_config(exchange: str, config: dict):
+    """更新交易所配置"""
+    service = await get_service()
+    result = await service.update_exchange_config(exchange, config)
+    return {"success": True, "exchange": exchange, "config": result}

@@ -28,6 +28,7 @@ from infrastructure.resilience import (
     RetryConfig
 )
 from shared.contracts import StandardEvent, Source, Sentiment, create_news_event
+from shared.config.defaults.infrastructure.external_apis import NEWS_APIS
 
 logger = get_logger("collectors.odaily")
 
@@ -46,15 +47,15 @@ class OdailyCollector:
     - 发布到 Kafka Topic: raw.odaily
     """
 
-    BASE_URL = "https://www.odaily.news"
+    BASE_URL = NEWS_APIS["odaily"]["base_url"]
 
     SOURCES = {
         "flash": {
-            "url": "https://www.odaily.news/post/flash",
+            "url": f"{BASE_URL}/post/flash",
             "type": "flash"
         },
         "articles": {
-            "url": "https://www.odaily.news",
+            "url": BASE_URL,
             "type": "article"
         }
     }

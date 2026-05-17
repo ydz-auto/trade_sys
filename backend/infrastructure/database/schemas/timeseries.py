@@ -100,3 +100,24 @@ REGIME_SCHEMAS = {
         ORDER BY (symbol, timestamp)
     """,
 }
+
+CORRELATION_SCHEMAS = {
+    "correlation_results": """
+        CREATE TABLE IF NOT EXISTS correlation_results (
+            symbol String,
+            timeframe String,
+            timestamp DateTime,
+            positive_count UInt32,
+            negative_count UInt32,
+            neutral_count UInt32,
+            total_signals UInt32,
+            signal_assessments String,
+            univariate_results String,
+            multivariate_results String,
+            llm_results String,
+            analysis_duration_ms Float64
+        ) ENGINE = MergeTree()
+        PARTITION BY toYYYYMM(timestamp)
+        ORDER BY (symbol, timeframe, timestamp)
+    """,
+}

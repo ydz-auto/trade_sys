@@ -28,6 +28,10 @@ from shared.config.defaults.business.notification import (
     NOTIFICATION_CONFIGS,
     NOTIFICATION_SCHEMAS,
 )
+from shared.config.defaults.business.correlation import (
+    CORRELATION_CONFIGS,
+    CORRELATION_SCHEMAS,
+)
 
 __all__ = [
     "TRADING_CONFIGS",
@@ -44,4 +48,6 @@ __all__ = [
     "MULTI_SOURCE_CONFIG",
     "NOTIFICATION_CONFIGS",
     "NOTIFICATION_SCHEMAS",
+    "CORRELATION_CONFIGS",
+    "CORRELATION_SCHEMAS",
 ]

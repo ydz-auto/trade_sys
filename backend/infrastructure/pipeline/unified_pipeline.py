@@ -34,6 +34,7 @@ from infrastructure.resilience import (
     RetryConfig
 )
 from infrastructure.messaging import Topics
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 logger = get_logger("unified_pipeline")
 
@@ -123,10 +124,10 @@ class UnifiedPublisher:
     def __init__(
         self,
         config: PipelineConfig,
-        kafka_bootstrap_servers: str = "localhost:9092"
+        kafka_bootstrap_servers: str = None
     ):
         self.config = config
-        self.kafka_servers = kafka_bootstrap_servers
+        self.kafka_servers = kafka_bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS
         self.metrics = PipelineMetrics()
         
         # 熔断器
@@ -330,11 +331,11 @@ class UnifiedConsumer:
     def __init__(
         self,
         config: PipelineConfig,
-        kafka_bootstrap_servers: str = "localhost:9092",
+        kafka_bootstrap_servers: str = None,
         message_handler: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None
     ):
         self.config = config
-        self.kafka_servers = kafka_bootstrap_servers
+        self.kafka_servers = kafka_bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS
         self.message_handler = message_handler
         self.metrics = PipelineMetrics()
         
@@ -466,13 +467,13 @@ class DataPipeline:
         self,
         config: PipelineConfig,
         data_source: DataSource,
-        kafka_bootstrap_servers: str = "localhost:9092",
+        kafka_bootstrap_servers: str = None,
         message_handler: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None
     ):
         self.config = config
         self.data_source = data_source
-        self.publisher = UnifiedPublisher(config, kafka_bootstrap_servers)
-        self.consumer = UnifiedConsumer(config, kafka_bootstrap_servers, message_handler)
+        self.publisher = UnifiedPublisher(config, kafka_bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS)
+        self.consumer = UnifiedConsumer(config, kafka_bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS, message_handler)
         
         self._status = PipelineStatus.HEALTHY
         self._running = False
@@ -546,7 +547,7 @@ def create_rss_pipeline(
     name: str,
     rss_url: str,
     kafka_topic: str,
-    kafka_servers: str = "localhost:9092"
+    kafka_servers: str = None
 ) -> DataPipeline:
     """创建 RSS 数据管道"""
     
@@ -594,7 +595,7 @@ def create_skill_pipeline(
     name: str,
     skill_adapter_class,
     kafka_topic: str,
-    kafka_servers: str = "localhost:9092",
+    kafka_servers: str = None,
     **adapter_kwargs
 ) -> DataPipeline:
     """创建 Skill 数据管道"""

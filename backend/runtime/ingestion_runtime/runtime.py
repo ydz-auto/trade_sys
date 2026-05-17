@@ -31,6 +31,7 @@ from runtime.shared import (
     RuntimeHealthCheck,
 )
 from infrastructure.messaging import Topics
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 from dataclasses import dataclass
 
 
@@ -101,8 +102,7 @@ class IngestionRuntime(BaseRuntime):
             self.logger.warning(f"Aggregator init failed: {e}")
         
         try:
-            import os
-            kafka_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+            kafka_servers = KAFKA_BOOTSTRAP_SERVERS
             self.publisher = RuntimePublisher(PublisherConfig(
                 bootstrap_servers=kafka_servers,
                 topic=Topics.EVENTS,
@@ -363,6 +363,9 @@ class IngestionRuntime(BaseRuntime):
         try:
             from infrastructure.cache import get_redis_client
             redis_client = get_redis_client()
+            if not redis_client.is_connected:
+                await redis_client.connect()
+                self.logger.info("Redis client connected successfully")
         except Exception as e:
             self.logger.warning(f"Redis client not available: {e}")
         

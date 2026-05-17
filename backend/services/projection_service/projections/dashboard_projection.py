@@ -243,22 +243,31 @@ class DashboardProjection(BaseProjection):
                 self.logger.debug(f"Could not get full price data: {e}")
         
         self._prices[symbol] = price_data
+        
+        await self.push_websocket(ProjectionChannels.prices(), {
+            "type": "price_update",
+            "symbol": symbol,
+            "data": price_data,
+        })
+        
         self.logger.debug(f"Price updated: {symbol} = {price}")
     
     async def _periodic_price_snapshot(self) -> None:
-        """定期获取完整价格快照（每60秒）"""
+        """定期获取完整价格快照（每30秒），推送到 prices 频道"""
         symbols = ["BTC", "ETH", "SOL", "DOGE"]
         
         while self._running:
             try:
                 if self._multi_channel:
+                    snapshot_prices = {}
+                    
                     for symbol in symbols:
                         try:
                             price_data = await self._multi_channel.get_price(symbol)
                             
                             if price_data:
                                 symbol_key = f"{symbol}/USDT"
-                                self._prices[symbol_key] = {
+                                snapshot_prices[symbol_key] = {
                                     "symbol": symbol_key,
                                     "price": price_data.price,
                                     "change24h": price_data.change_24h or 0,
@@ -266,13 +275,20 @@ class DashboardProjection(BaseProjection):
                                     "exchange": "multi_channel",
                                     "timestamp": datetime.utcnow().isoformat(),
                                 }
-                                self.logger.info(f"Price snapshot: {symbol} = {price_data.price}, change={price_data.change_24h:.2f}%")
+                                self._prices[symbol_key] = snapshot_prices[symbol_key]
+                                self.logger.debug(f"Price snapshot: {symbol} = {price_data.price}, change={price_data.change_24h:.2f}%")
                         except Exception as e:
                             self.logger.warning(f"Failed to get price snapshot for {symbol}: {e}")
                     
+                    if snapshot_prices:
+                        await self.push_websocket(ProjectionChannels.prices(), {
+                            "type": "prices_snapshot",
+                            "data": snapshot_prices,
+                        })
+                    
                     await self._update_dashboard_state()
                 
-                await asyncio.sleep(60)
+                await asyncio.sleep(30)
                 
             except asyncio.CancelledError:
                 break

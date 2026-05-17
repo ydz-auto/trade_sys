@@ -12,13 +12,14 @@ Observability Manager - 可观测性统一管理器
 
 import time
 from typing import Dict, Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from infrastructure.logging import get_logger
 from infrastructure.monitoring.metrics import metrics_collector, MetricsCollector
 from infrastructure.monitoring.health import HealthChecker
 from infrastructure.observability.event_loss import EventLossDetector
 from infrastructure.observability.lag_monitor import ConsumerLagMonitor
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 logger = get_logger("infrastructure.observability.manager")
 
@@ -33,7 +34,7 @@ class ObservabilityConfig:
     service_name: str = "tradeagent"
     enable_event_loss_detection: bool = True
     enable_lag_monitor: bool = True
-    kafka_bootstrap_servers: str = "localhost:9092"
+    kafka_bootstrap_servers: str = field(default_factory=lambda: KAFKA_BOOTSTRAP_SERVERS)
 
 
 class ObservabilityManager:

@@ -28,6 +28,7 @@ ALLOWED_TABLES: Set[str] = {
     'lake_feature_technical', 'lake_feature_factor',
     'lake_signal_trading', 'lake_signal_fusion',
     'lake_replay_events', 'lake_replay_snapshots',
+    'correlation_results',
 }
 
 

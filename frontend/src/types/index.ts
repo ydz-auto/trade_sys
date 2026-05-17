@@ -61,6 +61,10 @@ export interface Position {
   margin?: number
   marginRatio?: number
   riskLevel?: 'SAFE' | 'CAUTION' | 'WARNING' | 'DANGER' | 'CRITICAL'
+  // 资金费率
+  fundingRate?: number  // 当前资金费率
+  fundingFeeEstimate?: number  // 预估资金费（USDT）
+  nextFundingTime?: string  // 下次结算时间
   // 元数据
   marketType?: string
   exchange?: string

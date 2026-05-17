@@ -203,38 +203,39 @@ fix_kafka_id() {
     # 步骤2: 修改 meta.properties
     echo -e "${YELLOW}步骤 2/3: 修改 meta.properties...${NC}"
     
-    # 使用 kafka 容器修改文件（避免依赖外部镜像）
-    local kafka_container=$(docker ps --format '{{.Names}}' | grep kafka | head -1)
-    if [ -z "$kafka_container" ]; then
-        kafka_container="kafka"
-    fi
+    # 使用临时容器修改文件（因为 Kafka 容器已停止）
+    echo "备份并更新 meta.properties..."
     
-    # 备份原文件
-    echo "备份 meta.properties..."
-    docker exec "$kafka_container" sh -c "cp /opt/kafka/data/meta.properties /opt/kafka/data/meta.properties.bak 2>/dev/null || cp /var/lib/kafka/data/meta.properties /var/lib/kafka/data/meta.properties.bak 2>/dev/null || true"
+    local result=$(docker run --rm -v ${kafka_volume}:/data confluentinc/cp-kafka:7.5.0 bash -c "
+        # 查找 meta.properties 文件
+        if [ -f /data/meta.properties ]; then
+            META_PATH=/data/meta.properties
+        else
+            echo 'ERROR: meta.properties not found'
+            exit 1
+        fi
+        
+        # 备份
+        cp \"\$META_PATH\" \"\${META_PATH}.bak\" 2>/dev/null || true
+        
+        # 写入新的 cluster.id
+        echo 'version=0' > \"\$META_PATH\"
+        echo 'cluster.id=${expected_id}' >> \"\$META_PATH\"
+        
+        # 验证
+        echo 'SUCCESS'
+        cat \"\$META_PATH\"
+    " 2>&1)
     
-    # 查找实际的 meta.properties 路径
-    local meta_path=""
-    if docker exec "$kafka_container" test -f /opt/kafka/data/meta.properties; then
-        meta_path="/opt/kafka/data/meta.properties"
-    elif docker exec "$kafka_container" test -f /var/lib/kafka/data/meta.properties; then
-        meta_path="/var/lib/kafka/data/meta.properties"
-    fi
-    
-    if [ -z "$meta_path" ]; then
-        echo -e "${RED}✗ 无法找到 meta.properties 文件${NC}"
+    if echo "$result" | grep -q "SUCCESS"; then
+        echo -e "${GREEN}✓ 已更新 cluster.id${NC}"
+        echo ""
+        echo "新内容:"
+        echo "$result" | grep -A2 "SUCCESS" | tail -2
+    else
+        echo -e "${RED}✗ 修改失败: $result${NC}"
         return 1
     fi
-    
-    # 写入新的 cluster.id
-    echo "更新 cluster.id..."
-    docker exec "$kafka_container" sh -c "cat > $meta_path << EOF
-#
-# Updated: $(date)
-version=0
-cluster.id=$expected_id
-EOF"
-    echo -e "${GREEN}✓ 已更新 cluster.id${NC}"
     
     # 步骤3: 重启 Kafka
     echo ""

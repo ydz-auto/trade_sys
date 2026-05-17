@@ -19,16 +19,31 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from infrastructure.logging import get_logger
+from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 try:
     from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-    from aiokafka.errors import KafkaError
+    from aiokafka.errors import (
+        KafkaError,
+        NotLeaderForPartitionError,
+        LeaderNotAvailableError,
+        UnknownTopicOrPartitionError,
+        BrokerNotAvailableError,
+        StaleMetadata,
+        RebalanceInProgressError,
+    )
     AIOKAFKA_AVAILABLE = True
 except ImportError:
     AIOKAFKA_AVAILABLE = False
     KafkaError = Exception
     AIOKafkaConsumer = None
     AIOKafkaProducer = None
+    NotLeaderForPartitionError = Exception
+    LeaderNotAvailableError = Exception
+    UnknownTopicOrPartitionError = Exception
+    BrokerNotAvailableError = Exception
+    StaleMetadata = Exception
+    RebalanceInProgressError = Exception
 
 logger = get_logger("infrastructure.messaging.consumer")
 
@@ -85,7 +100,7 @@ class BaseKafkaConsumer(ABC):
     
     def __init__(
         self,
-        bootstrap_servers: str = "localhost:9092",
+        bootstrap_servers: str = None,
         group_id: str = "tradeagent-consumer",
         topics: Optional[List[str]] = None,
         auto_offset_reset: str = "earliest",
@@ -97,7 +112,7 @@ class BaseKafkaConsumer(ABC):
         if not AIOKAFKA_AVAILABLE:
             raise RuntimeError("aiokafka not installed. Run: pip install aiokafka")
         
-        self.bootstrap_servers = bootstrap_servers
+        self.bootstrap_servers = bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS
         self.group_id = group_id
         self.topics = topics or []
         self.auto_offset_reset = auto_offset_reset
@@ -204,42 +219,154 @@ class BaseKafkaConsumer(ABC):
             logger.info(f"Consumer resumed: group={self.group_id}")
     
     async def _consume_loop(self) -> None:
-        """消费循环"""
-        try:
-            async for message in self._consumer:
-                if not self._running:
+        """消费循环 - 包含错误恢复和自动重连机制"""
+        retry_count = 0
+        max_retries = 10
+        base_retry_delay = 5
+        
+        while self._running:
+            try:
+                async for message in self._consumer:
+                    if not self._running:
+                        break
+                    
+                    if self._paused:
+                        await asyncio.sleep(0.1)
+                        continue
+                    
+                    try:
+                        await self._process_message(message)
+                        self._stats.messages_processed += 1
+                        self._stats.last_offset = message.offset
+                        self._stats.last_timestamp = datetime.now()
+                        
+                        await self._update_lag(message)
+                        await self._store_offset(message)
+                        
+                        retry_count = 0
+                        
+                    except Exception as e:
+                        self._stats.messages_failed += 1
+                        self._stats.errors.append(str(e))
+                        logger.error(f"Failed to process message: {e}")
+                        
+                        if len(self._stats.errors) > 100:
+                            self._stats.errors = self._stats.errors[-100:]
+                    
+                    if self.enable_auto_commit:
+                        await self._consumer.commit()
+                        
+            except asyncio.CancelledError:
+                logger.info(f"Consumer loop cancelled: group={self.group_id}")
+                break
+                
+            except NotLeaderForPartitionError as e:
+                retry_count += 1
+                logger.warning(
+                    f"[{retry_count}/{max_retries}] Leader changed for partition, "
+                    f"refreshing metadata: {e}"
+                )
+                if retry_count >= max_retries:
+                    logger.error(f"Max retries exceeded for NotLeaderForPartitionError")
+                    self._status = ConsumerStatus.ERROR
                     break
+                await asyncio.sleep(base_retry_delay + retry_count)
+                await self._refresh_consumer()
+                continue
                 
-                if self._paused:
-                    await asyncio.sleep(0.1)
-                    continue
+            except LeaderNotAvailableError as e:
+                retry_count += 1
+                logger.warning(
+                    f"[{retry_count}/{max_retries}] Leader not available, "
+                    f"waiting for election: {e}"
+                )
+                if retry_count >= max_retries:
+                    logger.error(f"Max retries exceeded for LeaderNotAvailableError")
+                    self._status = ConsumerStatus.ERROR
+                    break
+                await asyncio.sleep(base_retry_delay * 2)
+                await self._refresh_consumer()
+                continue
                 
-                try:
-                    await self._process_message(message)
-                    self._stats.messages_processed += 1
-                    self._stats.last_offset = message.offset
-                    self._stats.last_timestamp = datetime.now()
-                    
-                    await self._update_lag(message)
-                    await self._store_offset(message)
-                    
-                except Exception as e:
-                    self._stats.messages_failed += 1
+            except (UnknownTopicOrPartitionError, StaleMetadata) as e:
+                retry_count += 1
+                logger.warning(
+                    f"[{retry_count}/{max_retries}] Stale metadata detected, "
+                    f"refreshing: {e}"
+                )
+                if retry_count >= max_retries:
+                    logger.error(f"Max retries exceeded for metadata error")
+                    self._status = ConsumerStatus.ERROR
+                    break
+                await asyncio.sleep(base_retry_delay)
+                await self._refresh_consumer()
+                continue
+                
+            except RebalanceInProgressError as e:
+                logger.info(f"Rebalance in progress, waiting: {e}")
+                await asyncio.sleep(3)
+                continue
+                
+            except BrokerNotAvailableError as e:
+                retry_count += 1
+                logger.error(
+                    f"[{retry_count}/{max_retries}] Broker not available: {e}"
+                )
+                if retry_count >= max_retries:
+                    self._status = ConsumerStatus.ERROR
+                    break
+                await asyncio.sleep(base_retry_delay * 3)
+                await self._refresh_consumer()
+                continue
+                
+            except KafkaError as e:
+                retry_count += 1
+                logger.error(
+                    f"[{retry_count}/{max_retries}] Kafka error in consume loop: {e}"
+                )
+                if retry_count >= max_retries:
+                    self._status = ConsumerStatus.ERROR
                     self._stats.errors.append(str(e))
-                    logger.error(f"Failed to process message: {e}")
-                    
-                    if len(self._stats.errors) > 100:
-                        self._stats.errors = self._stats.errors[-100:]
+                    break
+                await asyncio.sleep(base_retry_delay + retry_count)
+                await self._refresh_consumer()
+                continue
                 
-                if self.enable_auto_commit:
-                    await self._consumer.commit()
-                    
-        except asyncio.CancelledError:
-            logger.info(f"Consumer loop cancelled: group={self.group_id}")
+            except Exception as e:
+                self._status = ConsumerStatus.ERROR
+                logger.error(f"Unexpected error in consume loop: {e}")
+                self._stats.errors.append(str(e))
+                break
+    
+    async def _refresh_consumer(self) -> None:
+        """刷新消费者连接 - 重新连接以获取最新元数据"""
+        try:
+            if self._consumer:
+                try:
+                    await self._consumer.stop()
+                except Exception as e:
+                    logger.warning(f"Error stopping consumer during refresh: {e}")
+                
+                self._consumer = AIOKafkaConsumer(
+                    *self.topics,
+                    bootstrap_servers=self.bootstrap_servers,
+                    group_id=self.group_id,
+                    auto_offset_reset=self.auto_offset_reset,
+                    enable_auto_commit=self.enable_auto_commit,
+                    auto_commit_interval_ms=self.auto_commit_interval_ms,
+                    session_timeout_ms=self.session_timeout_ms,
+                    heartbeat_interval_ms=self.heartbeat_interval_ms,
+                    value_deserializer=lambda m: json.loads(m.decode("utf-8")),
+                    key_deserializer=lambda m: m.decode("utf-8") if m else None,
+                )
+                
+                await self._consumer.start()
+                await self._update_partitions()
+                logger.info(f"Consumer refreshed successfully: group={self.group_id}")
+                
         except Exception as e:
-            self._status = ConsumerStatus.ERROR
-            logger.error(f"Consumer loop error: {e}")
-            self._stats.errors.append(str(e))
+            logger.error(f"Failed to refresh consumer: {e}")
+            raise
     
     @abstractmethod
     async def _process_message(self, message) -> None:
@@ -325,10 +452,10 @@ class BatchKafkaConsumer(BaseKafkaConsumer):
     
     支持批量处理消息，提高吞吐量
     """
-    
+
     def __init__(
         self,
-        bootstrap_servers: str = "localhost:9092",
+        bootstrap_servers: str = None,
         group_id: str = "tradeagent-consumer",
         topics: Optional[List[str]] = None,
         batch_size: int = 100,
