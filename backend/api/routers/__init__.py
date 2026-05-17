@@ -20,7 +20,7 @@ from .refresh import router as refresh_router
 
 api_router = APIRouter()
 api_router.include_router(health_router, tags=["Health"])
-api_router.include_router(dashboard_router, prefix="/trading", tags=["Dashboard"])
+api_router.include_router(dashboard_router, tags=["Dashboard"])
 api_router.include_router(trading_router, tags=["Trading"])
 api_router.include_router(prices_router, tags=["Prices"])
 api_router.include_router(data_router, tags=["Data"])

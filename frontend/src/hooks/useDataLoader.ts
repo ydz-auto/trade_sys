@@ -1,5 +1,20 @@
 import { useEffect, useState, useRef } from 'react'
-import { fetchAllTradingData } from '../services/api/tradingApi'
+import {
+  fetchPrices,
+  fetchPositions,
+  fetchRegime,
+  fetchRisk,
+  fetchSignal,
+  fetchFactors,
+  fetchCompositeScore,
+  fetchNews,
+  fetchSocialPosts,
+  fetchDataSources,
+  fetchTraders,
+  fetchMacro,
+  fetchFearGreed,
+  fetchEtf,
+} from '../services/api/dashboardApi'
 import { useTradingStore } from '../store/tradingStore'
 import { wsService } from '../services/websocket/wsService'
 
@@ -77,40 +92,57 @@ export function useDataLoader() {
     async function loadData() {
       try {
         setLoading(true)
-        const data = await fetchAllTradingData()
+        
+        // 并行加载所有数据
+        const [
+          pricesData,
+          positionsData,
+          regimeData,
+          riskData,
+          signalData,
+          factorsData,
+          compositeScoreData,
+          newsData,
+          socialData,
+          dataSourcesData,
+          tradersData,
+          macroData,
+          fearGreedData,
+          etfData,
+        ] = await Promise.all([
+          wsConnectedRef.current ? Promise.resolve(null) : fetchPrices(),
+          wsConnectedRef.current ? Promise.resolve(null) : fetchPositions(),
+          fetchRegime(),
+          fetchRisk(),
+          fetchSignal(),
+          fetchFactors(),
+          fetchCompositeScore(),
+          fetchNews(),
+          fetchSocialPosts(),
+          fetchDataSources(),
+          fetchTraders(),
+          fetchMacro(),
+          fetchFearGreed(),
+          fetchEtf(),
+        ])
 
         if (!mounted) return
 
-        // 价格只在 WebSocket 未连接时更新
-        if (!wsConnectedRef.current) {
-          store.setPrices(data.prices)
-        }
-        
-        store.setCompositeScore(data.compositeScore)
-        store.setRegime(data.regime)
-        store.setRisk(data.risk)
-        store.setSignal(data.signal)
-        store.setFactors(data.factors)
-        
-        // 持仓只在 WebSocket 未连接时更新
-        if (!wsConnectedRef.current) {
-          store.setPositions(data.positions)
-        }
-        
-        store.setWeightVersions(data.weightVersions)
-        store.setDataSources(data.dataSources)
-        store.setTraders(data.traders)
-        store.setSocialPosts(data.socialPosts)
-        store.setNews(data.news)
-        if (data.fearGreed) {
-          store.setFearGreed(data.fearGreed)
-        }
-        if (data.macro) {
-          store.setMacro(data.macro)
-        }
-        if (data.etf) {
-          store.setEtf(data.etf)
-        }
+        // 更新 store
+        if (pricesData) store.setPrices(pricesData)
+        if (positionsData) store.setPositions(positionsData)
+        if (regimeData) store.setRegime(regimeData)
+        if (riskData) store.setRisk(riskData)
+        if (signalData) store.setSignal(signalData)
+        if (factorsData) store.setFactors(factorsData)
+        store.setCompositeScore(compositeScoreData)
+        store.setNews(newsData.items)
+        store.setSocialPosts(socialData.items)
+        store.setDataSources(dataSourcesData)
+        store.setTraders(tradersData)
+        if (macroData) store.setMacro(macroData)
+        if (fearGreedData) store.setFearGreed(fearGreedData)
+        if (etfData) store.setEtf(etfData)
         store.setLastUpdate(new Date())
 
         setError(null)
@@ -127,10 +159,13 @@ export function useDataLoader() {
 
     async function loadPricesOnly() {
       try {
-        const data = await fetchAllTradingData()
+        const [pricesData, positionsData] = await Promise.all([
+          fetchPrices(),
+          fetchPositions(),
+        ])
         if (!mounted) return
-        store.setPrices(data.prices)
-        store.setPositions(data.positions)
+        if (pricesData) store.setPrices(pricesData)
+        if (positionsData) store.setPositions(positionsData)
       } catch (err) {
         console.error('Price loading error:', err)
       }
