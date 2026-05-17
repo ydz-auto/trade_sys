@@ -12,6 +12,7 @@ Projection Runtime - CQRS 投影运行时
 """
 
 import asyncio
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -48,6 +49,19 @@ class ProjectionRuntime(BaseRuntime):
     只负责运行时编排，业务逻辑在 services/projection_service/projections/
     """
     
+    EVENT_TYPE_TO_CHANNEL = {
+        "price_update": "channel:prices",
+        "raw_data": "channel:dashboard",
+        "news": "channel:dashboard",
+        "signal": "channel:signal",
+        "event": "channel:timeline",
+        "market": "channel:dashboard",
+        "order": "channel:order",
+        "position": "channel:position",
+        "risk": "channel:risk",
+        "decision": "channel:decision",
+    }
+    
     def __init__(self, config: ProjectionConfig = None):
         config = config or ProjectionConfig.from_env()
         super().__init__(config)
@@ -58,7 +72,11 @@ class ProjectionRuntime(BaseRuntime):
         self.health_check: Optional[RuntimeHealthCheck] = None
         
         self.consumer: Optional[RuntimeConsumer] = None
+        self.publisher: Optional[RuntimePublisher] = None
         self.projections: List[Any] = []
+        
+        self._redis: Any = None
+        self._redis_pubsub: Any = None
     
     async def initialize(self) -> None:
         """初始化运行时组件"""
@@ -67,6 +85,14 @@ class ProjectionRuntime(BaseRuntime):
         self.lifecycle = RuntimeLifecycle("projection")
         self.metrics = RuntimeMetrics("projection")
         self.health_check = RuntimeHealthCheck("projection")
+        
+        try:
+            import redis.asyncio as aioredis
+            self._redis = aioredis.from_url("redis://localhost", decode_responses=True)
+            await self._redis.ping()
+            self.logger.info("Redis connected for pub/sub")
+        except Exception as e:
+            self.logger.warning(f"Redis connection failed: {e}. Continuing without pub/sub.")
         
         try:
             import asyncio
@@ -140,6 +166,9 @@ class ProjectionRuntime(BaseRuntime):
         if self.consumer:
             await self.consumer.stop()
         
+        if self._redis:
+            await self._redis.close()
+        
         self.logger.info(f"Projection Runtime stopped. Stats: {self.metrics.to_dict()}")
     
     async def run(self) -> None:
@@ -180,6 +209,25 @@ class ProjectionRuntime(BaseRuntime):
                     self.logger.error(f"Error in {projection.name}: {e}")
         
         self.metrics.increment("events_processed")
+        
+        if self._redis:
+            try:
+                channel = event.get("channel") or self.EVENT_TYPE_TO_CHANNEL.get(event_type, "channel:dashboard")
+                projection_data = event.get("data", {})
+                
+                payload = {
+                    "type": "data_update",
+                    "event_type": event_type,
+                    "channel": channel,
+                    "data": projection_data,
+                    "timestamp": event.get("timestamp", ""),
+                }
+                
+                await self._redis.publish(channel, json.dumps(payload))
+                self.metrics.increment("events_published")
+                self.logger.info(f"[REDIS-PUB] event={event_type} channel={channel}")
+            except Exception as e:
+                self.logger.warning(f"Failed to publish to Redis: {e}")
     
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""

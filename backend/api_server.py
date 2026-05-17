@@ -1,26 +1,74 @@
 """
 API Server - Main Entry Point
 API 服务器主入口
+
+集成 Runtime Governor:
+- 启动时初始化 RuntimeGovernor
+- 关闭时优雅停止
+- 提供 /api/v1/runtime 端点查看状态
 """
+import asyncio
+import os
+from contextlib import asynccontextmanager
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api import api_router
 
+from infrastructure.logging import get_logger
+from infrastructure.runtime_governor import (
+    get_runtime_governor,
+    get_websocket_runtime,
+    RuntimeMode,
+)
+from infrastructure.websocket import get_ws_gateway
 
-# ======================================
-# Initialize FastAPI
-# ======================================
+logger = get_logger("api_server")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("=" * 60)
+    logger.info("  Starting Runtime Governor...")
+    logger.info("=" * 60)
+    
+    governor = get_runtime_governor()
+    ws_runtime = get_websocket_runtime(governor)
+    
+    await governor.start()
+    await ws_runtime.start()
+    
+    ws_gateway = await get_ws_gateway()
+    import asyncio
+    asyncio.create_task(ws_gateway.run_redis_subscriber())
+    logger.info("WebSocket Gateway Redis subscriber started")
+    
+    logger.info("Runtime Governor started successfully")
+    logger.info(f"  Mode: {governor.get_mode().value}")
+    logger.info(f"  Queue size: {governor.priority_queue.size()}")
+    
+    yield
+    
+    logger.info("=" * 60)
+    logger.info("  Shutting down Runtime Governor...")
+    logger.info("=" * 60)
+    
+    await ws_gateway.shutdown()
+    await ws_runtime.stop()
+    await governor.stop()
+    
+    logger.info("Runtime Governor stopped")
+
+
 app = FastAPI(
     title="Quantitative Trading System API",
-    description="AI-assisted quantitative trading system API",
-    version="1.0.0"
+    description="AI-assisted quantitative trading system API with Runtime Governor",
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 
-# ======================================
-# CORS Configuration
-# ======================================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -41,28 +89,98 @@ app.add_middleware(
 )
 
 
-# ======================================
-# Mount Routes
-# ======================================
 app.include_router(api_router, prefix="/api/v1")
 
 
-import os
+from fastapi import APIRouter
+from typing import Dict, Any
 
-# ======================================
-# Start Server
-# ======================================
+runtime_router = APIRouter(prefix="/runtime", tags=["runtime"])
+
+
+@runtime_router.get("/stats")
+async def get_runtime_stats() -> Dict[str, Any]:
+    governor = get_runtime_governor()
+    return governor.get_stats()
+
+
+@runtime_router.get("/mode")
+async def get_runtime_mode() -> Dict[str, Any]:
+    governor = get_runtime_governor()
+    return {
+        "mode": governor.get_mode().value,
+        "is_healthy": governor.is_healthy(),
+    }
+
+
+@runtime_router.post("/mode")
+async def set_runtime_mode(mode: str, reason: str = "manual") -> Dict[str, str]:
+    governor = get_runtime_governor()
+    try:
+        new_mode = RuntimeMode(mode)
+        await governor.set_mode(new_mode, reason)
+        return {
+            "mode": governor.get_mode().value,
+            "message": f"Mode changed to {mode}",
+        }
+    except ValueError:
+        return {
+            "mode": governor.get_mode().value,
+            "message": f"Invalid mode: {mode}",
+        }
+
+
+@runtime_router.post("/recovery")
+async def force_recovery() -> Dict[str, str]:
+    governor = get_runtime_governor()
+    await governor.force_recovery()
+    return {
+        "mode": governor.get_mode().value,
+        "message": "Recovery completed",
+    }
+
+
+@runtime_router.get("/circuit-breakers")
+async def get_circuit_breakers() -> Dict[str, Any]:
+    governor = get_runtime_governor()
+    return governor.circuit_breakers.get_all_stats()
+
+
+@runtime_router.post("/circuit-breakers/{name}/reset")
+async def reset_circuit_breaker(name: str) -> Dict[str, str]:
+    governor = get_runtime_governor()
+    governor.circuit_breakers.reset(name)
+    return {"message": f"Circuit breaker {name} reset"}
+
+
+@runtime_router.get("/subscriptions")
+async def get_subscriptions() -> Dict[str, Any]:
+    governor = get_runtime_governor()
+    return governor.subscriptions.get_stats()
+
+
+@runtime_router.get("/queue")
+async def get_queue_stats() -> Dict[str, Any]:
+    governor = get_runtime_governor()
+    return governor.priority_queue.get_stats()
+
+
+app.include_router(runtime_router, prefix="/api/v1")
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8001))
     print("=" * 80)
     print("  Quantitative Trading System API Server")
+    print("  with Runtime Governor")
     print("=" * 80)
     print(f"  Starting on: http://0.0.0.0:{port}")
     print(f"  Swagger Docs: http://0.0.0.0:{port}/docs")
+    print(f"  Runtime Stats: http://0.0.0.0:{port}/api/v1/runtime/stats")
     print("=" * 80)
     uvicorn.run(
         "api_server:app",
         host="0.0.0.0",
         port=port,
-        reload=True
+        reload=True,
     )

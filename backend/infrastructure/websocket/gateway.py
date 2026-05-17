@@ -163,6 +163,7 @@ class WSGateway:
         """订阅频道"""
         connection = self.connections.get(connection_id)
         if not connection:
+            logger.warning(f"Subscribe failed: connection {connection_id} not found")
             return
         
         for channel in channels:
@@ -172,7 +173,8 @@ class WSGateway:
                 self.channel_subscribers[channel] = set()
             self.channel_subscribers[channel].add(connection_id)
         
-        logger.debug(f"{connection_id} subscribed to: {channels}")
+        logger.info(f"{connection_id} subscribed to: {channels}")
+        logger.debug(f"Current channel_subscribers: {self.channel_subscribers}")
         
         await self._send(connection, {
             "type": "subscribed",
@@ -311,6 +313,7 @@ class WSGateway:
             
             logger.info(f"Subscribed to Redis channels: {ProjectionChannels.all()}")
             
+            msg_count = 0
             async for message in pubsub.listen():
                 if not self._running:
                     break
@@ -326,7 +329,10 @@ class WSGateway:
                         pass
                     
                     await self.broadcast(channel, data)
-                    
+                    msg_count += 1
+                    if msg_count % 100 == 0:
+                        logger.info(f"[WS-GATEWAY] Processed {msg_count} messages")
+
         except Exception as e:
             logger.error(f"Redis subscriber error: {e}")
     
