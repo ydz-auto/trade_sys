@@ -373,10 +373,15 @@ export function DataConfigPage() {
             </Space>
           }
         >
-          <Alert
-            message="新闻源配置"
-            description="配置要采集的新闻源，支持 RSS 订阅和 API 接口。关键词和黑名单用于过滤相关内容。"
-            type="info"
+          <Card.Meta
+            title={<span style={{ fontSize: 16, fontWeight: 600 }}>📰 新闻源配置</span>}
+            description={
+              <div style={{ marginTop: 8, fontSize: 14, color: '#666' }}>
+                <p style={{ marginBottom: 4 }}>• 支持 RSS 订阅和 API 接口采集新闻</p>
+                <p style={{ marginBottom: 4 }}>• 关键词过滤：只采集包含指定关键词的内容</p>
+                <p style={{ marginBottom: 0 }}>• 黑名单过滤：排除不相关的内容</p>
+              </div>
+            }
             style={{ marginBottom: 16 }}
           />
           <Table
@@ -404,10 +409,15 @@ export function DataConfigPage() {
             </Space>
           }
         >
-          <Alert
-            message="API Key 安全说明"
-            description="API Keys 加密存储，仅显示前4后4位字符。支持 LLM、交易所、数据源三类 Key。"
-            type="warning"
+          <Card.Meta
+            title={<span style={{ fontSize: 16, fontWeight: 600 }}>🔑 API Key 管理</span>}
+            description={
+              <div style={{ marginTop: 8, fontSize: 14, color: '#666' }}>
+                <p style={{ marginBottom: 4 }}>• API Keys 加密存储，仅显示前4后4位字符</p>
+                <p style={{ marginBottom: 4 }}>• 支持 LLM、交易所、数据源三类 Key</p>
+                <p style={{ marginBottom: 0 }}>• 请勿在代码中硬编码 API Key</p>
+              </div>
+            }
             style={{ marginBottom: 16 }}
           />
           <Table
@@ -425,15 +435,15 @@ export function DataConfigPage() {
       label: '🤖 LLM 配置',
       children: (
         <Card title="LLM 提供商配置">
-          <Alert
-            message="LLM 多级降级配置"
+          <Card.Meta
+            title={<span style={{ fontSize: 16, fontWeight: 600 }}>🤖 LLM 多级降级配置</span>}
             description={
-              <div>
-                <p>当前降级链: 智谱AI → 硅基流动 → DeepSeek → 百度千帆 → 阿里百炼 → Ollama本地 → 关键词匹配</p>
-                <p>请在环境变量中设置对应的 API Key，或在 API Keys 页面添加。</p>
+              <div style={{ marginTop: 8, fontSize: 14, color: '#666' }}>
+                <p style={{ marginBottom: 4 }}>• 降级链：智谱AI → 硅基流动 → DeepSeek → 百度千帆 → 阿里百炼 → Ollama本地 → 关键词匹配</p>
+                <p style={{ marginBottom: 4 }}>• 当主服务不可用时，自动切换到备用服务</p>
+                <p style={{ marginBottom: 0 }}>• 请在环境变量中设置对应的 API Key，或在 API Keys 页面添加</p>
               </div>
             }
-            type="info"
             style={{ marginBottom: 16 }}
           />
           {llmConfig && (
@@ -481,10 +491,10 @@ export function DataConfigPage() {
             </Space>
           }
         >
-          <Alert
-            message={
+          <Card.Meta
+            title={
               <Space>
-                <span>Twitter Cookie Monitor</span>
+                <span style={{ fontSize: 16, fontWeight: 600 }}>🐦 Twitter Cookie Monitor</span>
                 {twitterConfig?.has_auth ? (
                   <Tag color="green">已配置认证</Tag>
                 ) : (
@@ -493,12 +503,12 @@ export function DataConfigPage() {
               </Space>
             }
             description={
-              <div>
-                <p>使用 Cookie API 采集 Twitter 数据，无需浏览器，适合云服务器部署。</p>
-                <p>配置环境变量: TWITTER_AUTH_TOKEN, TWITTER_CT0</p>
+              <div style={{ marginTop: 8, fontSize: 14, color: '#666' }}>
+                <p style={{ marginBottom: 4 }}>• 使用 Cookie API 采集 Twitter 数据，无需浏览器，适合云服务器部署</p>
+                <p style={{ marginBottom: 4 }}>• 配置环境变量：<code>TWITTER_AUTH_TOKEN</code>, <code>TWITTER_CT0</code></p>
+                <p style={{ marginBottom: 0 }}>• P0 账号：高优先级监控，实时推送通知</p>
               </div>
             }
-            type={twitterConfig?.has_auth ? 'success' : 'warning'}
             style={{ marginBottom: 16 }}
           />
           
@@ -620,10 +630,10 @@ export function DataConfigPage() {
             </Space>
           }
         >
-          <Alert
-            message={
+          <Card.Meta
+            title={
               <Space>
-                <span>Telegram 监控</span>
+                <span style={{ fontSize: 16, fontWeight: 600 }}>📱 Telegram 监控</span>
                 {telegramConfig?.has_api_credentials ? (
                   <Tag color="green">已配置 API</Tag>
                 ) : (
@@ -632,12 +642,12 @@ export function DataConfigPage() {
               </Space>
             }
             description={
-              <div>
-                <p>监控 Telegram 频道消息，获取加密货币相关资讯。</p>
-                <p>配置环境变量: TG_API_ID, TG_API_HASH</p>
+              <div style={{ marginTop: 8, fontSize: 14, color: '#666' }}>
+                <p style={{ marginBottom: 4 }}>• 监控 Telegram 频道消息，获取加密货币相关资讯</p>
+                <p style={{ marginBottom: 4 }}>• 配置环境变量：<code>TG_API_ID</code>, <code>TG_API_HASH</code></p>
+                <p style={{ marginBottom: 0 }}>• 支持关键词过滤和多频道监控</p>
               </div>
             }
-            type={telegramConfig?.has_api_credentials ? 'success' : 'warning'}
             style={{ marginBottom: 16 }}
           />
 
