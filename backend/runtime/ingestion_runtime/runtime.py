@@ -49,6 +49,8 @@ class IngestionConfig(RuntimeConfig):
     twitter_push_host: str = "localhost"
     twitter_push_port: int = 8765
     enable_telegram: bool = False
+    enable_twitter_cookie_monitor: bool = True
+    twitter_cookie_poll_interval: int = 60
     
     def __post_init__(self):
         if self.websocket_symbols is None:
@@ -86,6 +88,9 @@ class IngestionRuntime(BaseRuntime):
         
         self.telegram_adapter = None
         self._telegram_task: Optional[asyncio.Task] = None
+        
+        self.twitter_cookie_monitor = None
+        self._twitter_cookie_task: Optional[asyncio.Task] = None
     
     async def initialize(self) -> None:
         """初始化运行时组件"""
@@ -145,12 +150,16 @@ class IngestionRuntime(BaseRuntime):
         if self.config.enable_telegram:
             await self._init_telegram()
         
+        if self.config.enable_twitter_cookie_monitor:
+            await self._init_twitter_cookie_monitor()
+        
         self.health_check.register_check("news_collector", self._check_news_collector)
         self.health_check.register_check("aggregator", self._check_aggregator)
         self.health_check.register_check("publisher", self._check_publisher)
         self.health_check.register_check("websocket", self._check_websocket)
         self.health_check.register_check("twitter_push", self._check_twitter_push)
         self.health_check.register_check("telegram", self._check_telegram)
+        self.health_check.register_check("twitter_cookie_monitor", self._check_twitter_cookie_monitor)
         
         self.logger.info("Ingestion Runtime initialized successfully")
     
@@ -224,6 +233,39 @@ class IngestionRuntime(BaseRuntime):
             
         except Exception as e:
             self.logger.warning(f"Telegram init failed: {e}")
+    
+    async def _init_twitter_cookie_monitor(self):
+        """初始化 Twitter Cookie Monitor（降级方案）"""
+        try:
+            from services.data_service.collectors.twitter_cookie_monitor import (
+                TwitterCookieMonitor,
+                TwitterCookieConfig,
+            )
+            
+            config = TwitterCookieConfig()
+            
+            if not config.has_cookie_auth:
+                self.logger.warning("Twitter Cookie Monitor: No cookie auth configured, skipping")
+                return
+            
+            self.twitter_cookie_monitor = TwitterCookieMonitor(config)
+            
+            P0_ACCOUNTS = [
+                "elonmusk", "cz_binance", "VitalikButerin", "saylor",
+                "binance", "okx", "coinbase", "WatcherGuru",
+                "Cointelegraph", "coindesk", "TheBlock__",
+            ]
+            
+            for username in P0_ACCOUNTS:
+                self.twitter_cookie_monitor.add_account(username)
+            
+            await self.twitter_cookie_monitor.initialize()
+            self.twitter_cookie_monitor.register_callback(self._on_twitter_event)
+            
+            self.logger.info(f"Twitter Cookie Monitor initialized with {len(P0_ACCOUNTS)} accounts")
+            
+        except Exception as e:
+            self.logger.warning(f"Twitter Cookie Monitor init failed: {e}")
     
     async def _on_twitter_event(self, event):
         """处理 Twitter 事件"""
@@ -315,6 +357,10 @@ class IngestionRuntime(BaseRuntime):
         """检查 Telegram"""
         return self.telegram_adapter is not None and self.telegram_adapter.is_running
     
+    async def _check_twitter_cookie_monitor(self) -> bool:
+        """检查 Twitter Cookie Monitor"""
+        return self.twitter_cookie_monitor is not None
+    
     async def shutdown(self) -> None:
         """关闭运行时组件"""
         self.logger.info("Shutting down Ingestion Runtime...")
@@ -340,11 +386,21 @@ class IngestionRuntime(BaseRuntime):
             except asyncio.CancelledError:
                 pass
         
+        if self._twitter_cookie_task:
+            self._twitter_cookie_task.cancel()
+            try:
+                await self._twitter_cookie_task
+            except asyncio.CancelledError:
+                pass
+        
         if self.ws_adapter:
             await self.ws_adapter.disconnect()
         
         if self.telegram_adapter:
             await self.telegram_adapter.stop()
+        
+        if self.twitter_cookie_monitor:
+            await self.twitter_cookie_monitor.close()
         
         if self.publisher:
             await self.publisher.stop()
@@ -374,6 +430,10 @@ class IngestionRuntime(BaseRuntime):
         if self.config.enable_telegram and self.telegram_adapter:
             self._telegram_task = asyncio.create_task(self._run_telegram_listener())
             self.logger.info("Telegram listener started")
+        
+        if self.config.enable_twitter_cookie_monitor and self.twitter_cookie_monitor:
+            self._twitter_cookie_task = asyncio.create_task(self._run_twitter_cookie_monitor())
+            self.logger.info("Twitter Cookie Monitor started")
         
         while not self.context.is_shutdown_requested():
             try:
@@ -443,6 +503,24 @@ class IngestionRuntime(BaseRuntime):
             await self.telegram_adapter.listen()
         except Exception as e:
             self.logger.error(f"Telegram listener error: {e}")
+    
+    async def _run_twitter_cookie_monitor(self):
+        """运行 Twitter Cookie Monitor"""
+        while not self.context.is_shutdown_requested():
+            try:
+                new_tweets = await self.twitter_cookie_monitor.poll()
+                
+                if new_tweets:
+                    self.metrics.increment("twitter_cookie_tweets", len(new_tweets))
+                    self.logger.info(f"Twitter Cookie Monitor: {len(new_tweets)} new tweets")
+                
+                await asyncio.sleep(self.config.twitter_cookie_poll_interval)
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Twitter Cookie Monitor error: {e}")
+                await asyncio.sleep(30)
     
     async def _run_websocket(self):
         """运行 WebSocket 连接"""
