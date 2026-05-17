@@ -1,27 +1,29 @@
 """
 Storage - Shared In-memory Storage
+
+Mock 模式控制:
+  - 环境变量 DASHBOARD_MOCK=true 时返回模拟数据
+  - 默认为 false，返回空数据
 """
+
+import os
 from datetime import datetime
 from typing import Dict, List
 
 
 _factors: Dict[str, Dict] = {}
 _proposals: List[Dict] = []
-_snapshots: List[Dict] = [
-    {
-        "id": "snap_001",
-        "timestamp": datetime.now().isoformat(),
-        "name": "Initial System State",
-        "type": "auto",
-        "data": {},
-        "description": "Initial system startup snapshot"
-    }
-]
+_snapshots: List[Dict] = []
 _factor_lineage: List[Dict] = []
 
 
-def init_factors():
-    """Initialize factors data"""
+def _is_mock_mode() -> bool:
+    """检查是否启用 mock 模式"""
+    return os.getenv("DASHBOARD_MOCK", "false").lower() == "true"
+
+
+def _init_mock_factors():
+    """Initialize mock factors data (only in mock mode)"""
     global _factors
     _factors = {
         "trend": {
@@ -72,7 +74,8 @@ def init_factors():
     }
 
 
-init_factors()
+if _is_mock_mode():
+    _init_mock_factors()
 
 
 def get_factors():
@@ -89,3 +92,36 @@ def get_snapshots():
 
 def get_factor_lineage_data():
     return _factor_lineage
+
+
+def update_factor(factor_type: str, data: Dict):
+    """Update factor data"""
+    global _factors
+    _factors[factor_type] = data
+
+
+def clear_factors():
+    """Clear all factors"""
+    global _factors
+    _factors = {}
+
+
+def add_proposal(proposal: Dict):
+    """Add a proposal"""
+    _proposals.append(proposal)
+
+
+def clear_proposals():
+    """Clear all proposals"""
+    global _proposals
+    _proposals = []
+
+
+def add_snapshot(snapshot: Dict):
+    """Add a snapshot"""
+    _snapshots.append(snapshot)
+
+
+def add_factor_lineage(lineage: Dict):
+    """Add factor lineage"""
+    _factor_lineage.append(lineage)

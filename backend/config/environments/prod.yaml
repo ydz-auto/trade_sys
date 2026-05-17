@@ -1,0 +1,33 @@
+# Production Environment Configuration
+# 生产环境配置
+
+environment: prod
+
+debug: false
+log_level: INFO
+
+kafka:
+  bootstrap_servers: "${KAFKA_BOOTSTRAP_SERVERS}"
+  
+redis:
+  url: "${REDIS_URL}"
+  
+clickhouse:
+  host: "${CLICKHOUSE_HOST}"
+  port: 9000
+  database: "tradeagent"
+  
+postgresql:
+  host: "${POSTGRES_HOST}"
+  port: 5432
+  database: "tradeagent"
+  user: "${POSTGRES_USER}"
+  password: "${POSTGRES_PASSWORD}"
+
+observability:
+  prometheus:
+    enabled: true
+    port: 9090
+  jaeger:
+    enabled: true
+    endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT}"

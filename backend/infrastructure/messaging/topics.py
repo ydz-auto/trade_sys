@@ -40,15 +40,22 @@ class Topics:
 
     NAMESPACE: Final[str] = "tradeagent"
 
-    # 基础常量 Topic（向后兼容）
     RAW_DATA: Final[str] = f"{NAMESPACE}.raw_data"
     FEATURES: Final[str] = f"{NAMESPACE}.features"
     FACTORS: Final[str] = f"{NAMESPACE}.factors"
+    REGIMES: Final[str] = f"{NAMESPACE}.regimes"
+    RISK_ALERTS: Final[str] = f"{NAMESPACE}.risk_alerts"
+    TRADING_SIGNALS: Final[str] = f"{NAMESPACE}.trading_signals"
+    ORDER_EVENTS: Final[str] = f"{NAMESPACE}.order_events"
+    EXECUTION_RESULTS: Final[str] = f"{NAMESPACE}.execution_results"
+    FEEDBACK_DATA: Final[str] = f"{NAMESPACE}.feedback_data"
     SIGNALS: Final[str] = f"{NAMESPACE}.signals"
     DECISIONS: Final[str] = f"{NAMESPACE}.decisions.all"
     ORDERS: Final[str] = f"{NAMESPACE}.orders"
     EVENTS: Final[str] = f"{NAMESPACE}.events"
     ALERTS: Final[str] = f"{NAMESPACE}.alerts"
+    LOGS: Final[str] = f"{NAMESPACE}.logs"
+    CORRELATION_RESULTS: Final[str] = f"{NAMESPACE}.correlation_results"
 
     @classmethod
     def _layer(cls, layer: str, source: str = "", type: str = "", symbol: str = "", timeframe: str = "") -> str:
@@ -108,6 +115,11 @@ class Topics:
     def raw_onchain(cls, source: str = "") -> str:
         """原始链上数据"""
         return cls._layer("raw", "onchain", source)
+
+    @classmethod
+    def raw_odaily(cls) -> str:
+        """原始 Odaily 数据"""
+        return cls._layer("raw", "news", "odaily")
 
     @classmethod
     def kline(cls, exchange: str, timeframe: str, symbol: str) -> str:

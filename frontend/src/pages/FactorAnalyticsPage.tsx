@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Card, Row, Col, Statistic, Table, Progress, Tabs, Typography, Tag, Space, Alert } from 'antd'
-import { BarChartOutlined, LineChartOutlined, DotChartOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
+import { BarChartOutlined, LineChartOutlined, DotChartOutlined } from '@ant-design/icons'
 
 const { Title, Text } = Typography
 const { TabPane } = Tabs

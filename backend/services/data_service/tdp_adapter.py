@@ -90,7 +90,7 @@ class TDPTraderOpinion:
 
 class TDPAdapter:
     def __init__(self, source: str = "data_service"):
-        self.formatter = TDPFormatter(source=source)
+        self.source = source
         self._publisher = None
 
     def set_publisher(self, publisher):
@@ -98,7 +98,7 @@ class TDPAdapter:
 
     async def publish_price(self, data: TDPPriceData) -> bool:
         try:
-            packet = self.formatter.format_market_data(
+            packet = TDPFormatter.format_market_data(
                 symbol=data.symbol,
                 price=data.price,
                 volume=data.volume_24h,
@@ -118,7 +118,7 @@ class TDPAdapter:
 
     async def publish_news(self, data: TDPNewsData) -> bool:
         try:
-            packet = self.formatter.format_news(
+            packet = TDPFormatter.format_news(
                 title=data.title,
                 content=data.content,
                 url=data.url,
@@ -135,7 +135,7 @@ class TDPAdapter:
 
     async def publish_macro(self, data: TDPMacroData) -> bool:
         try:
-            packet = self.formatter.format_macro_data(
+            packet = TDPFormatter.format_macro_data(
                 timestamp=int(data.timestamp),
             )
             if self._publisher:
@@ -147,7 +147,7 @@ class TDPAdapter:
 
     async def publish_etf(self, data: TDPEtfData) -> bool:
         try:
-            packet = self.formatter.format_etf_flow(
+            packet = TDPFormatter.format_etf_flow(
                 symbol=data.symbol,
                 inflow=data.inflow,
                 outflow=data.outflow,
@@ -163,7 +163,7 @@ class TDPAdapter:
 
     async def publish_social(self, data: TDPSocialData) -> bool:
         try:
-            packet = self.formatter.format_social(
+            packet = TDPFormatter.format_social(
                 platform=data.platform,
                 author=data.author,
                 content=data.content,
@@ -179,8 +179,7 @@ class TDPAdapter:
 
     async def publish_trader_opinion(self, data: TDPTraderOpinion) -> bool:
         try:
-            # Use format_news as a generic formatter for trader opinions
-            packet = self.formatter.format_news(
+            packet = TDPFormatter.format_news(
                 title=f"[{data.trader}] {data.opinion}",
                 content=f"Sentiment: {data.sentiment}, Confidence: {data.confidence}",
                 url="",

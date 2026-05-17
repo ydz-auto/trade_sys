@@ -16,6 +16,7 @@ from pathlib import Path
 import httpx
 
 from infrastructure.logging import get_logger
+from shared.config.factory import get_infra_config
 
 logger = get_logger("llm.pool")
 
@@ -288,16 +289,41 @@ class LLMPoolManager:
         with open(self.config_path, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
+        llm_settings = get_infra_config().llm
+
+        api_key_mapping = {
+            "zhipu": (llm_settings.zhipu_api_key, llm_settings.zhipu_base_url),
+            "siliconflow": (llm_settings.siliconflow_api_key, llm_settings.siliconflow_base_url),
+            "deepseek": (llm_settings.deepseek_api_key, llm_settings.deepseek_base_url),
+            "qianfan": (llm_settings.qianfan_api_key, llm_settings.qianfan_base_url),
+            "dashscope": (llm_settings.dashscope_api_key, llm_settings.dashscope_base_url),
+            "ollama": (None, llm_settings.ollama_base_url),
+            "openai": (llm_settings.openai_api_key, llm_settings.openai_base_url),
+            "anthropic": (llm_settings.anthropic_api_key, None),
+            "minimax": (llm_settings.minimax_api_key, llm_settings.minimax_base_url),
+        }
+
         self.pools: Dict[str, LLMPoolConfig] = {}
         for pool_id, pool_data in config.get("llm_pools", {}).items():
-            api_key = os.environ.get(pool_data.get("api_key_env", ""), "")
+            mapped_key, mapped_url = api_key_mapping.get(pool_id, (None, None))
+            
+            if mapped_key is not None:
+                api_key = mapped_key
+            else:
+                api_key_env = pool_data.get("api_key_env", "")
+                api_key = os.environ.get(api_key_env, "") if api_key_env else ""
+
+            base_url = pool_data.get("base_url", "")
+            if mapped_url and not base_url:
+                base_url = mapped_url
+
             self.pools[pool_id] = LLMPoolConfig(
                 pool_id=pool_id,
                 name=pool_data.get("name", pool_id),
                 enabled=pool_data.get("enabled", False),
                 priority=pool_data.get("priority", 99),
                 type=pool_data.get("type", "openai_compatible"),
-                base_url=pool_data.get("base_url", ""),
+                base_url=base_url,
                 api_key=api_key,
                 models=pool_data.get("models", []),
                 fallback_to=pool_data.get("fallback_to"),

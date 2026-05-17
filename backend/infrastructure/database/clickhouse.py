@@ -156,13 +156,13 @@ class ClickHouseClient:
         finally:
             self._pool.return_connection(client)
 
-    async def fetch(self, query: str) -> List[Dict[str, Any]]:
+    async def fetch(self, query: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         import clickhouse_driver
         
         client = self._pool.get_connection()
         try:
             result = await asyncio.get_event_loop().run_in_executor(
-                None, client.execute, query
+                None, lambda: client.execute(query, params or {})
             )
             
             if not result:
@@ -267,8 +267,8 @@ class ClickHouseManager:
     async def execute(self, query: str) -> None:
         return await self.client.execute(query)
 
-    async def fetch(self, query: str) -> List[Dict[str, Any]]:
-        return await self.client.fetch(query)
+    async def fetch(self, query: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        return await self.client.fetch(query, params)
 
     async def insert(
         self,

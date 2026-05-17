@@ -149,7 +149,7 @@ class RSSParser:
         """提取作者"""
         if hasattr(entry, "author"):
             return entry.author
-        elif hasattr(entry, "author_detail") and hasattr(entry.author_detail, "name":
+        elif hasattr(entry, "author_detail") and hasattr(entry.author_detail, "name"):
             return entry.author_detail.name
         return None
     

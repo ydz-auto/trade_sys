@@ -41,6 +41,7 @@ except ImportError:
     metrics = None
     TracerProvider = None
     MeterProvider = None
+    Context = None
     logger.warning("OpenTelemetry not installed. Run: pip install opentelemetry-api opentelemetry-sdk")
 
 

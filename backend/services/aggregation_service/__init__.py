@@ -18,7 +18,7 @@ raw.kline.1m.closed → aggregation → kline.5m/15m/1h/4h/1d
 from .models.candle_model import Candle, Timeframe, CandleWindow
 from .models.trade_model import Trade, TradeBatch
 from .models.orderbook_model import OrderBookSnapshot, OrderBookFeature
-from .main import AggregationService, get_aggregation_service
+from .service import AggregationService, get_aggregation_service
 
 __all__ = [
     "Candle",

@@ -6,6 +6,8 @@ Redis 缓存模块
 from infrastructure.cache.redis_client import (
     RedisClient,
     get_redis_client,
+    init_redis,
+    close_redis,
 )
 from infrastructure.cache.cache_manager import (
     CacheManager,
@@ -20,6 +22,8 @@ from infrastructure.cache.circuit_breaker import (
 __all__ = [
     "RedisClient",
     "get_redis_client",
+    "init_redis",
+    "close_redis",
     "CacheManager",
     "get_cache_manager",
     "CacheKey",

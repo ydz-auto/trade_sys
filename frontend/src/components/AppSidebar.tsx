@@ -2,6 +2,7 @@ import { Layout, Menu, Badge, Drawer, Button } from 'antd'
 import {
   DashboardOutlined,
   AreaChartOutlined,
+  BarChartOutlined,
   SafetyCertificateOutlined,
   AlertOutlined,
   FileTextOutlined,
@@ -15,6 +16,7 @@ import {
   CloudServerOutlined,
   ExperimentOutlined,
   PlayCircleOutlined,
+  WarningOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -88,6 +90,7 @@ const menuItems: MenuProps['items'] = [
     label: '系统',
     children: [
       { key: '/settings', icon: <SettingOutlined />, label: '系统设置' },
+      { key: '/data-config', icon: <CloudServerOutlined />, label: '数据源配置' },
     ],
   },
 ]

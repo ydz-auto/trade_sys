@@ -1,10 +1,21 @@
-import { Layout, Button, Segmented, Popconfirm } from 'antd'
-import { ReloadOutlined, MenuOutlined } from '@ant-design/icons'
+import { Layout, Button, Segmented, Popconfirm, Dropdown, App } from 'antd'
+import { ReloadOutlined, MenuOutlined, SyncOutlined } from '@ant-design/icons'
 import { useState, useEffect } from 'react'
 import { useTradingStore } from '../store/tradingStore'
 import type { SystemMode } from '../types'
+import type { MenuProps } from 'antd'
+import api from '../services/api'
 
 const { Header } = Layout
+const { useApp } = App
+
+interface RefreshResponse {
+  success: boolean
+  message: string
+  data_type?: string
+  timestamp?: string
+  results?: RefreshResponse[]
+}
 
 interface AppHeaderProps {
   onMobileMenuToggle?: () => void
@@ -12,14 +23,66 @@ interface AppHeaderProps {
 
 export function AppHeader({ onMobileMenuToggle }: AppHeaderProps) {
   const { mode, setMode } = useTradingStore()
+  const { message } = useApp()
   const [showConfirm, setShowConfirm] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshType, setRefreshType] = useState<string | null>(null)
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768)
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  const handleRefresh = async (type: 'all' | 'prices' | 'signals' | 'factors' | 'news' = 'all') => {
+    setRefreshing(true)
+    setRefreshType(type)
+    try {
+      const response = await api.post<RefreshResponse>(`/refresh/${type}`)
+      if (response.success) {
+        message.success(response.message || `${type === 'all' ? '全部数据' : type}刷新成功`)
+      } else {
+        message.warning(response.message || '刷新完成，部分数据可能未更新')
+      }
+    } catch (error) {
+      console.error('Refresh failed:', error)
+      message.error('刷新失败，请稍后重试')
+    } finally {
+      setRefreshing(false)
+      setRefreshType(null)
+    }
+  }
+
+  const refreshMenuItems: MenuProps['items'] = [
+    {
+      key: 'all',
+      label: '刷新全部',
+      icon: <SyncOutlined spin={refreshing && refreshType === 'all'} />,
+      onClick: () => handleRefresh('all'),
+    },
+    { type: 'divider' },
+    {
+      key: 'prices',
+      label: '价格数据',
+      onClick: () => handleRefresh('prices'),
+    },
+    {
+      key: 'signals',
+      label: '信号数据',
+      onClick: () => handleRefresh('signals'),
+    },
+    {
+      key: 'factors',
+      label: '因子数据',
+      onClick: () => handleRefresh('factors'),
+    },
+    {
+      key: 'news',
+      label: '新闻数据',
+      onClick: () => handleRefresh('news'),
+    },
+  ]
 
   const handleModeChange = (newMode: string) => {
     if (newMode === 'LIVE' && mode !== 'LIVE') {
@@ -100,11 +163,14 @@ export function AppHeader({ onMobileMenuToggle }: AppHeaderProps) {
           size="small"
         />
 
-        <Button
-          type="text"
-          icon={<ReloadOutlined />}
-          style={{ color: '#94A3B8', padding: '4px 8px' }}
-        />
+        <Dropdown menu={{ items: refreshMenuItems }} placement="bottomRight">
+          <Button
+            type="text"
+            icon={refreshing ? <SyncOutlined spin /> : <ReloadOutlined />}
+            style={{ color: '#94A3B8', padding: '4px 8px' }}
+            title="刷新数据"
+          />
+        </Dropdown>
       </div>
 
       {showConfirm && (

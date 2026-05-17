@@ -1,8 +1,16 @@
 """
 WebSocket Infrastructure
+
+WebSocket Gateway and utilities for real-time state streaming
 """
 
-from infrastructure.websocket.server import WSMessage, WSChannel
-from infrastructure.websocket.manager import WSConnectionManager, ws_manager
+from .manager import ws_manager, WSConnectionManager
+from .gateway import WSGateway, ws_gateway, get_ws_gateway
 
-__all__ = ["WSMessage", "WSChannel", "WSConnectionManager", "ws_manager"]
+__all__ = [
+    "ws_manager",
+    "WSConnectionManager",
+    "WSGateway",
+    "ws_gateway",
+    "get_ws_gateway",
+]

@@ -1,0 +1,30 @@
+# Ingestion Runtime Configuration
+# 数据采集运行时配置
+
+ingestion_runtime:
+  collection_interval: 300
+  symbols:
+    - "BTC"
+    - "ETH"
+    - "SOL"
+  
+  news_sources:
+    - "coindesk"
+    - "cointelegraph"
+    - "decrypt"
+  
+  market_data:
+    exchanges:
+      - "binance"
+      - "okx"
+    timeframe: "1m"
+    
+  aggregation:
+    enabled: true
+    timeframes:
+      - "1m"
+      - "5m"
+      - "15m"
+      - "1h"
+      - "4h"
+      - "1d"

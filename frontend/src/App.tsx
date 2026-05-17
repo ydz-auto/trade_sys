@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { ConfigProvider, Layout } from 'antd'
+import { ConfigProvider, Layout, App as AntApp } from 'antd'
 import { useState, useEffect } from 'react'
 import { DashboardPage } from './pages/DashboardPage'
 import { WeightConfigPage } from './pages/WeightConfigPage'
@@ -15,6 +15,8 @@ import { ReplayPage } from './pages/ReplayPage'
 import { FactorAnalyticsPage } from './pages/FactorAnalyticsPage'
 import { RiskPropagationPage } from './pages/RiskPropagationPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { DataConfigPage } from './pages/DataConfigPage'
+import { TradingPage } from './pages/TradingPage'
 import { AppSidebar } from './components/AppSidebar'
 import { AppHeader } from './components/AppHeader'
 import { EventTimeline } from './components/EventTimeline'
@@ -25,7 +27,7 @@ const { Content, Footer } = Layout
 const isMobile = () => window.innerWidth < 768
 
 function AppContent() {
-  const { loading, error } = useDataLoader()
+  const { error } = useDataLoader()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isMobileDevice, setIsMobileDevice] = useState(false)
@@ -83,6 +85,8 @@ function AppContent() {
             <Route path="/alpha" element={<AlphaLifecyclePage />} />
             <Route path="/replay" element={<ReplayPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/data-config" element={<DataConfigPage />} />
+            <Route path="/trading" element={<TradingPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Content>
@@ -133,7 +137,9 @@ function App() {
         },
       }}
     >
-      <AppContent />
+      <AntApp>
+        <AppContent />
+      </AntApp>
     </ConfigProvider>
   )
 }

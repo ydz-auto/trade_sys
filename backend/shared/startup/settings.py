@@ -96,6 +96,23 @@ class LLMSettings(BaseSettings):
     minimax_base_url: str = Field(default="https://api.minimax.chat/v1", description="Minimax base URL")
     default_model: str = Field(default="gpt-4o", description="Default model")
 
+    zhipu_api_key: Optional[str] = Field(default=None, description="智谱AI API Key")
+    zhipu_base_url: str = Field(default="https://open.bigmodel.cn/api/paas/v4", description="智谱AI base URL")
+
+    siliconflow_api_key: Optional[str] = Field(default=None, description="硅基流动 API Key")
+    siliconflow_base_url: str = Field(default="https://api.siliconflow.cn/v1", description="硅基流动 base URL")
+
+    deepseek_api_key: Optional[str] = Field(default=None, description="DeepSeek API Key")
+    deepseek_base_url: str = Field(default="https://api.deepseek.com/v1", description="DeepSeek base URL")
+
+    qianfan_api_key: Optional[str] = Field(default=None, description="百度千帆 API Key")
+    qianfan_base_url: str = Field(default="https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop", description="百度千帆 base URL")
+
+    dashscope_api_key: Optional[str] = Field(default=None, description="阿里百炼 API Key")
+    dashscope_base_url: str = Field(default="https://dashscope.aliyuncs.com/compatible-mode/v1", description="阿里百炼 base URL")
+
+    ollama_base_url: str = Field(default="http://localhost:11434", description="Ollama base URL")
+
 
 class APIKeysSettings(BaseSettings):
     """第三方 API Keys"""

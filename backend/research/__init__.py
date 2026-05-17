@@ -12,6 +12,7 @@ Alpha Infrastructure 核心模块：
 8. AI Framework - AI辅助研究框架（含安全系统）
 9. Event Memory - 事件记忆库
 10. Alpha Lifecycle - Alpha生命周期管理
+11. Correlation Analyzer - 多数据源正负相关性评估
 """
 
 from .factor import (
@@ -116,6 +117,26 @@ try:
 except ImportError:
     ALPHA_LIFECYCLE_AVAILABLE = False
 
+try:
+    from .correlation import (
+        CorrelationAnalyzer,
+        CorrelationConfig,
+        CorrelationResult,
+        SignalDirection,
+        SignalAssessment,
+        DataPreparation,
+        FeatureMatrix,
+        UnivariateAnalyzer,
+        MultivariateAnalyzer,
+        LLMEnhancement,
+        CorrelationScorer,
+        CorrelationVisualizer,
+        analyze_correlation,
+    )
+    CORRELATION_AVAILABLE = True
+except ImportError:
+    CORRELATION_AVAILABLE = False
+
 __all__ = [
     "FactorRegistry",
     "FactorType",
@@ -191,4 +212,21 @@ if ALPHA_LIFECYCLE_AVAILABLE:
         "FeatureLineage",
         "ReplaySnapshotBinding",
         "ResearchBudget",
+    ]
+
+if CORRELATION_AVAILABLE:
+    __all__ += [
+        "CorrelationAnalyzer",
+        "CorrelationConfig",
+        "CorrelationResult",
+        "SignalDirection",
+        "SignalAssessment",
+        "DataPreparation",
+        "FeatureMatrix",
+        "UnivariateAnalyzer",
+        "MultivariateAnalyzer",
+        "LLMEnhancement",
+        "CorrelationScorer",
+        "CorrelationVisualizer",
+        "analyze_correlation",
     ]

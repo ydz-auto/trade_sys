@@ -1,0 +1,323 @@
+# =============================================================================
+# Docker Compose - Runtime Architecture
+# =============================================================================
+#
+# 使用三层镜像架构：
+# - quant-base: 基础镜像
+# - runtime-base: 运行时基础镜像
+# - runtime-entry: 入口镜像
+#
+# 启动命令:
+#   docker-compose up -d
+#
+# 查看日志:
+#   docker-compose logs -f ingestion-runtime
+#
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ===========================================================================
+  # Infrastructure Services
+  # ===========================================================================
+  
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - tradeagent-network
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+    networks:
+      - tradeagent-network
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - tradeagent-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - tradeagent-network
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_DB: tradeagent
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+    networks:
+      - tradeagent-network
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: tradeagent
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    networks:
+      - tradeagent-network
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+      - '--storage.tsdb.retention.time=30d'
+    networks:
+      - tradeagent-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - tradeagent-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:latest
+    container_name: tempo
+    ports:
+      - "3200:3200"
+      - "4317:4317"
+      - "4318:4318"
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    networks:
+      - tradeagent-network
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Runtime Services
+  # ===========================================================================
+  
+  ingestion-runtime:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: ingestion-runtime
+    container_name: ingestion-runtime
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - tradeagent-network
+    environment:
+      ENVIRONMENT: dev
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_URL: redis://redis:6379/0
+      CONFIG_DIR: /app/config
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+    restart: unless-stopped
+
+  projection-runtime:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: projection-runtime
+    container_name: projection-runtime
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - tradeagent-network
+    environment:
+      ENVIRONMENT: dev
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_URL: redis://redis:6379/0
+      CONFIG_DIR: /app/config
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+    restart: unless-stopped
+
+  signal-runtime:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: signal-runtime
+    container_name: signal-runtime
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - tradeagent-network
+    environment:
+      ENVIRONMENT: dev
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      CONFIG_DIR: /app/config
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+    restart: unless-stopped
+
+  execution-runtime:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: execution-runtime
+    container_name: execution-runtime
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - tradeagent-network
+    environment:
+      ENVIRONMENT: dev
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_URL: redis://redis:6379/0
+      CONFIG_DIR: /app/config
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+    restart: unless-stopped
+
+  correlation-runtime:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: correlation-runtime
+    container_name: correlation-runtime
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - tradeagent-network
+    environment:
+      ENVIRONMENT: dev
+      CLICKHOUSE_HOST: clickhouse
+      CONFIG_DIR: /app/config
+    restart: unless-stopped
+
+  api-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: api-server
+    container_name: api-server
+    ports:
+      - "8000:8000"
+    depends_on:
+      - kafka
+      - redis
+      - prometheus
+    networks:
+      - tradeagent-network
+    environment:
+      ENVIRONMENT: dev
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_URL: redis://redis:6379/0
+      CONFIG_DIR: /app/config
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+    restart: unless-stopped
+
+networks:
+  tradeagent-network:
+    driver: bridge
+
+volumes:
+  zookeeper_data:
+  kafka_data:
+  redis_data:
+  clickhouse_data:
+  clickhouse_logs:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+  tempo_data:

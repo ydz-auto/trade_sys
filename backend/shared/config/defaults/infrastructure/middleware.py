@@ -1,5 +1,10 @@
 """
 Middleware 配置 - 基础设施配置
+
+Topic 定义:
+- 常量定义: infrastructure/messaging/topics.py (Topics 类)
+- 字典映射: 本文件 (KAFKA_TOPICS)
+- 两者保持同步
 """
 
 KAFKA_TOPICS = {
@@ -12,6 +17,11 @@ KAFKA_TOPICS = {
     "order_events": "tradeagent.order_events",
     "execution_results": "tradeagent.execution_results",
     "feedback_data": "tradeagent.feedback_data",
+    "signals": "tradeagent.signals",
+    "decisions": "tradeagent.decisions.all",
+    "orders": "tradeagent.orders",
+    "events": "tradeagent.events",
+    "alerts": "tradeagent.alerts",
 }
 
 

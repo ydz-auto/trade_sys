@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Card, Row, Col, Tag, Button, Switch, Divider, Spin, message } from 'antd'
-import { MessageOutlined, CustomerServiceOutlined, QqOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
+import { MessageOutlined, CustomerServiceOutlined, QqOutlined } from '@ant-design/icons'
 import api from '../services/api'
 
 interface ControlChannel {
@@ -53,7 +53,7 @@ export function ControlPage() {
 
   const loadConfig = async () => {
     try {
-      const systemConfig = await api.get('/config/system')
+      await api.get('/config/system')
       setApiConfig({
         endpoint: window.location.origin + '/api/v1',
         websocket: window.location.origin.replace('http', 'ws') + '/ws/market',

@@ -334,8 +334,8 @@ export function DashboardPage() {
                   <div className="font-semibold text-[#F8FAFC]">
                     ${macro?.gold?.price?.toFixed(0) || '2,020'}
                   </div>
-                  <div className={`text-xs ${macro?.gold?.change >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                    {macro?.gold?.change >= 0 ? '▲' : '▼'} {macro?.gold?.change?.toFixed(1) || '+0.5'}%
+                  <div className={`text-xs ${(macro?.gold?.change ?? 0) >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                    {(macro?.gold?.change ?? 0) >= 0 ? '▲' : '▼'} {macro?.gold?.change?.toFixed(1) || '+0.5'}%
                   </div>
                 </div>
               </Col>
@@ -345,8 +345,8 @@ export function DashboardPage() {
                   <div className="font-semibold text-[#F8FAFC]">
                     ${macro?.oil?.price?.toFixed(1) || '78.3'}
                   </div>
-                  <div className={`text-xs ${macro?.oil?.change >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                    {macro?.oil?.change >= 0 ? '▲' : '▼'} {macro?.oil?.change?.toFixed(1) || '-0.3'}%
+                  <div className={`text-xs ${(macro?.oil?.change ?? 0) >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                    {(macro?.oil?.change ?? 0) >= 0 ? '▲' : '▼'} {macro?.oil?.change?.toFixed(1) || '-0.3'}%
                   </div>
                 </div>
               </Col>
@@ -356,8 +356,8 @@ export function DashboardPage() {
                   <div className="font-semibold text-[#F8FAFC]">
                     {macro?.usd_index?.value?.toFixed(1) || '104.2'}
                   </div>
-                  <div className={`text-xs ${macro?.usd_index?.change >= 0 ? 'text-[#3B82F6]' : 'text-[#EF4444]'}`}>
-                    {macro?.usd_index?.change >= 0 ? '▲' : '▼'} {macro?.usd_index?.change?.toFixed(1) || '+0.1'}%
+                  <div className={`text-xs ${(macro?.usd_index?.change ?? 0) >= 0 ? 'text-[#3B82F6]' : 'text-[#EF4444]'}`}>
+                    {(macro?.usd_index?.change ?? 0) >= 0 ? '▲' : '▼'} {macro?.usd_index?.change?.toFixed(1) || '+0.1'}%
                   </div>
                 </div>
               </Col>
@@ -506,32 +506,97 @@ export function DashboardPage() {
             className="!bg-[#1E293B] !border-[#334155] h-full"
           >
             {positions.length > 0 ? positions.map((pos) => (
-              <div key={pos.symbol} className="bg-[#0F172A] rounded p-3 mb-2 last:mb-0">
+              <div key={pos.symbol} className={`bg-[#0F172A] rounded p-3 mb-2 last:mb-0 ${pos.riskLevel === 'DANGER' || pos.riskLevel === 'CRITICAL' ? 'ring-2 ring-[#EF4444]' : ''}`}>
                 <div className="flex justify-between items-center mb-2">
                   <span className="font-medium text-sm text-[#F8FAFC]">{pos.symbol}</span>
-                  <Tag color={pos.side === 'LONG' ? 'green' : pos.side === 'SHORT' ? 'red' : 'default'} className="text-xs">
-                    {pos.side}
-                  </Tag>
+                  <div className="flex items-center gap-2">
+                    <Tag color={pos.riskLevel === 'SAFE' ? 'green' : pos.riskLevel === 'CAUTION' ? 'blue' : pos.riskLevel === 'WARNING' ? 'orange' : 'red'} className="text-xs">
+                      {pos.riskLevel || 'SAFE'}
+                    </Tag>
+                    <Tag color={pos.side === 'LONG' ? 'green' : pos.side === 'SHORT' ? 'red' : 'default'} className="text-xs">
+                      {pos.side}
+                    </Tag>
+                  </div>
                 </div>
                 {pos.side !== 'NONE' ? (
-                  <Row gutter={[8, 8]}>
-                    <Col xs={8} md={8}>
-                      <div className="text-[#94A3B8] text-xs">仓位</div>
-                      <div className="text-sm text-[#F8FAFC]">{pos.size} {pos.symbol}</div>
-                    </Col>
-                    {pos.leverage !== undefined && (
+                  <div className="space-y-2">
+                    <Row gutter={[8, 8]}>
+                      <Col xs={8} md={8}>
+                        <div className="text-[#94A3B8] text-xs">开仓价</div>
+                        <div className="text-sm text-[#F8FAFC]">${pos.entryPrice?.toLocaleString() || '-'}</div>
+                      </Col>
+                      <Col xs={8} md={8}>
+                        <div className="text-[#94A3B8] text-xs">当前价</div>
+                        <div className="text-sm text-[#F8FAFC]">${pos.currentPrice?.toLocaleString() || '-'}</div>
+                      </Col>
                       <Col xs={8} md={8}>
                         <div className="text-[#94A3B8] text-xs">杠杆</div>
-                        <div className="text-sm text-[#F8FAFC]">{pos.leverage}x</div>
+                        <div className={`text-sm font-semibold ${(pos.leverage || 1) > 5 ? 'text-[#F97316]' : 'text-[#F8FAFC]'}`}>
+                          {pos.leverage || 1}x
+                        </div>
                       </Col>
+                    </Row>
+                    {pos.liquidationPrice !== undefined && pos.liquidationPrice > 0 && (
+                      <Row gutter={[8, 8]}>
+                        <Col xs={12} md={12}>
+                          <div className="text-[#94A3B8] text-xs">爆仓价</div>
+                          <div className={`text-sm font-semibold ${pos.liquidationDistancePct !== undefined && pos.liquidationDistancePct < 10 ? 'text-[#EF4444]' : 'text-[#F8FAFC]'}`}>
+                            ${pos.liquidationPrice.toLocaleString()}
+                          </div>
+                        </Col>
+                        <Col xs={12} md={12}>
+                          <div className="text-[#94A3B8] text-xs">距爆仓</div>
+                          <div className={`text-sm font-semibold ${
+                            pos.liquidationDistancePct !== undefined 
+                              ? pos.liquidationDistancePct < 5 ? 'text-[#EF4444]' 
+                              : pos.liquidationDistancePct < 10 ? 'text-[#F97316]' 
+                              : 'text-[#10B981]'
+                              : 'text-[#F8FAFC]'
+                          }`}>
+                            {pos.liquidationDistancePct !== undefined ? `${pos.liquidationDistancePct.toFixed(1)}%` : '-'}
+                          </div>
+                        </Col>
+                      </Row>
                     )}
-                    <Col xs={8} md={8}>
-                      <div className="text-[#94A3B8] text-xs">浮盈</div>
-                      <div className={`text-sm font-semibold ${pos.pnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                        {pos.pnl >= 0 ? '+' : ''}{pos.pnl > 1000 || pos.pnl < -1000 ? `$${(pos.pnl / 1000).toFixed(1)}K` : `$${pos.pnl}`}
+                    <Row gutter={[8, 8]}>
+                      <Col xs={8} md={8}>
+                        <div className="text-[#94A3B8] text-xs">仓位</div>
+                        <div className="text-sm text-[#F8FAFC]">{pos.size}</div>
+                      </Col>
+                      <Col xs={8} md={8}>
+                        <div className="text-[#94A3B8] text-xs">保证金</div>
+                        <div className="text-sm text-[#F8FAFC]">{pos.margin !== undefined ? `$${pos.margin.toFixed(0)}` : '-'}</div>
+                      </Col>
+                      <Col xs={8} md={8}>
+                        <div className="text-[#94A3B8] text-xs">浮盈</div>
+                        <div className={`text-sm font-semibold ${pos.pnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                          {pos.pnl >= 0 ? '+' : ''}{Math.abs(pos.pnl) > 1000 || pos.pnl < -1000 ? `$${(pos.pnl / 1000).toFixed(1)}K` : `$${pos.pnl.toFixed(0)}`}
+                        </div>
+                      </Col>
+                    </Row>
+                    {(pos.stopLoss !== undefined || pos.takeProfit !== undefined) && (
+                      <Row gutter={[8, 8]}>
+                        <Col xs={12} md={12}>
+                          <div className="text-[#94A3B8] text-xs">止损</div>
+                          <div className="text-sm text-[#EF4444]">{pos.stopLoss ? `$${pos.stopLoss.toLocaleString()}` : '-'}</div>
+                        </Col>
+                        <Col xs={12} md={12}>
+                          <div className="text-[#94A3B8] text-xs">止盈</div>
+                          <div className="text-sm text-[#10B981]">{pos.takeProfit ? `$${pos.takeProfit.toLocaleString()}` : '-'}</div>
+                        </Col>
+                      </Row>
+                    )}
+                    {pos.riskLevel === 'DANGER' && (
+                      <div className="mt-2 p-2 bg-[#EF4444]/20 rounded text-xs text-[#EF4444] text-center">
+                        ⚠️ 爆仓风险极高，请及时处理！
                       </div>
-                    </Col>
-                  </Row>
+                    )}
+                    {pos.riskLevel === 'WARNING' && (
+                      <div className="mt-2 p-2 bg-[#F97316]/20 rounded text-xs text-[#F97316] text-center">
+                        ⚠️ 距爆仓较近，注意风险
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <div className="text-[#94A3B8] text-xs">等待买入信号...</div>
                 )}

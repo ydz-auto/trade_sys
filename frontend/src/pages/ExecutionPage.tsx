@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Card, Row, Col, Tag, Table, Timeline, Badge, Spin, message } from 'antd'
+import { Card, Row, Col, Tag, Table, Timeline, Badge, Spin } from 'antd'
 import { CheckCircleOutlined, SyncOutlined, CloseCircleOutlined } from '@ant-design/icons'
 import { fetchOrders } from '../services/api/tradingApi'
 

@@ -1,10 +1,8 @@
 import { useState } from 'react'
-import { Card, Row, Col, Tag, Button, Divider, Modal, message, Input, Progress, Typography } from 'antd'
+import { Card, Row, Col, Tag, Button, Divider, Modal, message, Input, Progress } from 'antd'
 import { CheckCircleOutlined, CloseCircleOutlined, ThunderboltOutlined, BulbOutlined, WarningOutlined } from '@ant-design/icons'
 import { useTradingStore } from '../store/tradingStore'
 import { executeOrder } from '../services/api/tradingApi'
-
-const { Title, Text, Paragraph } = Typography
 
 export function DecisionPage() {
   const { signal, regime, factors, risk, fearGreed, prices } = useTradingStore()
@@ -171,7 +169,7 @@ export function DecisionPage() {
             className="!bg-[#1E293B] !border-[#334155] mb-4"
           >
             <div className="space-y-3">
-              {factorContributions.map((factor, idx) => (
+              {factorContributions.map((factor) => (
                 <div key={factor.type} className="flex items-center justify-between bg-[#0F172A] rounded p-3">
                   <div className="flex items-center gap-3">
                     <div 

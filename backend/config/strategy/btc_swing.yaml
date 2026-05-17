@@ -1,0 +1,43 @@
+# BTC Swing Strategy Configuration
+# BTC 波段策略配置
+
+strategy:
+  btc_swing:
+    name: "BTC Swing Strategy"
+    enabled: true
+    
+    timeframes:
+      primary: "4h"
+      confirmation: "1d"
+      
+    indicators:
+      rsi:
+        period: 14
+        overbought: 70
+        oversold: 30
+      macd:
+        fast: 12
+        slow: 26
+        signal: 9
+      ema:
+        short: 20
+        long: 50
+        
+    signals:
+      entry:
+        rsi_threshold: 30
+        macd_crossover: true
+      exit:
+        rsi_threshold: 70
+        take_profit: 0.05
+        stop_loss: 0.03
+        
+    risk:
+      position_size: 0.02
+      max_leverage: 3
+      
+    weights:
+      macro: 0.4
+      funding: 0.2
+      technical: 0.3
+      sentiment: 0.1

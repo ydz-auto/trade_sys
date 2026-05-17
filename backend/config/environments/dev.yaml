@@ -1,0 +1,33 @@
+# Development Environment Configuration
+# 开发环境配置
+
+environment: dev
+
+debug: true
+log_level: DEBUG
+
+kafka:
+  bootstrap_servers: "localhost:9092"
+  
+redis:
+  url: "redis://localhost:6379/0"
+  
+clickhouse:
+  host: "localhost"
+  port: 9000
+  database: "tradeagent_dev"
+  
+postgresql:
+  host: "localhost"
+  port: 5432
+  database: "tradeagent_dev"
+  user: "postgres"
+  password: "postgres"
+
+observability:
+  prometheus:
+    enabled: true
+    port: 9090
+  jaeger:
+    enabled: true
+    endpoint: "http://localhost:4317"

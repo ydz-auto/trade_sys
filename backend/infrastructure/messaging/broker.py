@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any, Callable, Type, TYPE_CHECKING
+from typing import Optional, Dict, Any, Callable, Type, Union, TYPE_CHECKING
 from pydantic import BaseModel
 
 try:
@@ -83,7 +83,7 @@ class KafkaBrokerWrapper:
 
     async def publish(
         self,
-        message: BaseModel | Dict[str, Any],
+        message: Union[BaseModel, Dict[str, Any]],
         topic: str,
         key: Optional[str] = None,
     ) -> None:
@@ -94,7 +94,7 @@ class KafkaBrokerWrapper:
 
     def create_app(self, title: str = "TradeAgent", version: str = "1.0.0"):
         if self._app is None:
-            self._app = FastStream(self.get_broker(), title=title, version=version)
+            self._app = FastStream(self.get_broker())
         return self._app
 
     async def run(self) -> None:

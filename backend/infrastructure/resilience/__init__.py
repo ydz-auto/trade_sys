@@ -24,6 +24,18 @@ from .retry import (
     RetryConfig,
     retry
 )
+from .data_fallback import (
+    DataChannelType,
+    DataQuality,
+    DataChannelStatus,
+    PriceData,
+    ChannelConfig,
+    MultiChannelConfig,
+    MultiChannelDataManager,
+    get_multi_channel_manager,
+    DataFallbackManager,
+    get_data_fallback_manager
+)
 
 __all__ = [
     # Circuit Breaker
@@ -44,5 +56,16 @@ __all__ = [
     # Retry
     "RetryPolicy",
     "RetryConfig",
-    "retry"
+    "retry",
+    # Data Fallback / Multi Channel
+    "DataChannelType",
+    "DataQuality",
+    "DataChannelStatus",
+    "PriceData",
+    "ChannelConfig",
+    "MultiChannelConfig",
+    "MultiChannelDataManager",
+    "get_multi_channel_manager",
+    "DataFallbackManager",
+    "get_data_fallback_manager"
 ]

@@ -6,6 +6,7 @@ import time
 import json
 from typing import Dict, List, Optional, Any, Callable
 from collections import defaultdict
+from enum import Enum
 
 from shared.state.types import (
     StateType,

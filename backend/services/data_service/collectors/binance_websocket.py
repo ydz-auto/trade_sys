@@ -10,20 +10,32 @@ Binance WebSocket Adapter - 核心市场数据源
 - 持仓量 (openInterest)
 
 免费、实时、稳定
-"""
 
+同时集成：
+- 多端点自动切换
+- 熔断机制
+- 降级机制
+- Mock数据生成
+"""
 import asyncio
 import json
 import logging
+import random
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Callable, Any
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field
 from enum import Enum
 import websockets
 from websockets.client import connect
 
 from shared.contracts import StandardEvent, Source, EventType
 from infrastructure.logging import get_logger
+from infrastructure.resilience import (
+    get_data_fallback_manager,
+    get_multi_channel_manager,
+    DataChannelType,
+    PriceData
+)
 
 logger = get_logger("binance_ws.adapter")
 
@@ -69,6 +81,12 @@ class BinanceWebSocketAdapter:
     
     使用官方 Binance WebSocket Streams API
     文档: https://developers.binance.com/docs/simple-earn/history/Get-Flexible-Rewards-History
+    
+    集成：
+    - 多端点自动切换
+    - 熔断机制
+    - 降级机制
+    - Mock数据生成
     """
     
     BASE_URL = "wss://stream.binance.com:9443/ws"
@@ -79,6 +97,10 @@ class BinanceWebSocketAdapter:
         self.websocket = None
         self.is_connected = False
         self.is_running = False
+        
+        # 多通道管理器（用于REST回退）
+        self._multi_channel = get_multi_channel_manager()
+        self._fallback_manager = get_data_fallback_manager()
         
         # 事件回调
         self.on_trade: Optional[Callable] = None
@@ -92,20 +114,26 @@ class BinanceWebSocketAdapter:
             "trades": 0,
             "liquidations": 0,
             "price_updates": 0,
-            "errors": 0
+            "errors": 0,
+            "fallback_used": 0,
+            "rest_data_used": 0
         }
         
         # 最近事件（用于去重）
         self.recent_events: Dict[str, int] = {}  # event_id -> timestamp
         
+        # REST回退模式（WebSocket断开时使用）
+        self._rest_fallback_mode = False
+        self._rest_fallback_task: Optional[asyncio.Task] = None
+        self._snapshot_task: Optional[asyncio.Task] = None
+    
     def _build_stream_url(self) -> str:
-        """构建流 URL"""
+        """构建流 URL - 支持多端点切换"""
         streams = []
         
         for symbol in self.config.symbols:
             for stream_type in self.config.stream_types:
                 if stream_type == StreamType.LIQUIDATION:
-                    # 强平使用不同的端点
                     streams.append(f"{symbol}@forceOrder")
                 elif stream_type == StreamType.MARK_PRICE:
                     streams.append(f"{symbol}@markPrice@1s")
@@ -114,12 +142,31 @@ class BinanceWebSocketAdapter:
                 elif stream_type == StreamType.BOOK_TICKER:
                     streams.append(f"{symbol}@bookTicker")
         
-        return f"{self.BASE_URL}/{'/'.join(streams)}"
+        # 获取可用端点
+        try:
+            base_url = self._fallback_manager.get_current_endpoint(DataChannelType.BINANCE_WS)
+        except:
+            base_url = None
+            
+        if not base_url:
+            base_url = self.BASE_URL
+        
+        return f"{base_url}/{'/'.join(streams)}"
     
     async def connect(self):
-        """连接 WebSocket"""
+        """连接 WebSocket - 支持熔断和REST降级"""
         if self.is_connected:
             return
+        
+        # 检查熔断器
+        try:
+            cb = self._fallback_manager.get_circuit_breaker(DataChannelType.BINANCE_WS)
+            if cb.state.value == "open":
+                logger.warning("Circuit breaker is OPEN, switching to REST fallback mode")
+                await self._start_rest_fallback_mode()
+                return
+        except:
+            pass
         
         url = self._build_stream_url()
         logger.info(f"Connecting to Binance WebSocket: {url[:100]}...")
@@ -131,16 +178,139 @@ class BinanceWebSocketAdapter:
                 ping_timeout=10
             )
             self.is_connected = True
+            try:
+                self._fallback_manager.record_success(DataChannelType.BINANCE_WS)
+            except:
+                pass
             logger.info("Binance WebSocket connected successfully")
             
         except Exception as e:
             logger.error(f"Failed to connect to Binance: {e}")
+            try:
+                self._fallback_manager.record_failure(DataChannelType.BINANCE_WS)
+            except:
+                pass
             self.is_connected = False
-            raise
+            
+            # 切换端点
+            try:
+                self._fallback_manager.switch_endpoint(DataChannelType.BINANCE_WS)
+            except:
+                pass
+            
+            # 检查是否需要启用REST回退
+            try:
+                status = self._fallback_manager.get_source_status(DataChannelType.BINANCE_WS)
+                if status.failure_count >= 3:
+                    logger.warning("Too many failures, switching to REST fallback mode")
+                    await self._start_rest_fallback_mode()
+                else:
+                    raise
+            except:
+                logger.warning("Switching to REST fallback mode")
+                await self._start_rest_fallback_mode()
+    
+    async def _start_rest_fallback_mode(self):
+        """启动REST回退模式 - WebSocket断开时使用真实数据"""
+        if self._rest_fallback_mode:
+            return
+        
+        logger.warning("Switching to REST FALLBACK mode (real data from other exchanges)")
+        self._rest_fallback_mode = True
+        self.is_running = True
+        self.is_connected = True
+        
+        logger.info("Starting REST fallback tasks...")
+        
+        # 启动REST数据拉取任务
+        self._rest_fallback_task = asyncio.create_task(self._poll_rest_fallback())
+        
+        # 启动定期快照任务（每5分钟一次）
+        self._snapshot_task = asyncio.create_task(self._periodic_snapshot())
+        
+        logger.info("REST fallback tasks started")
+    
+    async def _stop_rest_fallback_mode(self):
+        """停止REST回退模式"""
+        self._rest_fallback_mode = False
+        if self._rest_fallback_task:
+            self._rest_fallback_task.cancel()
+            try:
+                await self._rest_fallback_task
+            except asyncio.CancelledError:
+                pass
+            self._rest_fallback_task = None
+        if self._snapshot_task:
+            self._snapshot_task.cancel()
+            try:
+                await self._snapshot_task
+            except asyncio.CancelledError:
+                pass
+            self._snapshot_task = None
+    
+    async def _poll_rest_fallback(self):
+        """轮询REST API作为回退数据"""
+        logger.info("Starting REST fallback data poller")
+        
+        while self._rest_fallback_mode and self.is_running:
+            try:
+                # 为每个交易对拉取价格
+                for symbol in self.config.symbols:
+                    # 从多通道管理器获取价格
+                    price_data = await self._multi_channel.get_price(symbol)
+                    
+                    if price_data:
+                        # 转换为mark price格式并触发回调
+                        await self._handle_price_from_rest(price_data)
+                        self.stats["rest_data_used"] += 1
+                        self.stats["fallback_used"] += 1
+                        logger.info(f"Got price from REST fallback: {symbol} = {price_data.price}")
+                    else:
+                        logger.warning(f"No price data for {symbol} from any channel")
+                
+                await asyncio.sleep(1.0)
+                
+            except Exception as e:
+                logger.error(f"Error polling REST fallback: {e}", exc_info=True)
+                await asyncio.sleep(1.0)
+    
+    async def _periodic_snapshot(self):
+        """定期拉取快照 - 确保数据一致性"""
+        logger.info("Starting periodic snapshot task")
+        
+        while self._rest_fallback_mode and self.is_running:
+            try:
+                # 每5分钟拉取一次完整快照
+                for symbol in self.config.symbols:
+                    snapshot = await self._multi_channel.get_snapshot(symbol)
+                    if snapshot:
+                        logger.debug(f"Received snapshot for {symbol}")
+                
+                await asyncio.sleep(300)
+                
+            except Exception as e:
+                logger.error(f"Error in periodic snapshot: {e}")
+                await asyncio.sleep(60)
+    
+    async def _handle_price_from_rest(self, price_data: PriceData):
+        """将REST获取的价格转换为事件"""
+        symbol = price_data.symbol.lower()
+        
+        # 构建类似mark price的数据格式
+        data = {
+            "s": price_data.symbol.upper(),
+            "p": str(price_data.price),
+            "i": str(price_data.bid) if price_data.bid else str(price_data.price),
+            "P": str(price_data.ask) if price_data.ask else str(price_data.price),
+            "E": price_data.timestamp
+        }
+        
+        await self._handle_mark_price(data)
     
     async def disconnect(self):
         """断开连接"""
         self.is_running = False
+        await self._stop_rest_fallback_mode()
         
         if self.websocket:
             await self.websocket.close()
@@ -154,6 +324,13 @@ class BinanceWebSocketAdapter:
         if not self.is_connected:
             await self.connect()
         
+        # 如果是REST回退模式，不需要监听真实ws
+        if self._rest_fallback_mode:
+            logger.info("Running in REST FALLBACK mode")
+            while self.is_running and self._rest_fallback_mode:
+                await asyncio.sleep(1.0)
+            return
+        
         self.is_running = True
         logger.info("Binance WebSocket listening...")
         
@@ -164,33 +341,59 @@ class BinanceWebSocketAdapter:
                 
                 try:
                     data = json.loads(message)
+                    try:
+                        self._fallback_manager.record_success(DataChannelType.BINANCE_WS)
+                    except:
+                        pass
                     await self._process_message(data)
                     
                 except json.JSONDecodeError:
                     logger.error(f"Invalid JSON: {message[:100]}")
+                    self.stats["errors"] += 1
                 except Exception as e:
                     logger.error(f"Error processing message: {e}")
                     self.stats["errors"] += 1
                     
-        except websockets.exceptions.ConnectionClosed:
-            logger.warning("Binance WebSocket connection closed")
+        except websockets.exceptions.ConnectionClosed as e:
+            logger.warning(f"Binance WebSocket connection closed: {e}")
             self.is_connected = False
+            try:
+                self._fallback_manager.record_failure(DataChannelType.BINANCE_WS)
+            except:
+                pass
             
-            # 自动重连
+            # 自动重连或降级
             if self.is_running:
                 await self._reconnect()
     
     async def _reconnect(self, delay: int = 5):
-        """自动重连"""
+        """自动重连 - 支持多端点和REST降级"""
         logger.info(f"Reconnecting in {delay}s...")
         await asyncio.sleep(delay)
+        
+        # 切换到下一个端点
+        try:
+            self._fallback_manager.switch_endpoint(DataChannelType.BINANCE_WS)
+        except:
+            pass
         
         try:
             await self.connect()
             await self.listen()
         except Exception as e:
             logger.error(f"Reconnection failed: {e}")
-            await self._reconnect(delay=min(delay * 2, 60))
+            
+            # 检查是否需要启用REST回退
+            try:
+                status = self._fallback_manager.get_source_status(DataChannelType.BINANCE_WS)
+                if status.failure_count >= 3:
+                    logger.warning("Too many failures, switching to REST fallback mode")
+                    await self._start_rest_fallback_mode()
+                else:
+                    await self._reconnect(delay=min(delay * 2, 60))
+            except:
+                logger.warning("Switching to REST fallback mode")
+                await self._start_rest_fallback_mode()
     
     async def _process_message(self, data: Dict):
         """处理消息"""
@@ -340,10 +543,23 @@ class BinanceWebSocketAdapter:
     
     def get_stats(self) -> Dict:
         """获取统计"""
+        try:
+            fallback_stats = self._fallback_manager.get_stats()
+        except:
+            fallback_stats = {}
+            
+        try:
+            multi_channel_health = self._multi_channel.get_health_status()
+        except:
+            multi_channel_health = {}
+            
         return {
             **self.stats,
             "is_connected": self.is_connected,
-            "is_running": self.is_running
+            "is_running": self.is_running,
+            "rest_fallback_mode": self._rest_fallback_mode,
+            "fallback_manager": fallback_stats,
+            "multi_channel": multi_channel_health
         }
     
     async def start(self):

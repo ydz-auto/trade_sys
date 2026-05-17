@@ -49,10 +49,22 @@ export interface Position {
   side: 'LONG' | 'SHORT' | 'NONE'
   size: number
   entryPrice?: number
+  currentPrice?: number
   leverage?: number
   pnl: number
+  pnlPct?: number
   stopLoss?: number
   takeProfit?: number
+  // 爆仓相关
+  liquidationPrice?: number
+  liquidationDistancePct?: number
+  margin?: number
+  marginRatio?: number
+  riskLevel?: 'SAFE' | 'CAUTION' | 'WARNING' | 'DANGER' | 'CRITICAL'
+  // 元数据
+  marketType?: string
+  exchange?: string
+  openedAt?: string
 }
 
 export interface WeightVersion {

@@ -1,0 +1,45 @@
+# Infrastructure Configuration
+# 基础设施配置
+
+redis:
+  url: "${REDIS_URL:-redis://localhost:6379/0}"
+  max_connections: 100
+  connection_timeout: 5
+  socket_timeout: 5
+  
+kafka:
+  bootstrap_servers: "${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
+  consumer_config:
+    auto_offset_reset: "latest"
+    enable_auto_commit: true
+    max_poll_records: 1000
+    session_timeout_ms: 30000
+  producer_config:
+    acks: "all"
+    retries: 3
+    batch_size: 16384
+    linger_ms: 5
+    
+clickhouse:
+  host: "${CLICKHOUSE_HOST:-localhost}"
+  port: 9000
+  http_port: 8123
+  database: "${CLICKHOUSE_DATABASE:-tradeagent}"
+  user: "default"
+  password: ""
+  connection_timeout: 10
+  send_receive_timeout: 300
+  
+postgresql:
+  host: "${POSTGRES_HOST:-localhost}"
+  port: 5432
+  database: "${POSTGRES_DATABASE:-tradeagent}"
+  user: "${POSTGRES_USER:-postgres}"
+  password: "${POSTGRES_PASSWORD:-postgres}"
+  min_connections: 5
+  max_connections: 20
+  
+temporal:
+  host: "${TEMPORAL_HOST:-localhost}"
+  port: 7233
+  namespace: "default"

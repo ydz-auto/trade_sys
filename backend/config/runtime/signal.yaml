@@ -1,0 +1,20 @@
+# Signal Runtime Configuration
+# 信号生成运行时配置
+
+signal_runtime:
+  fusion:
+    window_seconds: 300
+    min_events: 1
+    min_confidence: 0.3
+    
+  event_detection:
+    enabled: true
+    patterns:
+      - "inflow"
+      - "outflow"
+      - "hack"
+      - "adoption"
+      
+  signal_resolution:
+    conflict_threshold: 0.05
+    min_confidence: 0.1

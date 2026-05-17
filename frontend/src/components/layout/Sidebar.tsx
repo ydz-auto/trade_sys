@@ -24,7 +24,7 @@ const navItems = [
   ]},
   { section: '执行层', items: [
     { path: '/positions', label: '仓位管理', icon: 'Box' },
-    { path: '/execution', label: '执行追踪', icon: 'Zap' },
+    { path: '/trading', label: '实盘交易', icon: 'Zap' },
   ]},
 ]
 

@@ -1,0 +1,24 @@
+# Feature Flags Configuration
+# 功能开关配置
+
+features:
+  enable_llm: false
+  enable_replay: true
+  enable_projection: true
+  enable_shadow_execution: false
+  enable_narrative: false
+  
+  experimental:
+    enable_ml_signals: false
+    enable_multi_timeframe: true
+    enable_auto_repair: true
+    
+  safety:
+    enable_circuit_breaker: true
+    enable_rate_limit: true
+    enable_position_guard: true
+    
+  observability:
+    enable_detailed_metrics: true
+    enable_tracing: true
+    enable_profiling: false

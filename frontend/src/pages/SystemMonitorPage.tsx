@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Card, Row, Col, Tag, Progress, Statistic, Table, Timeline, Badge, Typography } from 'antd'
+import { Card, Row, Col, Tag, Progress, Statistic, Table, Timeline, Typography } from 'antd'
 import {
   CloudServerOutlined,
   ApiOutlined,
@@ -91,7 +91,7 @@ const systemMetrics: SystemMetric[] = [
 ]
 
 export function SystemMonitorPage() {
-  const [time, setTime] = useState(new Date())
+  const [, setTime] = useState(new Date())
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000)

@@ -88,11 +88,16 @@ class RedisClient:
     async def delete(self, key: str) -> int:
         return await self.client.delete(key)
 
-    async def delete_pattern(self, pattern: str) -> int:
-        keys = await self.client.keys(pattern)
-        if keys:
-            return await self.client.delete(*keys)
-        return 0
+    async def delete_pattern(self, pattern: str, batch_size: int = 100) -> int:
+        deleted = 0
+        cursor = 0
+        while True:
+            cursor, keys = await self.client.scan(cursor, match=pattern, count=batch_size)
+            if keys:
+                deleted += await self.client.delete(*keys)
+            if cursor == 0:
+                break
+        return deleted
 
     async def exists(self, key: str) -> bool:
         return await self.client.exists(key) > 0

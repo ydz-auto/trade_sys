@@ -6,6 +6,7 @@
 import asyncio
 from typing import Optional, Dict, List, Any, Callable
 from datetime import datetime
+from collections import OrderedDict
 import json
 
 from infrastructure.cache.redis_client import RedisClient, get_redis_client
@@ -18,10 +19,47 @@ from infrastructure.cache.config import (
 from infrastructure.cache.keys import CacheKey, KeyPattern
 
 
+class LRUMemoryCache:
+    def __init__(self, max_size: int = 1000):
+        self._cache: OrderedDict[str, Any] = OrderedDict()
+        self._max_size = max_size
+
+    def get(self, key: str) -> Any:
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+        return None
+
+    def set(self, key: str, value: Any) -> None:
+        if key in self._cache:
+            self._cache.move_to_end(key)
+        self._cache[key] = value
+        if len(self._cache) > self._max_size:
+            self._cache.popitem(last=False)
+
+    def delete(self, key: str) -> bool:
+        if key in self._cache:
+            del self._cache[key]
+            return True
+        return False
+
+    def clear(self) -> None:
+        self._cache.clear()
+
+    def keys(self) -> List[str]:
+        return list(self._cache.keys())
+
+    def __len__(self) -> int:
+        return len(self._cache)
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._cache
+
+
 class CacheManager:
-    def __init__(self, redis_client: Optional[RedisClient] = None):
+    def __init__(self, redis_client: Optional[RedisClient] = None, max_memory_items: int = 1000):
         self.redis = redis_client or get_redis_client()
-        self._memory_cache: Dict[str, Any] = {}
+        self._memory_cache = LRUMemoryCache(max_size=max_memory_items)
         self._default_ttl = DEFAULT_TTL
 
     def set_default_ttl(self, ttl: int):
@@ -33,8 +71,10 @@ class CacheManager:
         default: Any = None,
         use_memory: bool = True,
     ) -> Any:
-        if use_memory and key in self._memory_cache:
-            return self._memory_cache[key]
+        if use_memory:
+            cached = self._memory_cache.get(key)
+            if cached is not None:
+                return cached
 
         value = await self.redis.get(key)
         if value is None:
@@ -46,7 +86,7 @@ class CacheManager:
             result = value
 
         if use_memory:
-            self._memory_cache[key] = result
+            self._memory_cache.set(key, result)
 
         return result
 
@@ -58,7 +98,7 @@ class CacheManager:
         use_memory: bool = True,
     ) -> bool:
         if use_memory:
-            self._memory_cache[key] = value
+            self._memory_cache.set(key, value)
 
         ttl = ttl or self._default_ttl
 
@@ -68,8 +108,8 @@ class CacheManager:
             return await self.redis.set(key, value, ex=ttl)
 
     async def delete(self, key: str, use_memory: bool = True) -> int:
-        if use_memory and key in self._memory_cache:
-            del self._memory_cache[key]
+        if use_memory:
+            self._memory_cache.delete(key)
 
         return await self.redis.delete(key)
 
@@ -137,7 +177,7 @@ class CacheManager:
                 await self.redis.set(key, value, ex=ttl)
 
             if use_memory:
-                self._memory_cache[key] = value
+                self._memory_cache.set(key, value)
 
         return value
 
@@ -163,7 +203,7 @@ class CacheManager:
                 await self.redis.set(key, value, ex=ttl)
 
             if use_memory:
-                self._memory_cache[key] = value
+                self._memory_cache.set(key, value)
 
         return value
 
@@ -174,7 +214,7 @@ class CacheManager:
         await self.delete_pattern(pattern)
         keys_to_remove = [k for k in self._memory_cache.keys() if _match_pattern(k, pattern)]
         for k in keys_to_remove:
-            del self._memory_cache[k]
+            self._memory_cache.delete(k)
 
     async def warmup(
         self,

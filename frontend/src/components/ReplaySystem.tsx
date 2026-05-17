@@ -21,7 +21,7 @@ export function ReplaySystem() {
   const [speed, setSpeed] = useState(1)
   const [snapshots, setSnapshots] = useState<ReplaySnapshot[]>([])
   const [currentSnapshot, setCurrentSnapshot] = useState<ReplaySnapshot | null>(null)
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // 生成模拟快照数据
   useEffect(() => {
@@ -149,7 +149,7 @@ export function ReplaySystem() {
                 max={snapshots.length - 1}
                 value={currentIndex}
                 onChange={handleSlider}
-                tooltip={{ formatter: (value) => snapshots[value] && formatDateTime(snapshots[value].timestamp) }}
+                tooltip={{ formatter: (value) => value !== undefined && snapshots[value] ? formatDateTime(snapshots[value].timestamp) : '' }}
               />
               
               <div className="flex justify-center mt-4">
@@ -200,10 +200,12 @@ export function ReplaySystem() {
                   <Statistic
                     title="信号"
                     value={0}
-                    formatter={() => <Tag color={getActionColor(currentSnapshot.signal?.action || 'HOLD')}>
-                      {currentSnapshot.signal?.action}
-                    </Tag>
-                  }
+                    formatter={() => (
+                      <Tag color={getActionColor(currentSnapshot.signal?.action || 'HOLD')}>
+                        {currentSnapshot.signal?.action}
+                      </Tag>
+                    )}
+                  />
                   <div className="text-xs text-gray-500 mt-1">
                     置信度: {currentSnapshot.signal?.confidence?.toFixed(0)}%
                   </div>

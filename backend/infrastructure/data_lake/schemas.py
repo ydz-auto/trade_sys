@@ -479,88 +479,130 @@ def generate_materialized_views() -> dict:
         "mv_klines_1h_from_1m": """
             CREATE MATERIALIZED VIEW IF NOT EXISTS mv_klines_1h_from_1m
             TO aggregated_klines
-            AS SELECT
+            AS
+            SELECT
                 exchange,
                 symbol,
                 '1h' as timeframe,
-                toStartOfHour(open_time) as open_time,
-                toStartOfHour(open_time) + INTERVAL 1 HOUR as close_time,
-                
-                argMin(open, open_time) as open,
-                max(high) as high,
-                min(low) as low,
-                argMax(close, open_time) as close,
-                sum(volume) as volume,
-                sum(quote_volume) as quote_volume,
-                sum(trades) as trades,
-                
-                sum(volume * argMin(open, open_time)) / sum(volume) as vwap,
-                avg(close) as twap,
-                
+                time_bucket as open_time,
+                time_bucket + INTERVAL 1 HOUR as close_time,
+                first_open as open,
+                max_high as high,
+                min_low as low,
+                last_close as close,
+                total_volume as volume,
+                total_quote_volume as quote_volume,
+                total_trades as trades,
+                total_volume_value / total_volume as vwap,
+                total_close / cnt as twap,
                 1 as is_closed,
                 now64(3) as aggregated_at,
-                count() as source_count
-            FROM aggregated_klines
-            WHERE timeframe = '1m' AND is_closed = 1
-            GROUP BY exchange, symbol, toStartOfHour(open_time)
+                cnt as source_count
+            FROM (
+                SELECT
+                    exchange,
+                    symbol,
+                    toStartOfHour(open_time) as time_bucket,
+                    any(open) as first_open,
+                    max(high) as max_high,
+                    min(low) as min_low,
+                    anyLast(close) as last_close,
+                    sum(volume) as total_volume,
+                    sum(quote_volume) as total_quote_volume,
+                    sum(trades) as total_trades,
+                    sum(volume * close) as total_volume_value,
+                    sum(close) as total_close,
+                    count() as cnt
+                FROM aggregated_klines
+                WHERE timeframe = '1m' AND is_closed = 1
+                GROUP BY exchange, symbol, toStartOfHour(open_time)
+            )
         """,
         
         "mv_klines_4h_from_1h": """
             CREATE MATERIALIZED VIEW IF NOT EXISTS mv_klines_4h_from_1h
             TO aggregated_klines
-            AS SELECT
+            AS
+            SELECT
                 exchange,
                 symbol,
                 '4h' as timeframe,
-                toStartOfInterval(open_time, INTERVAL 4 HOUR) as open_time,
-                toStartOfInterval(open_time, INTERVAL 4 HOUR) + INTERVAL 4 HOUR as close_time,
-                
-                argMin(open, open_time) as open,
-                max(high) as high,
-                min(low) as low,
-                argMax(close, open_time) as close,
-                sum(volume) as volume,
-                sum(quote_volume) as quote_volume,
-                sum(trades) as trades,
-                
-                sum(volume * argMin(open, open_time)) / sum(volume) as vwap,
-                avg(close) as twap,
-                
+                time_bucket as open_time,
+                time_bucket + INTERVAL 4 HOUR as close_time,
+                first_open as open,
+                max_high as high,
+                min_low as low,
+                last_close as close,
+                total_volume as volume,
+                total_quote_volume as quote_volume,
+                total_trades as trades,
+                total_volume_value / total_volume as vwap,
+                total_close / cnt as twap,
                 1 as is_closed,
                 now64(3) as aggregated_at,
-                count() as source_count
-            FROM aggregated_klines
-            WHERE timeframe = '1h' AND is_closed = 1
-            GROUP BY exchange, symbol, toStartOfInterval(open_time, INTERVAL 4 HOUR)
+                cnt as source_count
+            FROM (
+                SELECT
+                    exchange,
+                    symbol,
+                    toStartOfInterval(open_time, INTERVAL 4 HOUR) as time_bucket,
+                    any(open) as first_open,
+                    max(high) as max_high,
+                    min(low) as min_low,
+                    anyLast(close) as last_close,
+                    sum(volume) as total_volume,
+                    sum(quote_volume) as total_quote_volume,
+                    sum(trades) as total_trades,
+                    sum(volume * close) as total_volume_value,
+                    sum(close) as total_close,
+                    count() as cnt
+                FROM aggregated_klines
+                WHERE timeframe = '1h' AND is_closed = 1
+                GROUP BY exchange, symbol, toStartOfInterval(open_time, INTERVAL 4 HOUR)
+            )
         """,
         
         "mv_klines_1d_from_1h": """
             CREATE MATERIALIZED VIEW IF NOT EXISTS mv_klines_1d_from_1h
             TO aggregated_klines
-            AS SELECT
+            AS
+            SELECT
                 exchange,
                 symbol,
                 '1d' as timeframe,
-                toStartOfDay(open_time) as open_time,
-                toStartOfDay(open_time) + INTERVAL 1 DAY as close_time,
-                
-                argMin(open, open_time) as open,
-                max(high) as high,
-                min(low) as low,
-                argMax(close, open_time) as close,
-                sum(volume) as volume,
-                sum(quote_volume) as quote_volume,
-                sum(trades) as trades,
-                
-                sum(volume * argMin(open, open_time)) / sum(volume) as vwap,
-                avg(close) as twap,
-                
+                time_bucket as open_time,
+                time_bucket + INTERVAL 1 DAY as close_time,
+                first_open as open,
+                max_high as high,
+                min_low as low,
+                last_close as close,
+                total_volume as volume,
+                total_quote_volume as quote_volume,
+                total_trades as trades,
+                total_volume_value / total_volume as vwap,
+                total_close / cnt as twap,
                 1 as is_closed,
                 now64(3) as aggregated_at,
-                count() as source_count
-            FROM aggregated_klines
-            WHERE timeframe = '1h' AND is_closed = 1
-            GROUP BY exchange, symbol, toStartOfDay(open_time)
+                cnt as source_count
+            FROM (
+                SELECT
+                    exchange,
+                    symbol,
+                    toStartOfDay(open_time) as time_bucket,
+                    any(open) as first_open,
+                    max(high) as max_high,
+                    min(low) as min_low,
+                    anyLast(close) as last_close,
+                    sum(volume) as total_volume,
+                    sum(quote_volume) as total_quote_volume,
+                    sum(trades) as total_trades,
+                    sum(volume * close) as total_volume_value,
+                    sum(close) as total_close,
+                    count() as cnt
+                FROM aggregated_klines
+                WHERE timeframe = '1h' AND is_closed = 1
+                GROUP BY exchange, symbol, toStartOfDay(open_time)
+            )
         """,
         
         "mv_daily_volume_stats": """

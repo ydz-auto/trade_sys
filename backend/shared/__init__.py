@@ -1,6 +1,10 @@
 """
 TradeAgent Shared Module
-共享模块 - 提供 TDP 协议、State 状态管理、Config 配置管理
+共享模块 - 提供 TDP 协议、State 状态管理、Config 运行时配置
+
+配置系统说明：
+- config/ - 静态配置（YAML 文件，部署时确定）
+- shared/config/ - 运行时配置（Redis 动态，运行时可修改）
 """
 
 from shared.tdp import (
@@ -50,9 +54,11 @@ from shared.config import (
     ConfigManager,
     StrategyConfigManager,
     UserConfigManager,
+    DataSourceConfigManager,
     get_config_manager,
     get_strategy_config_manager,
     get_user_config_manager,
+    get_datasource_config_manager,
 )
 
 __all__ = [
@@ -98,7 +104,9 @@ __all__ = [
     "ConfigManager",
     "StrategyConfigManager",
     "UserConfigManager",
+    "DataSourceConfigManager",
     "get_config_manager",
     "get_strategy_config_manager",
     "get_user_config_manager",
+    "get_datasource_config_manager",
 ]

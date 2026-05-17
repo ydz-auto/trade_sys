@@ -13,7 +13,7 @@ from .status import (
     ApprovalRequest,
     ApprovalDecision,
 )
-from .main import (
+from .service import (
     ApprovalService,
     get_approval_service,
 )
@@ -28,18 +28,14 @@ from .decision_gate import (
 )
 
 __all__ = [
-    # Status
     "ApprovalStatus",
     "ApprovalType",
     "ApprovalRequest",
     "ApprovalDecision",
-    # Main
     "ApprovalService",
     "get_approval_service",
-    # Telegram Bot
     "TelegramApprovalBot",
     "get_telegram_bot",
-    # Decision Gate
     "DecisionGate",
     "TradingMode",
     "get_decision_gate",

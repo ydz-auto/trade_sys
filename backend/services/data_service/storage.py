@@ -32,7 +32,8 @@ class DataStorage:
             logger.info("Data storage initialized")
 
         except Exception as e:
-            logger.error(f"Failed to initialize data storage: {e}")
+            logger.warning(f"ClickHouse not available, storage disabled: {e}")
+            self._initialized = False
 
     async def store_price(self, symbol: str, exchange: str, data: Dict):
         """存储价格数据"""

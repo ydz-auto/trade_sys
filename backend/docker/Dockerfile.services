@@ -1,0 +1,127 @@
+# =============================================================================
+# Service Dockerfiles - 统一服务镜像模板
+# =============================================================================
+#
+# 构建命令:
+#   docker build -f docker/Dockerfile.data_service -t data-service:latest .
+#   docker build -f docker/Dockerfile.event_service -t event-service:latest .
+#   ...
+#
+# 注意: 推荐使用 docker/Dockerfile (三层镜像架构) 构建 runtime 镜像
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Data Service
+# -----------------------------------------------------------------------------
+FROM python:3.12-slim AS data-service
+
+WORKDIR /app
+
+COPY services/data_service/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "-m", "services.data_service.main_kafka"]
+
+
+# -----------------------------------------------------------------------------
+# Event Service
+# -----------------------------------------------------------------------------
+FROM python:3.12-slim AS event-service
+
+WORKDIR /app
+
+COPY services/event_service/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "-m", "services.event_service.main_kafka"]
+
+
+# -----------------------------------------------------------------------------
+# Fusion Service
+# -----------------------------------------------------------------------------
+FROM python:3.12-slim AS fusion-service
+
+WORKDIR /app
+
+COPY services/fusion_service/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "-m", "services.fusion_service.main_kafka"]
+
+
+# -----------------------------------------------------------------------------
+# LLM Service
+# -----------------------------------------------------------------------------
+FROM python:3.12-slim AS llm-service
+
+WORKDIR /app
+
+COPY services/llm_service/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "-m", "services.llm_service.main"]
+
+
+# -----------------------------------------------------------------------------
+# Strategy Service
+# -----------------------------------------------------------------------------
+FROM python:3.12-slim AS strategy-service
+
+WORKDIR /app
+
+COPY services/strategy_service/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "-m", "services.strategy_service.main_kafka"]
+
+
+# -----------------------------------------------------------------------------
+# Correlation Service
+# -----------------------------------------------------------------------------
+FROM python:3.12-slim AS correlation-service
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . /app/backend
+WORKDIR /app/backend
+
+ENV CORRELATION_OUTPUT_DIR=/app/data/correlation_results
+ENV CORRELATION_SYMBOLS=BTC,ETH
+ENV CORRELATION_TIMEFRAMES=1h,4h
+ENV CORRELATION_INTERVAL=3600
+
+RUN mkdir -p /app/data/correlation_results
+
+CMD ["python", "-m", "services.correlation_service"]

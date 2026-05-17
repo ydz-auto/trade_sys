@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select, Space, Typography, Alert, Empty } from 'antd'
-import { PlusOutlined, CameraOutlined, HistoryOutlined, PlayCircleOutlined } from '@ant-design/icons'
+import { Card, Button, Table, Tag, Modal, Form, Input, Select, Space, Typography, Alert, Empty } from 'antd'
+import { PlusOutlined, CameraOutlined, PlayCircleOutlined } from '@ant-design/icons'
 
 const { Title, Text } = Typography
 const { Option } = Select
@@ -184,7 +184,7 @@ export function AlphaLifecyclePage() {
     {
       title: '操作',
       key: 'actions',
-      render: (_: any, record: Proposal) => (
+      render: () => (
         <Space>
           <Button type="link" size="small">查看</Button>
           <Button type="link" size="small">编辑</Button>
@@ -225,7 +225,7 @@ export function AlphaLifecyclePage() {
     {
       title: '操作',
       key: 'actions',
-      render: (_: any, record: Snapshot) => (
+      render: () => (
         <Space>
           <Button type="link" size="small" icon={<PlayCircleOutlined />}>回放</Button>
           <Button type="link" size="small">查看</Button>

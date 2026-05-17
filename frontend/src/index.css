@@ -12,3 +12,15 @@ body {
   font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-weight: 600;
 }
+
+.ant-typography-secondary {
+  color: #94A3B8 !important;
+}
+
+.ant-statistic-title {
+  color: #94A3B8 !important;
+}
+
+.ant-empty-description {
+  color: #94A3B8 !important;
+}

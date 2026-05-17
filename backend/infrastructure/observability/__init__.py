@@ -42,6 +42,17 @@ from .prometheus import (
     observe_histogram,
 )
 
+from .manager import (
+    ObservabilityManager as InfraObservabilityManager,
+    ObservabilityConfig,
+    get_observability_manager as get_infra_observability_manager,
+)
+
+from shared.observability import (
+    ObservabilityManager,
+    get_observability_manager,
+)
+
 __all__ = [
     "ConsumerLagMonitor",
     "ConsumerLag",
@@ -65,4 +76,9 @@ __all__ = [
     "increment_counter",
     "set_gauge",
     "observe_histogram",
+    "InfraObservabilityManager",
+    "ObservabilityConfig",
+    "get_infra_observability_manager",
+    "ObservabilityManager",
+    "get_observability_manager",
 ]

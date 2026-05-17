@@ -2,10 +2,10 @@ import { Card, Tag, Typography, Space, Progress } from 'antd'
 import { ThunderboltOutlined, AlertOutlined, RiseOutlined } from '@ant-design/icons'
 import { useTradingStore } from '../store'
 
-const { Text, Paragraph } = Typography
+const { Text } = Typography
 
 export function AISummaryBar() {
-  const { prices, fearGreed, signal, risk, factors } = useTradingStore()
+  const { prices, fearGreed, signal, risk } = useTradingStore()
 
   // 计算AI Bias
   const getAIBias = () => {

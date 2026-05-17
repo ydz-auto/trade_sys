@@ -1,0 +1,20 @@
+# Execution Runtime Configuration
+# 订单执行运行时配置
+
+execution_runtime:
+  max_position_size: 0.1
+  max_leverage: 5
+  enable_mock: true
+  
+  risk:
+    daily_loss_limit: 0.05
+    max_drawdown: 0.1
+    position_limit: 3
+    leverage_limit: 5
+    cooldown_minutes: 30
+    
+  execution:
+    default_exchange: "binance"
+    order_type: "market"
+    timeout_seconds: 10
+    retry_attempts: 3

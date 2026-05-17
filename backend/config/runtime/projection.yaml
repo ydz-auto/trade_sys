@@ -1,0 +1,24 @@
+# Projection Runtime Configuration
+# CQRS 投影运行时配置
+
+projection_runtime:
+  batch_size: 100
+  flush_interval: 1.0
+  redis_key_prefix: "projection:"
+  
+  projections:
+    dashboard:
+      enabled: true
+      update_interval: 1.0
+    decision:
+      enabled: true
+      history_size: 100
+    risk:
+      enabled: true
+      alert_threshold: 0.8
+    position:
+      enabled: true
+      track_pnl: true
+    timeline:
+      enabled: true
+      max_events: 1000

@@ -1,7 +1,6 @@
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 const EXECUTION_BASE = '/execution/api/v1'
-const USE_MOCK = false // 强制禁用mock模式
 
 import type { PriceData, RegimeState, RiskIndex, Signal, Factor, Position, WeightVersion, DataSourceStatus, Trader, SocialPost, NewsItem } from '../../types'
 

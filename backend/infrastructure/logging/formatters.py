@@ -6,7 +6,18 @@
 import json
 import logging
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+import os
+
+TZ_OFFSET_HOURS = int(os.getenv("TZ_OFFSET_HOURS", "8"))
+
+
+def get_local_time() -> datetime:
+    """获取本地时间（默认东八区）"""
+    utc_now = datetime.utcnow()
+    return utc_now.replace(tzinfo=timezone.utc).astimezone(
+        timezone(timedelta(hours=TZ_OFFSET_HOURS))
+    )
 
 
 class BaseFormatter(logging.Formatter):
@@ -36,7 +47,7 @@ class JSONFormatter(BaseFormatter):
 
     def _build_log_data(self, record: logging.LogRecord) -> Dict[str, Any]:
         log_data = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": get_local_time().strftime("%Y-%m-%d %H:%M:%S"),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -96,9 +107,10 @@ class TextFormatter(BaseFormatter):
     def _build_log_data(self, record: logging.LogRecord) -> Dict[str, Any]:
         log_parts = []
 
-        timestamp = datetime.utcfromtimestamp(record.created).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+        local_time = datetime.utcfromtimestamp(record.created).replace(
+            tzinfo=timezone.utc
+        ).astimezone(timezone(timedelta(hours=TZ_OFFSET_HOURS)))
+        timestamp = local_time.strftime("%Y-%m-%d %H:%M:%S")
         log_parts.append(timestamp)
 
         log_parts.append(record.levelname)

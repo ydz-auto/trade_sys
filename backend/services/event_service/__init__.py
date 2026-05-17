@@ -1,6 +1,12 @@
-# event_service package
-# Note: main.py has heavy dependencies (shared.state, etc.) that may not be available
-# in all contexts. Import directly when needed:
-#   from services.event_service.main import EventService
+"""
+Event Service - 事件服务
 
-__all__ = []
+业务逻辑：事件检测、事件分类
+"""
+
+from .handlers import EventDetector, get_event_detector
+
+__all__ = [
+    "EventDetector",
+    "get_event_detector",
+]

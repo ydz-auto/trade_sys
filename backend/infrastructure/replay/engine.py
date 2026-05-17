@@ -426,6 +426,10 @@ class ReplayEngine:
         self._paused = False
         logger.info("Replay stopped")
     
+    async def run(self) -> None:
+        """运行回放 - play() 的别名"""
+        await self.play()
+    
     async def time_travel(
         self,
         target_time: datetime,

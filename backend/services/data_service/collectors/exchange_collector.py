@@ -19,6 +19,11 @@ try:
 except ImportError:
     ccxt = None
 
+try:
+    import httpx
+except ImportError:
+    httpx = None
+
 logger = get_logger("collectors.exchange")
 
 
@@ -115,9 +120,61 @@ class ExchangeCollector(BaseCollector):
         
         self._init_exchanges()
 
+    async def _fetch_from_coingecko(self, symbol: str) -> Optional[ExchangePrice]:
+        """从 CoinGecko 获取价格（备份源）"""
+        if httpx is None:
+            return None
+        
+        start_time = time.time()
+        coin_id_map = {
+            "BTC": "bitcoin",
+            "ETH": "ethereum",
+            "SOL": "solana",
+            "DOGE": "dogecoin"
+        }
+        
+        coin_id = coin_id_map.get(symbol)
+        if not coin_id:
+            return None
+            
+        try:
+            url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true&include_market_cap=false"
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                data = response.json()
+                
+                if coin_id in data:
+                    price_data = data[coin_id]
+                    price = float(price_data.get("usd", 0))
+                    change_24h = float(price_data.get("usd_24h_change", 0)) / 100 * price
+                    volume_24h = float(price_data.get("usd_24h_vol", 0))
+                    latency_ms = int((time.time() - start_time) * 1000)
+                    
+                    return ExchangePrice(
+                        exchange="coingecko",
+                        symbol=symbol,
+                        price=price,
+                        bid=price * 0.9998,
+                        ask=price * 1.0002,
+                        spread=price * 0.0004,
+                        spread_percent=0.04,
+                        volume_24h=volume_24h,
+                        high_24h=price * 1.01,
+                        low_24h=price * 0.99,
+                        change_24h=change_24h,
+                        timestamp=datetime.now(),
+                        latency_ms=latency_ms,
+                        status="ok"
+                    )
+        except Exception as e:
+            logger.warning(f"CoinGecko fetch failed for {symbol}: {e}")
+        return None
+
     def _init_exchanges(self):
         if ccxt is None:
-            logger.warning("CCXT not installed, using mock data")
+            logger.warning("CCXT not installed, will use CoinGecko backup")
             return
 
         exchange_configs = {
@@ -146,16 +203,29 @@ class ExchangeCollector(BaseCollector):
             for symbol in self.symbols:
                 multi_prices = MultiExchangePrices(symbol=symbol)
 
+                # 1. 尝试从 CCXT 交易所获取
+                has_valid_price = False
                 for exchange_name, exchange in self.exchange_instances.items():
                     try:
                         price = await self._fetch_ticker(exchange, symbol, exchange_name)
                         if price:
                             multi_prices.prices[exchange_name] = price
+                            has_valid_price = True
                     except Exception as e:
                         logger.error(f"Error fetching {symbol} from {exchange_name}: {e}")
                         multi_prices.prices[exchange_name] = self._create_error_price(symbol, exchange_name)
 
-                if not multi_prices.prices:
+                # 2. 如果 CCXT 没有获取到有效价格，尝试 CoinGecko
+                if not has_valid_price:
+                    logger.info(f"CCXT failed for {symbol}, trying CoinGecko")
+                    coingecko_price = await self._fetch_from_coingecko(symbol)
+                    if coingecko_price:
+                        multi_prices.prices["coingecko"] = coingecko_price
+                        has_valid_price = True
+
+                # 3. 最后降级到 mock
+                if not has_valid_price:
+                    logger.warning(f"All sources failed for {symbol}, using mock data")
                     multi_prices.prices["mock"] = self._create_mock_price(symbol)
 
                 self.latest_prices[symbol] = multi_prices
