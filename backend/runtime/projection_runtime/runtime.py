@@ -103,7 +103,7 @@ class ProjectionRuntime(BaseRuntime):
             
             self.consumer = RuntimeConsumer(ConsumerConfig(
                 bootstrap_servers=kafka_servers,
-                topics=[Topics.EVENTS],
+                topics=[Topics.EVENTS, Topics.FACTORS],
                 group_id=ConsumerGroup.PROJECTION_RUNTIME,
                 auto_offset_reset="earliest",
             ))

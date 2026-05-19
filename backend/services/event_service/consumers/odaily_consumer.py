@@ -132,21 +132,32 @@ class OdailyConsumer:
             logger.error(f"Error handling Odaily message: {e}")
     
     async def _store_to_redis(self, enriched: Dict[str, Any]) -> None:
-        """将增强后的数据存储到 Redis (使用 List 原子操作)"""
+        """将增强后的数据存储到 Redis (使用 List 原子操作 + 去重)"""
         try:
-            # 使用初始化时创建的 Redis 客户端
             if not self._redis:
                 logger.warning("Redis client not available")
                 return
             
-            # 检查连接状态，如果未连接则重新连接
             if not self._redis._connected:
                 logger.warning("Redis client disconnected, reconnecting...")
                 await self._redis.connect()
             
+            title = enriched.get("title", "")
+            if not title or not title.strip():
+                logger.warning("Skipping news with empty title")
+                return
+            
+            news_id = enriched.get("original_id", "") or f"odaily_{hash(title)}"
+            
+            dedup_key = f"news:dedup:{news_id}"
+            exists = await self._redis.exists(dedup_key)
+            if exists:
+                logger.debug(f"Skipping duplicate news: {title[:30]}...")
+                return
+            
             news_item = {
-                "id": enriched.get("original_id", ""),
-                "title": enriched.get("title", ""),
+                "id": news_id,
+                "title": title,
                 "content": enriched.get("content", ""),
                 "source": "Odaily",
                 "sentiment": enriched.get("sentiment", "neutral"),
@@ -158,13 +169,25 @@ class OdailyConsumer:
                 "url": enriched.get("metadata", {}).get("url"),
             }
             
-            news_json = json.dumps(news_item)
+            news_json = json.dumps(news_item, ensure_ascii=False)
+            
+            existing_news = await self._redis.lrange("news:latest", 0, -1)
+            for existing in existing_news:
+                try:
+                    existing_data = json.loads(existing) if isinstance(existing, str) else existing
+                    if existing_data.get("title") == title:
+                        logger.debug(f"Skipping duplicate by title: {title[:30]}...")
+                        return
+                except:
+                    pass
             
             await self._redis.lpush("news:latest", news_json)
             
             await self._redis.ltrim("news:latest", 0, 19)
             
-            logger.info(f"Stored enriched news to Redis: {news_item['title'][:30]}...")
+            await self._redis.setex(dedup_key, 86400, "1")
+            
+            logger.info(f"Stored enriched news to Redis: {title[:30]}...")
             
         except Exception as e:
             logger.error(f"Failed to store to Redis: {e}")

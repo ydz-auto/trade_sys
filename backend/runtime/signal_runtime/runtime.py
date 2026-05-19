@@ -7,6 +7,7 @@ Signal Runtime - 信号生成运行时
 - 重试机制
 - 健康检查
 - 指标收集
+- 因子计算与发布
 
 业务逻辑：调用 services/fusion_service/ 和 services/strategy_service/
 """
@@ -40,6 +41,15 @@ class SignalConfig(RuntimeConfig):
     fusion_window_seconds: int = 300
     fusion_min_events: int = 1
     fusion_min_confidence: float = 0.3
+    factor_calc_interval: int = 60
+    enable_factor_publish: bool = True
+    # 策略发现配置
+    enable_strategy_discovery: bool = True
+    strategy_discovery_interval: int = 3600  # 每小时发现一次
+    max_auto_strategies: int = 5
+    min_win_rate: float = 0.6
+    min_sample_size: int = 50
+    min_avg_return: float = 0.005
 
 
 class SignalRuntime(BaseRuntime):
@@ -49,6 +59,7 @@ class SignalRuntime(BaseRuntime):
     只负责运行时编排，业务逻辑在：
     - services/fusion_service/ - 信号融合
     - services/strategy_service/ - 策略决策
+    - services/factor_service/ - 因子计算
     """
     
     def __init__(self, config: SignalConfig = None):
@@ -62,9 +73,18 @@ class SignalRuntime(BaseRuntime):
         
         self.consumer: Optional[RuntimeConsumer] = None
         self.publisher: Optional[RuntimePublisher] = None
+        self.factor_publisher: Optional[RuntimePublisher] = None
         
         self.fusion_engine = None
         self.strategy_orchestrator = None
+        self.factor_calculator = None
+        self._factor_task: Optional[asyncio.Task] = None
+        self._price_cache: Dict[str, Dict[str, float]] = {}
+        
+        # 策略发现引擎相关
+        self.strategy_discovery_engine = None
+        self._strategy_discovery_task: Optional[asyncio.Task] = None
+        self._auto_discovered_strategies: List = []
     
     async def initialize(self) -> None:
         """初始化运行时组件"""
@@ -85,8 +105,16 @@ class SignalRuntime(BaseRuntime):
             topic=Topics.DECISIONS,
         ))
         
+        if self.config.enable_factor_publish:
+            self.factor_publisher = RuntimePublisher(PublisherConfig(
+                bootstrap_servers=self.config.kafka_bootstrap_servers,
+                topic=Topics.FACTORS,
+            ))
+        
         await self.consumer.start()
         await self.publisher.start()
+        if self.factor_publisher:
+            await self.factor_publisher.start()
         
         try:
             from services.fusion_service import FusionEngine
@@ -106,10 +134,32 @@ class SignalRuntime(BaseRuntime):
         except Exception as e:
             self.logger.warning(f"Strategy orchestrator init failed: {e}")
         
+        try:
+            from services.factor_service import get_factor_calculator
+            self.factor_calculator = get_factor_calculator()
+            await self.factor_calculator.initialize()
+            self.logger.info("Factor calculator initialized")
+        except Exception as e:
+            self.logger.warning(f"Factor calculator init failed: {e}")
+        
+        # 初始化策略发现引擎
+        if self.config.enable_strategy_discovery:
+            try:
+                from services.strategy_service.strategy_discovery import StrategyDiscoveryEngine
+                self.strategy_discovery_engine = StrategyDiscoveryEngine(
+                    min_win_rate=self.config.min_win_rate,
+                    min_sample_size=self.config.min_sample_size,
+                    min_avg_return=self.config.min_avg_return,
+                )
+                self.logger.info("Strategy discovery engine initialized")
+            except Exception as e:
+                self.logger.warning(f"Strategy discovery engine init failed: {e}")
+        
         self.health_check.register_check("fusion_engine", self._check_fusion_engine)
         self.health_check.register_check("strategy_orchestrator", self._check_strategy)
         self.health_check.register_check("consumer", self.consumer.is_healthy)
         self.health_check.register_check("publisher", self.publisher.is_healthy)
+        self.health_check.register_check("factor_calculator", self._check_factor_calculator)
         
         self.logger.info("Signal Runtime initialized successfully")
     
@@ -119,14 +169,33 @@ class SignalRuntime(BaseRuntime):
     async def _check_strategy(self) -> bool:
         return self.strategy_orchestrator is not None
     
+    async def _check_factor_calculator(self) -> bool:
+        return self.factor_calculator is not None
+    
     async def shutdown(self) -> None:
         """关闭运行时组件"""
         self.logger.info("Shutting down Signal Runtime...")
+        
+        if self._factor_task:
+            self._factor_task.cancel()
+            try:
+                await self._factor_task
+            except asyncio.CancelledError:
+                pass
+        
+        if self._strategy_discovery_task:
+            self._strategy_discovery_task.cancel()
+            try:
+                await self._strategy_discovery_task
+            except asyncio.CancelledError:
+                pass
         
         if self.consumer:
             await self.consumer.stop()
         if self.publisher:
             await self.publisher.stop()
+        if self.factor_publisher:
+            await self.factor_publisher.stop()
         
         self.logger.info(f"Signal Runtime stopped. Stats: {self.metrics.to_dict()}")
     
@@ -135,6 +204,15 @@ class SignalRuntime(BaseRuntime):
         self.logger.info("Starting Signal Runtime main loop...")
         
         await self.lifecycle.transition_to_running()
+        
+        if self.config.enable_factor_publish and self.factor_calculator:
+            self._factor_task = asyncio.create_task(self._factor_calculation_loop())
+            self.logger.info("Factor calculation task started")
+        
+        # 启动策略发现任务
+        if self.config.enable_strategy_discovery and self.strategy_discovery_engine:
+            self._strategy_discovery_task = asyncio.create_task(self._strategy_discovery_loop())
+            self.logger.info("Strategy discovery task started")
         
         while not self.context.is_shutdown_requested():
             try:
@@ -146,11 +224,96 @@ class SignalRuntime(BaseRuntime):
                 self.metrics.increment("errors")
                 await self.lifecycle.handle_error(e)
     
+    async def _factor_calculation_loop(self) -> None:
+        """因子计算循环"""
+        symbols = ["BTC", "ETH", "SOL"]
+        
+        while not self.context.is_shutdown_requested():
+            try:
+                for symbol in symbols:
+                    factors = await self.factor_calculator.calculate_all_factors(symbol)
+                    
+                    if factors and self.factor_publisher:
+                        factor_event = {
+                            "event_type": "factors",
+                            "symbol": symbol,
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "factors": [
+                                {
+                                    "type": f.type,
+                                    "name": f.name,
+                                    "nameEn": f.name_en,
+                                    "weight": f.weight,
+                                    "value": f.value,
+                                    "confidence": f.confidence,
+                                    "color": f.color,
+                                }
+                                for f in factors
+                            ],
+                        }
+                        
+                        await self.factor_publisher.publish(factor_event)
+                        self.metrics.increment("factors_published")
+                        self.logger.debug(f"Published factors for {symbol}")
+                
+                await asyncio.sleep(self.config.factor_calc_interval)
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Error in factor calculation loop: {e}")
+                await asyncio.sleep(10)
+    
+    async def _strategy_discovery_loop(self) -> None:
+        """策略发现循环"""
+        while not self.context.is_shutdown_requested():
+            try:
+                if self.strategy_discovery_engine and self.strategy_orchestrator:
+                    self.logger.info("Starting strategy discovery cycle...")
+                    
+                    # 加载市场数据
+                    df = self.strategy_discovery_engine.load_market_data()
+                    
+                    if not df.empty:
+                        # 自动发现并添加策略
+                        new_strategies = self.strategy_discovery_engine.auto_discover_and_add(
+                            df=df,
+                            orchestrator=self.strategy_orchestrator,
+                            max_strategies=self.config.max_auto_strategies,
+                        )
+                        
+                        if new_strategies:
+                            self._auto_discovered_strategies.extend(new_strategies)
+                            self.metrics.increment("strategies_auto_discovered", len(new_strategies))
+                            self.logger.info(f"Auto-discovered {len(new_strategies)} new strategies")
+                            
+                            # 打印发现报告
+                            self.strategy_discovery_engine.print_discovery_report()
+                
+                # 等待下一次发现
+                await asyncio.sleep(self.config.strategy_discovery_interval)
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Error in strategy discovery loop: {e}")
+                import traceback
+                self.logger.error(traceback.format_exc())
+                await asyncio.sleep(self.config.strategy_discovery_interval)
+    
     async def _process_event(self, message: Dict[str, Any]) -> None:
         """处理事件（运行时编排）"""
         trace_id = message.get("trace_id", "unknown")
         
         self.metrics.increment("events_received")
+        
+        event_type = message.get("event_type", "")
+        
+        if event_type == "price_update" and self.factor_calculator:
+            symbol = message.get("symbol", "BTC")
+            price = message.get("price", 0)
+            volume = message.get("volume_24h", 0)
+            self.factor_calculator.update_price(symbol, price, volume)
         
         with self.metrics.timing("event_processing"):
             signals = await self._fuse_events(message)

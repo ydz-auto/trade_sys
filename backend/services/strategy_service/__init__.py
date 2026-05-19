@@ -12,8 +12,31 @@ from .strategies import (
     BaseStrategy,
     RSIStrategy,
     MACDStrategy,
+    PanicReversalStrategy,
+    LongLiquidationBounceStrategy,
+    VolumeClimaxFadeStrategy,
+    WeakBounceShortStrategy,
     MultiStrategyOrchestrator,
+    DynamicStrategySelector,
     create_default_strategies,
+)
+from .innovation_strategies import (
+    LeveragedShortSqueezeStrategy,
+    MicroRangeRipplesStrategy,
+    CascadeFlipStrategy,
+    FundingExhaustionTrapStrategy,
+    MemeManiaRotationStrategy,
+    SessionGapExploitStrategy,
+    DeadCatEchoStrategy,
+    LiquidityVacuumBreakoutStrategy,
+    create_innovation_strategies,
+    register_innovation_strategies,
+    INNOVATION_STRATEGY_CONFIGS,
+)
+from .strategy_discovery import (
+    StrategyDiscoveryEngine,
+    DiscoveredPattern,
+    AutoDiscoveredStrategy,
 )
 
 __all__ = [
@@ -25,6 +48,27 @@ __all__ = [
     "BaseStrategy",
     "RSIStrategy",
     "MACDStrategy",
+    "PanicReversalStrategy",
+    "LongLiquidationBounceStrategy",
+    "VolumeClimaxFadeStrategy",
+    "WeakBounceShortStrategy",
     "MultiStrategyOrchestrator",
+    "DynamicStrategySelector",
     "create_default_strategies",
+    # 创新策略
+    "LeveragedShortSqueezeStrategy",
+    "MicroRangeRipplesStrategy",
+    "CascadeFlipStrategy",
+    "FundingExhaustionTrapStrategy",
+    "MemeManiaRotationStrategy",
+    "SessionGapExploitStrategy",
+    "DeadCatEchoStrategy",
+    "LiquidityVacuumBreakoutStrategy",
+    "create_innovation_strategies",
+    "register_innovation_strategies",
+    "INNOVATION_STRATEGY_CONFIGS",
+    # 策略发现
+    "StrategyDiscoveryEngine",
+    "DiscoveredPattern",
+    "AutoDiscoveredStrategy",
 ]

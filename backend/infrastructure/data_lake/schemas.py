@@ -289,28 +289,51 @@ def generate_feature_schemas() -> dict:
         "feature_microstructure": """
             CREATE TABLE IF NOT EXISTS feature_microstructure (
                 symbol String,
+                exchange String,
                 timestamp DateTime64(3),
                 
                 spread Float64,
-                spread_bps Float64,
+                spread_pct Float64,
+                mid_price Float64,
+                microprice Float64,
+                best_bid_size Float64,
+                best_ask_size Float64,
                 
-                imbalance Float64,
-                imbalance_ma Float64,
+                imbalance_1 Float64,
+                imbalance_5 Float64,
+                imbalance_10 Float64,
+                imbalance_slope Float64,
                 
-                trade_flow Float64,
-                trade_flow_ma Float64,
+                top5_bid_volume Float64,
+                top5_ask_volume Float64,
+                top10_bid_volume Float64,
+                top10_ask_volume Float64,
+                depth_ratio Float64,
+                depth_change Float64,
                 
-                vwap Float64,
-                twap Float64,
+                trade_delta Float64,
+                cumulative_delta Float64,
+                aggressive_buy_volume Float64,
+                aggressive_sell_volume Float64,
+                large_trade_ratio Float64,
+                trade_velocity Float64,
                 
-                kyle_lambda Float64,
-                amihud_illiq Float64,
+                sweep_buy_score Float64,
+                sweep_sell_score Float64,
+                multi_level_fill UInt32,
+                liquidity_vacuum Float64,
+                
+                spread_volatility Float64,
+                quote_update_rate Float64,
+                cancel_rate Float64,
+                book_flip_rate Float64,
+                book_pressure Float64,
                 
                 computed_at DateTime64(3) DEFAULT now64(3)
             ) ENGINE = MergeTree()
             PARTITION BY toYYYYMM(timestamp)
-            ORDER BY (symbol, timestamp)
-            TTL toDateTime(timestamp) + INTERVAL 60 DAY
+            ORDER BY (exchange, symbol, timestamp)
+            TTL toDateTime(timestamp) + INTERVAL 365 DAY
         """,
         
         "feature_sentiment": """

@@ -93,12 +93,39 @@ class DashboardProjection(BaseProjection):
                 await self._process_market_event(event)
             elif event_type == "price_update":
                 await self._process_price_update(event)
+            elif event_type == "factors":
+                await self._process_factors_event(event)
             
             await self._update_dashboard_state()
             
         except Exception as e:
             self.logger.error(f"Error processing event: {e}")
             self._stats.errors += 1
+    
+    async def _process_factors_event(self, event: Dict[str, Any]) -> None:
+        """处理因子事件"""
+        factors_list = event.get("factors", [])
+        symbol = event.get("symbol", "BTC")
+        
+        if not factors_list:
+            return
+        
+        for factor in factors_list:
+            factor_type = factor.get("type", "")
+            if factor_type:
+                self._factors[factor_type] = {
+                    "type": factor_type,
+                    "name": factor.get("name", factor_type),
+                    "nameEn": factor.get("nameEn", factor_type),
+                    "weight": factor.get("weight", 0.2),
+                    "value": factor.get("value", 0.5),
+                    "confidence": factor.get("confidence", 50),
+                    "color": factor.get("color", "blue"),
+                    "symbol": symbol,
+                    "timestamp": event.get("timestamp", datetime.utcnow().isoformat()),
+                }
+        
+        self.logger.info(f"Updated {len(factors_list)} factors for {symbol}")
     
     async def _process_raw_data(self, event: Dict[str, Any]) -> None:
         """处理原始数据"""
