@@ -34,11 +34,17 @@ import {
   type SignalAction,
   type Position,
   type Order,
+  type ExchangeType,
 } from '../services/api/executionApi'
 import type { FeatureValue } from '../types'
 
 const { Option } = Select
 const { TextArea } = Input
+
+const EXCHANGES: { value: ExchangeType; label: string }[] = [
+  { value: 'binance', label: 'Binance' },
+  { value: 'okx', label: 'OKX' },
+]
 
 export function SignalTradingPanel() {
   const { isLive } = useRuntime()
@@ -49,6 +55,7 @@ export function SignalTradingPanel() {
   const [openOrders, setOpenOrders] = useState<Order[]>([])
   const [signalModalVisible, setSignalModalVisible] = useState(false)
   const [selectedSignal, setSelectedSignal] = useState<SignalsState['latest'][string][number] | null>(null)
+  const [selectedExchange, setSelectedExchange] = useState<ExchangeType>('binance')
   const [loading, setLoading] = useState(false)
   const [tradeMessage, setTradeMessage] = useState('')
 
@@ -87,27 +94,22 @@ export function SignalTradingPanel() {
         signalId: selectedSignal.signalId,
         strategyId: selectedSignal.strategyId,
         symbol: selectedSignal.symbol,
+        exchange: values.exchange || selectedExchange,
         action: selectedSignal.action === 'BUY' ? 'OPEN_LONG' : selectedSignal.action === 'SELL' ? 'OPEN_SHORT' : 'CLOSE',
         leverage: values.leverage || 1,
         confidence: selectedSignal.confidence,
       }
 
       if (values.stopLoss) {
-        action.stopLoss = {
-          type: 'MARKET' as const,
-          price: parseFloat(values.stopLoss),
-        }
+        action.stopLoss = parseFloat(values.stopLoss)
       }
 
       if (values.takeProfit) {
-        action.takeProfit = {
-          type: 'LIMIT' as const,
-          price: parseFloat(values.takeProfit),
-        }
+        action.takeProfit = parseFloat(values.takeProfit)
       }
 
       await executeSignal(action)
-      setTradeMessage(`订单已提交: ${selectedSignal.action} ${selectedSignal.symbol}`)
+      setTradeMessage(`订单已提交 [${values.exchange || selectedExchange}]: ${selectedSignal.action} ${selectedSignal.symbol}`)
       setSignalModalVisible(false)
       await loadPositionsAndOrders()
     } catch (error) {
@@ -351,6 +353,21 @@ export function SignalTradingPanel() {
               />
 
               <Form layout="vertical" onFinish={handleConfirmTrade}>
+                <Form.Item
+                  label="交易所"
+                  name="exchange"
+                  initialValue={selectedExchange}
+                  rules={[{ required: true }]}
+                >
+                  <Select>
+                    {EXCHANGES.map(exchange => (
+                      <Option key={exchange.value} value={exchange.value}>
+                        {exchange.label}
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+
                 <Form.Item
                   label="杠杆倍数"
                   name="leverage"

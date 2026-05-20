@@ -3,12 +3,14 @@ import { apiClient } from './client'
 export type OrderSide = 'BUY' | 'SELL'
 export type OrderType = 'MARKET' | 'LIMIT' | 'STOP' | 'TAKE_PROFIT' | 'TRAILING_STOP'
 export type OrderStatus = 'PENDING' | 'ACKED' | 'PARTIAL_FILL' | 'FILLED' | 'CANCELLED' | 'REJECTED'
+export type ExchangeType = 'binance' | 'okx'
 
 export interface OrderRequest {
   symbol: string
   side: OrderSide
   type: OrderType
   quantity: number
+  exchange: ExchangeType
   price?: number
   stopPrice?: number
   leverage?: number
@@ -35,6 +37,7 @@ export interface Order {
   id: string
   clientId?: string
   symbol: string
+  exchange: ExchangeType
   side: OrderSide
   type: OrderType
   status: OrderStatus
@@ -52,6 +55,7 @@ export interface Order {
 export interface Position {
   id: string
   symbol: string
+  exchange: ExchangeType
   side: 'LONG' | 'SHORT'
   quantity: number
   entryPrice: number
@@ -75,6 +79,7 @@ export interface SignalAction {
   signalId: string
   strategyId: string
   symbol: string
+  exchange: ExchangeType
   action: 'OPEN_LONG' | 'OPEN_SHORT' | 'CLOSE'
   leverage: number
   stopLoss?: number
