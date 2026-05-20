@@ -1,5 +1,6 @@
 export { DashboardPage } from './DashboardPage'
 export { WeightConfigPage } from './WeightConfigPage'
+export { FeatureConfigPage } from './FeatureConfigPage'
 export { RegimePage } from './RegimePage'
 export { RiskPage } from './RiskPage'
 export { DecisionPage } from './DecisionPage'
