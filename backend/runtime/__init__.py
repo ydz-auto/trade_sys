@@ -6,9 +6,18 @@ Runtime Kernel - Runtime 核心模块
 - RuntimeIsolation: namespace 隔离
 - RuntimeStateStore: 统一状态存储
 - EventNamespace: 事件命名空间
+- RuntimeDependencyGraph: 依赖图
+- RuntimeContext: 共享上下文
+- RuntimeBus: 统一通信总线
+- RuntimeOrchestrator: 编排层
 
 架构:
     TradeModeManager
+           │
+    ───────────────────────
+    Runtime Orchestrator
+           │
+    Runtime Dependency Graph
            │
     ───────────────────────
     Market Runtime
@@ -19,7 +28,7 @@ Runtime Kernel - Runtime 核心模块
            ↓
     Strategy Runtime
            ↓
-    Execution Router  ← 本模块
+    Execution Router
        ├─ Paper Execution
        └─ Live Execution
            ↓
@@ -29,7 +38,7 @@ Runtime Kernel - Runtime 核心模块
            ↓
     Projection Runtime
            ↓
-    RuntimeStateStore  ← 本模块
+    RuntimeStateStore
            ↓
     WebSocket Gateway
            ↓
@@ -66,6 +75,26 @@ from .event import (
     get_event_namespace,
 )
 
+from .dependency import (
+    DependencyNode,
+    RuntimeDependencyGraph,
+    get_dependency_graph,
+)
+
+from .context import (
+    RuntimeContext,
+    get_runtime_context,
+    SessionManager,
+    get_session_manager,
+)
+
+from .bus import (
+    RuntimeBus,
+    get_runtime_bus,
+    publish,
+    publish_event,
+)
+
 __all__ = [
     "ExecutionRouter",
     "ExecutionRoute",
@@ -89,4 +118,18 @@ __all__ = [
     "EventType",
     "EventNamespace",
     "get_event_namespace",
+    
+    "DependencyNode",
+    "RuntimeDependencyGraph",
+    "get_dependency_graph",
+    
+    "RuntimeContext",
+    "get_runtime_context",
+    "SessionManager",
+    "get_session_manager",
+    
+    "RuntimeBus",
+    "get_runtime_bus",
+    "publish",
+    "publish_event",
 ]
