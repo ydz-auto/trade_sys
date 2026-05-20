@@ -18,6 +18,7 @@ import {
   PlayCircleOutlined,
   WarningOutlined,
   DatabaseOutlined,
+  RobotOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -42,6 +43,7 @@ const menuItems: MenuProps['items'] = [
           type: 'group',
           label: '策略层',
           children: [
+            { key: '/strategy', icon: <RobotOutlined />, label: '策略管理' },
             { key: '/regime', icon: <SafetyCertificateOutlined />, label: 'Regime状态' },
             { key: '/risk', icon: <AlertOutlined />, label: '风险引擎' },
             { key: '/risk-propagation', icon: <WarningOutlined />, label: '风险传播链' },

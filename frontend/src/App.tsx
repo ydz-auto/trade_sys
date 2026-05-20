@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { DashboardPage } from './pages/DashboardPage'
 import { WeightConfigPage } from './pages/WeightConfigPage'
 import { FeatureConfigPage } from './pages/FeatureConfigPage'
+import { StrategyManagementPage } from './pages/StrategyManagementPage'
 import { RegimePage } from './pages/RegimePage'
 import { RiskPage } from './pages/RiskPage'
 import { DecisionPage } from './pages/DecisionPage'
@@ -76,6 +77,7 @@ function AppContent() {
             <Route path="/weights" element={<WeightConfigPage />} />
             <Route path="/versions" element={<WeightConfigPage />} />
             <Route path="/features" element={<FeatureConfigPage />} />
+            <Route path="/strategy" element={<StrategyManagementPage />} />
             <Route path="/factor-analytics" element={<FactorAnalyticsPage />} />
             <Route path="/regime" element={<RegimePage />} />
             <Route path="/risk" element={<RiskPage />} />
