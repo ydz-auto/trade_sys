@@ -513,26 +513,92 @@ class LongLiquidationBounceStrategy(BaseStrategy):
         return signal
 
 
+class SymbolStrategyConfig:
+    """币种策略配置（独立参数优化）"""
+    
+    def __init__(
+        self,
+        symbol: str,
+        rsi_period: int = 14,
+        rsi_oversold: float = 30.0,
+        rsi_overbought: float = 70.0,
+        macd_fast: int = 12,
+        macd_slow: int = 26,
+        macd_signal: int = 9,
+        panic_drop_threshold: float = -0.015,
+        volume_ratio_threshold: float = 1.5,
+        default_quantity: float = 0.01,
+    ):
+        self.symbol = symbol
+        self.rsi_period = rsi_period
+        self.rsi_oversold = rsi_oversold
+        self.rsi_overbought = rsi_overbought
+        self.macd_fast = macd_fast
+        self.macd_slow = macd_slow
+        self.macd_signal = macd_signal
+        self.panic_drop_threshold = panic_drop_threshold
+        self.volume_ratio_threshold = volume_ratio_threshold
+        self.default_quantity = default_quantity
+
+
 class MultiStrategyOrchestrator:
     """
-    多策略编排器
+    多策略编排器（币种感知架构）
     
-    同时运行多个策略，合并信号
+    支持：
+    - 按币种独立管理策略实例
+    - 每个币种有独立的策略参数配置
+    - 策略只在对应币种数据上运行
     """
     
-    def __init__(self):
+    def __init__(self, symbols: List[str] = None):
         self._strategies: Dict[str, BaseStrategy] = {}
+        self._symbol_strategies: Dict[str, List[str]] = {}  # symbol -> [strategy_ids]
         self._symbol_data: Dict[str, Dict] = {}
-        logger.info("MultiStrategyOrchestrator initialized")
+        self._symbol_configs: Dict[str, SymbolStrategyConfig] = {}
+        
+        self.symbols = symbols or ["BTCUSDT", "ETHUSDT"]
+        
+        for symbol in self.symbols:
+            self._symbol_strategies[symbol] = []
+        
+        logger.info(f"MultiStrategyOrchestrator initialized for symbols: {self.symbols}")
     
-    def add_strategy(self, strategy: BaseStrategy):
-        """添加策略"""
+    def add_strategy(self, strategy: BaseStrategy, symbol: str = None):
+        """
+        添加策略
+        
+        Args:
+            strategy: 策略实例
+            symbol: 币种（可选，不指定则添加到所有币种）
+        """
         self._strategies[strategy.strategy_id] = strategy
-        logger.info(f"Strategy added: {strategy.strategy_id}")
+        
+        if symbol:
+            strategy.symbol = symbol
+            if symbol not in self._symbol_strategies:
+                self._symbol_strategies[symbol] = []
+            self._symbol_strategies[symbol].append(strategy.strategy_id)
+        else:
+            for sym in self.symbols:
+                if sym not in self._symbol_strategies:
+                    self._symbol_strategies[sym] = []
+                self._symbol_strategies[sym].append(strategy.strategy_id)
+        
+        logger.info(f"Strategy added: {strategy.strategy_id} for {symbol or 'all symbols'}")
     
     def remove_strategy(self, strategy_id: str):
         """移除策略"""
         if strategy_id in self._strategies:
+            strategy = self._strategies[strategy_id]
+            symbol = getattr(strategy, 'symbol', None)
+            
+            if symbol and symbol in self._symbol_strategies:
+                self._symbol_strategies[symbol] = [
+                    sid for sid in self._symbol_strategies[symbol]
+                    if sid != strategy_id
+                ]
+            
             del self._strategies[strategy_id]
             logger.info(f"Strategy removed: {strategy_id}")
     
@@ -540,66 +606,107 @@ class MultiStrategyOrchestrator:
         """更新市场数据"""
         self._symbol_data[symbol] = data
     
-    def process(self) -> List[StrategySignal]:
+    def process(self, symbol: str = None) -> List[StrategySignal]:
         """
-        运行所有策略
+        运行所有策略（币种感知）
+        
+        Args:
+            symbol: 币种（可选，不指定则处理所有币种）
         
         Returns:
             策略信号列表
         """
         all_signals = []
         
-        for strategy in self._strategies.values():
-            if not strategy.is_enabled:
+        target_symbols = [symbol] if symbol else list(self._symbol_data.keys())
+        
+        for sym in target_symbols:
+            if sym not in self._symbol_data:
                 continue
             
-            for symbol, data in self._symbol_data.items():
+            data = self._symbol_data[sym]
+            strategy_ids = self._symbol_strategies.get(sym, [])
+            
+            for strategy_id in strategy_ids:
+                strategy = self._strategies.get(strategy_id)
+                if not strategy or not strategy.is_enabled:
+                    continue
+                
                 signal = strategy.calculate(data)
                 if signal:
+                    signal.symbol = sym
                     all_signals.append(signal)
         
         logger.debug(f"Generated {len(all_signals)} signals from {len(self._strategies)} strategies")
         return all_signals
+    
+    def process_all_symbols(self) -> Dict[str, List[StrategySignal]]:
+        """
+        处理所有币种
+        
+        Returns:
+            币种 -> 策略信号列表
+        """
+        results = {}
+        
+        for symbol in self._symbol_data.keys():
+            signals = self.process(symbol)
+            if signals:
+                results[symbol] = signals
+        
+        return results
+    
+    def get_symbol_strategies(self, symbol: str) -> List[str]:
+        """获取指定币种的所有策略ID"""
+        return self._symbol_strategies.get(symbol, [])
+    
+    def get_strategy_for_symbol(self, symbol: str, strategy_id: str) -> Optional[BaseStrategy]:
+        """获取指定币种的指定策略"""
+        if strategy_id in self._symbol_strategies.get(symbol, []):
+            return self._strategies.get(strategy_id)
+        return None
 
 
-# 策略工厂
-def create_default_strategies() -> MultiStrategyOrchestrator:
-    """创建默认策略集合"""
-    orchestrator = MultiStrategyOrchestrator()
+def create_default_strategies(symbols: List[str] = None) -> MultiStrategyOrchestrator:
+    """
+    创建默认策略集合（按币种独立）
     
-    # RSI 策略
-    rsi_strategy = RSIStrategy(
-        strategy_id="rsi_14",
-        period=14,
-        oversold=30,
-        overbought=70,
-    )
-    orchestrator.add_strategy(rsi_strategy)
+    Args:
+        symbols: 币种列表
+    """
+    symbols = symbols or ["BTCUSDT", "ETHUSDT"]
+    orchestrator = MultiStrategyOrchestrator(symbols)
     
-    # MACD 策略
-    macd_strategy = MACDStrategy(
-        strategy_id="macd_12_26_9",
-    )
-    orchestrator.add_strategy(macd_strategy)
+    for symbol in symbols:
+        rsi_strategy = RSIStrategy(
+            strategy_id=f"rsi_14_{symbol}",
+            period=14,
+            oversold=30,
+            overbought=70,
+        )
+        orchestrator.add_strategy(rsi_strategy, symbol)
+        
+        macd_strategy = MACDStrategy(
+            strategy_id=f"macd_12_26_9_{symbol}",
+        )
+        orchestrator.add_strategy(macd_strategy, symbol)
+        
+        panic_reversal_strategy = PanicReversalStrategy(
+            strategy_id=f"panic_reversal_{symbol}",
+            drop_threshold=-0.015,
+            volume_ratio_threshold=1.5,
+        )
+        orchestrator.add_strategy(panic_reversal_strategy, symbol)
+        
+        long_liquidation_bounce_strategy = LongLiquidationBounceStrategy(
+            strategy_id=f"long_liquidation_bounce_{symbol}",
+            drop_threshold=-0.02,
+            rsi_threshold=25.0,
+            volume_ratio_threshold=2.0,
+        )
+        orchestrator.add_strategy(long_liquidation_bounce_strategy, symbol)
     
-    # Panic Reversal 策略
-    panic_reversal_strategy = PanicReversalStrategy(
-        strategy_id="panic_reversal",
-        drop_threshold=-0.015,
-        volume_ratio_threshold=1.5,
-    )
-    orchestrator.add_strategy(panic_reversal_strategy)
-    
-    # Long Liquidation Bounce 策略（新加）
-    long_liquidation_bounce_strategy = LongLiquidationBounceStrategy(
-        strategy_id="long_liquidation_bounce",
-        drop_threshold=-0.02,
-        rsi_threshold=25.0,
-        volume_ratio_threshold=2.0,
-    )
-    orchestrator.add_strategy(long_liquidation_bounce_strategy)
-    
-    logger.info("Default strategies created: RSI, MACD, Panic Reversal, Long Liquidation Bounce")
+    logger.info(f"Default strategies created for {len(symbols)} symbols: {symbols}")
     return orchestrator
 
 

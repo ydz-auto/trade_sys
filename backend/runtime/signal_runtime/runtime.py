@@ -43,13 +43,18 @@ class SignalConfig(RuntimeConfig):
     fusion_min_confidence: float = 0.3
     factor_calc_interval: int = 60
     enable_factor_publish: bool = True
-    # 策略发现配置
-    enable_strategy_discovery: bool = True
-    strategy_discovery_interval: int = 3600  # 每小时发现一次
+    strategy_discovery_interval: int = 3600
     max_auto_strategies: int = 5
     min_win_rate: float = 0.6
     min_sample_size: int = 50
     min_avg_return: float = 0.005
+    
+    symbols: List[str] = None
+    
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.symbols is None:
+            self.symbols = ["BTC", "ETH", "SOL"]
 
 
 class SignalRuntime(BaseRuntime):
@@ -129,8 +134,10 @@ class SignalRuntime(BaseRuntime):
         
         try:
             from services.strategy_service.strategies import create_default_strategies
-            self.strategy_orchestrator = create_default_strategies()
-            self.logger.info("Strategy orchestrator initialized")
+            
+            symbols_with_usdt = [f"{s}USDT" for s in self.config.symbols]
+            self.strategy_orchestrator = create_default_strategies(symbols=symbols_with_usdt)
+            self.logger.info(f"Strategy orchestrator initialized for {symbols_with_usdt}")
         except Exception as e:
             self.logger.warning(f"Strategy orchestrator init failed: {e}")
         
@@ -142,16 +149,18 @@ class SignalRuntime(BaseRuntime):
         except Exception as e:
             self.logger.warning(f"Factor calculator init failed: {e}")
         
-        # 初始化策略发现引擎
         if self.config.enable_strategy_discovery:
             try:
                 from services.strategy_service.strategy_discovery import StrategyDiscoveryEngine
+                
+                symbols_with_usdt = [f"{s}USDT" for s in self.config.symbols]
                 self.strategy_discovery_engine = StrategyDiscoveryEngine(
                     min_win_rate=self.config.min_win_rate,
                     min_sample_size=self.config.min_sample_size,
                     min_avg_return=self.config.min_avg_return,
+                    symbols=symbols_with_usdt,
                 )
-                self.logger.info("Strategy discovery engine initialized")
+                self.logger.info(f"Strategy discovery engine initialized for {symbols_with_usdt}")
             except Exception as e:
                 self.logger.warning(f"Strategy discovery engine init failed: {e}")
         
@@ -225,8 +234,8 @@ class SignalRuntime(BaseRuntime):
                 await self.lifecycle.handle_error(e)
     
     async def _factor_calculation_loop(self) -> None:
-        """因子计算循环"""
-        symbols = ["BTC", "ETH", "SOL"]
+        """因子计算循环（多币种）"""
+        symbols = self.config.symbols
         
         while not self.context.is_shutdown_requested():
             try:
@@ -265,32 +274,28 @@ class SignalRuntime(BaseRuntime):
                 await asyncio.sleep(10)
     
     async def _strategy_discovery_loop(self) -> None:
-        """策略发现循环"""
+        """策略发现循环（多币种）"""
         while not self.context.is_shutdown_requested():
             try:
                 if self.strategy_discovery_engine and self.strategy_orchestrator:
-                    self.logger.info("Starting strategy discovery cycle...")
+                    self.logger.info("Starting multi-symbol strategy discovery cycle...")
                     
-                    # 加载市场数据
-                    df = self.strategy_discovery_engine.load_market_data()
+                    all_results = self.strategy_discovery_engine.auto_discover_all_symbols(
+                        orchestrator=self.strategy_orchestrator,
+                        max_strategies_per_symbol=self.config.max_auto_strategies,
+                    )
                     
-                    if not df.empty:
-                        # 自动发现并添加策略
-                        new_strategies = self.strategy_discovery_engine.auto_discover_and_add(
-                            df=df,
-                            orchestrator=self.strategy_orchestrator,
-                            max_strategies=self.config.max_auto_strategies,
-                        )
-                        
-                        if new_strategies:
-                            self._auto_discovered_strategies.extend(new_strategies)
-                            self.metrics.increment("strategies_auto_discovered", len(new_strategies))
-                            self.logger.info(f"Auto-discovered {len(new_strategies)} new strategies")
-                            
-                            # 打印发现报告
-                            self.strategy_discovery_engine.print_discovery_report()
+                    total_strategies = sum(len(strats) for strats in all_results.values())
+                    if total_strategies > 0:
+                        self._auto_discovered_strategies.extend([
+                            (sym, s) for sym, strats in all_results.items()
+                            for s in strats
+                        ])
+                        self.metrics.increment("strategies_auto_discovered", total_strategies)
+                        self.logger.info(f"Auto-discovered {total_strategies} strategies across {len(all_results)} symbols")
+                    
+                    self.strategy_discovery_engine.print_discovery_report()
                 
-                # 等待下一次发现
                 await asyncio.sleep(self.config.strategy_discovery_interval)
                 
             except asyncio.CancelledError:
@@ -398,7 +403,7 @@ class SignalRuntime(BaseRuntime):
         return final_signals
     
     async def _run_strategies(self, signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """运行策略（调用 services/strategy_service/）"""
+        """运行策略（币种感知）"""
         if not self.strategy_orchestrator or not signals:
             return []
         
@@ -406,7 +411,10 @@ class SignalRuntime(BaseRuntime):
         
         for signal in signals:
             try:
-                strategy_signals = self.strategy_orchestrator.process(signal)
+                asset = signal.get("asset", "BTC")
+                symbol = f"{asset}USDT"
+                
+                strategy_signals = self.strategy_orchestrator.process(symbol)
                 
                 if strategy_signals:
                     decision = self._convert_to_decision(strategy_signals, signal)

@@ -1,6 +1,13 @@
 """
 Factor Service - 因子计算服务
 
+说明：
+- 此模块提供轻量级实时因子计算（用于仪表盘、实时指标展示）
+- 历史特征和策略发现使用 Feature Matrix（见 services/strategy_service/feature_matrix.py）
+- 两者的关系：
+  - Feature Matrix = 离线特征存储（原始特征+衍生特征+因子）
+  - FactorCalculator = 实时因子指标（用于展示）
+
 计算多种因子并发布到 Kafka:
 - 趋势因子
 - 动量因子

@@ -22,6 +22,7 @@ from infrastructure.logging import get_logger
 from services.strategy_service.strategies import (
     BaseStrategy, StrategySignal, StrategyType, ActionType
 )
+from services.strategy_service.feature_matrix import FeatureMatrix, FeatureCategory
 
 logger = get_logger("strategy_discovery")
 
@@ -128,7 +129,7 @@ class AutoDiscoveredStrategy(BaseStrategy):
 
 
 class StrategyDiscoveryEngine:
-    """策略发现引擎"""
+    """策略发现引擎（支持多币种）"""
     
     def __init__(
         self,
@@ -136,6 +137,7 @@ class StrategyDiscoveryEngine:
         min_win_rate: float = 0.6,
         min_sample_size: int = 50,
         min_avg_return: float = 0.005,
+        symbols: List[str] = None,
     ):
         self.min_win_rate = min_win_rate
         self.min_sample_size = min_sample_size
@@ -145,22 +147,24 @@ class StrategyDiscoveryEngine:
             data_path = Path(__file__).parent.parent.parent / "data_lake" / "features" / "binance"
         self.data_path = Path(data_path)
         
-        self.discovered_patterns: Dict[str, DiscoveredPattern] = {}
+        self.symbols = symbols or ["BTCUSDT", "ETHUSDT"]
         
-        logger.info("StrategyDiscoveryEngine initialized")
+        self.discovered_patterns: Dict[str, Dict[str, DiscoveredPattern]] = {}  # symbol -> patterns
+        
+        logger.info(f"StrategyDiscoveryEngine initialized for symbols: {self.symbols}")
     
     def load_market_data(self, symbol: str = "BTCUSDT") -> pd.DataFrame:
-        """加载市场数据"""
-        feature_path = self.data_path / symbol / "features_with_structure.parquet"
+        """加载市场数据（使用 Feature Matrix）"""
+        fm = FeatureMatrix.load_for_symbol(symbol)
         
-        if not feature_path.exists():
-            logger.warning(f"Feature file not found: {feature_path}")
+        if fm.df is None or fm.df.empty:
+            logger.warning(f"Feature matrix not found for {symbol}")
             return pd.DataFrame()
         
-        df = pd.read_parquet(feature_path)
-        logger.info(f"Loaded {len(df)} rows for {symbol}")
+        self.current_feature_matrix = fm  # 保存当前 Feature Matrix
+        logger.info(f"[{symbol}] Loaded Feature Matrix: {fm.summary()}")
         
-        return df
+        return fm.df
     
     def analyze_feature_distribution(self, df: pd.DataFrame, feature: str, target: str) -> Dict:
         """分析特征与目标的关系"""
@@ -198,17 +202,32 @@ class StrategyDiscoveryEngine:
         }
     
     def scan_features(self, df: pd.DataFrame, target_feature: str = "future_ret_1h") -> List[Dict]:
-        """扫描所有特征，发现有潜力的模式"""
-        features_to_scan = [
-            col for col in df.columns 
-            if not col.startswith("timestamp") 
-            and not col.startswith("close")
-            and not col.startswith("high")
-            and not col.startswith("low")
-            and not col.startswith("open")
-            and pd.api.types.is_numeric_dtype(df[col])  # 只扫描数值型特征
-            and not pd.api.types.is_bool_dtype(df[col])  # 排除布尔类型
-        ]
+        """扫描所有特征，发现有潜力的模式（使用 Feature Matrix 分类）"""
+        # 优先使用 Feature Matrix 的分类
+        if hasattr(self, 'current_feature_matrix'):
+            fm = self.current_feature_matrix
+            # 优先扫描衍生特征和微观结构特征
+            features_to_scan = (
+                fm.get_derived_features() + 
+                fm.get_microstructure_features() + 
+                fm.get_cross_market_features() + 
+                fm.get_raw_features()
+            )
+        else:
+            # Fallback: 扫描所有数值型特征
+            features_to_scan = [
+                col for col in df.columns 
+                if not col.startswith("timestamp") 
+                and not col.startswith("close")
+                and not col.startswith("high")
+                and not col.startswith("low")
+                and not col.startswith("open")
+                and pd.api.types.is_numeric_dtype(df[col])
+                and not pd.api.types.is_bool_dtype(df[col])
+            ]
+        
+        # 确保特征在 DataFrame 中存在
+        features_to_scan = [f for f in features_to_scan if f in df.columns]
         
         promising_features = []
         
@@ -249,40 +268,36 @@ class StrategyDiscoveryEngine:
         
         return promising_features
     
-    def discover_patterns(self, df: pd.DataFrame) -> List[DiscoveredPattern]:
-        """发现模式"""
+    def discover_patterns(self, df: pd.DataFrame, symbol: str = "BTCUSDT") -> List[DiscoveredPattern]:
+        """发现模式（按币种）"""
         if df.empty:
             return []
         
-        # 采样一部分数据以加快速度
+        df = df.copy()
+        
         if len(df) > 10000:
             df = df.sample(10000, random_state=42).sort_index()
-            logger.info(f"Sampled to {len(df)} rows for faster discovery")
+            logger.info(f"[{symbol}] Sampled to {len(df)} rows for faster discovery")
         
-        # 先计算未来收益（作为目标）
-        df = df.copy()
         df["future_ret_1h"] = df["close"].pct_change(-12).shift(-12)
         
-        # 扫描特征
         promising_features = self.scan_features(df)
         
         patterns = []
         
-        for i, feature_info in enumerate(promising_features[:10]):  # 取前10个
+        for i, feature_info in enumerate(promising_features[:10]):
             feature = feature_info["feature"]
             side = feature_info["side"]
             cutoff = feature_info["cutoff"]
             direction = 1 if feature_info["avg_return"] > 0 else -1
             
-            # 生成条件
             if side == "high":
                 condition = f"data.get('{feature}', 0) >= {cutoff}"
-                name = f"High_{feature}"
+                name = f"{symbol}_High_{feature}"
             else:
                 condition = f"data.get('{feature}', 0) <= {cutoff}"
-                name = f"Low_{feature}"
+                name = f"{symbol}_Low_{feature}"
             
-            # 确定强度
             win_rate = feature_info["win_rate"]
             if win_rate >= 0.8:
                 strength = PatternStrength.EXCELLENT
@@ -294,9 +309,9 @@ class StrategyDiscoveryEngine:
                 strength = PatternStrength.WEAK
             
             pattern = DiscoveredPattern(
-                pattern_id=f"auto_pattern_{i}_{datetime.now().strftime('%Y%m%d')}",
+                pattern_id=f"auto_pattern_{symbol}_{i}_{datetime.now().strftime('%Y%m%d')}",
                 name=name,
-                description=f"Auto-discovered pattern using {feature}",
+                description=f"[{symbol}] Auto-discovered pattern using {feature}",
                 direction=direction,
                 win_rate=feature_info["win_rate"],
                 avg_return=feature_info["avg_return"],
@@ -308,9 +323,32 @@ class StrategyDiscoveryEngine:
             )
             
             patterns.append(pattern)
-            self.discovered_patterns[pattern.pattern_id] = pattern
+        
+        if symbol not in self.discovered_patterns:
+            self.discovered_patterns[symbol] = {}
+        self.discovered_patterns[symbol].update({p.pattern_id: p for p in patterns})
         
         return patterns
+    
+    def discover_all_symbols(self) -> Dict[str, List[DiscoveredPattern]]:
+        """为所有币种发现策略"""
+        all_results = {}
+        
+        for symbol in self.symbols:
+            logger.info(f"[{symbol}] Starting strategy discovery...")
+            
+            df = self.load_market_data(symbol)
+            
+            if df.empty:
+                logger.warning(f"[{symbol}] No data available, skipping")
+                continue
+            
+            patterns = self.discover_patterns(df, symbol)
+            all_results[symbol] = patterns
+            
+            logger.info(f"[{symbol}] Discovered {len(patterns)} patterns")
+        
+        return all_results
     
     def convert_pattern_to_strategy(self, pattern: DiscoveredPattern) -> AutoDiscoveredStrategy:
         """将发现的模式转换成策略"""
@@ -376,49 +414,75 @@ class StrategyDiscoveryEngine:
         df: pd.DataFrame,
         orchestrator=None,
         max_strategies: int = 5,
+        symbol: str = "BTCUSDT",
     ) -> List[AutoDiscoveredStrategy]:
         """
-        自动发现策略并添加到编排器
+        自动发现策略并添加到编排器（按币种）
         
         Args:
             df: 市场数据
             orchestrator: 策略编排器（可选）
             max_strategies: 最多添加几个策略
+            symbol: 币种标识
         
         Returns:
             新发现的策略列表
         """
-        logger.info("Starting auto strategy discovery...")
+        logger.info(f"[{symbol}] Starting auto strategy discovery...")
         
-        # 发现模式
-        patterns = self.discover_patterns(df)
-        logger.info(f"Found {len(patterns)} candidate patterns")
+        patterns = self.discover_patterns(df, symbol)
+        logger.info(f"[{symbol}] Found {len(patterns)} candidate patterns")
         
         new_strategies = []
         
         for pattern in patterns[:max_strategies]:
-            # 回测验证
             backtest_result = self.backtest_pattern(df, pattern)
             
             if not backtest_result:
                 continue
             
-            # 检查是否满足标准
             if (backtest_result["win_rate"] >= self.min_win_rate and
                 backtest_result["avg_return"] >= self.min_avg_return and
                 backtest_result["sample_size"] >= self.min_sample_size):
                 
-                # 转换为策略
                 strategy = self.convert_pattern_to_strategy(pattern)
+                strategy.symbol = symbol
                 new_strategies.append(strategy)
                 
-                # 如果有编排器，自动添加
                 if orchestrator:
-                    orchestrator.add_strategy(strategy)
-                    logger.info(f"Auto-added strategy: {strategy.strategy_id}")
+                    orchestrator.add_strategy(strategy, symbol)
+                    logger.info(f"[{symbol}] Auto-added strategy: {strategy.strategy_id}")
         
-        logger.info(f"Auto-discovered and added {len(new_strategies)} strategies")
+        logger.info(f"[{symbol}] Auto-discovered and added {len(new_strategies)} strategies")
         return new_strategies
+    
+    def auto_discover_all_symbols(
+        self,
+        orchestrator=None,
+        max_strategies_per_symbol: int = 5,
+    ) -> Dict[str, List[AutoDiscoveredStrategy]]:
+        """为所有币种自动发现并添加策略"""
+        all_new_strategies = {}
+        
+        for symbol in self.symbols:
+            logger.info(f"[{symbol}] Loading market data...")
+            
+            df = self.load_market_data(symbol)
+            
+            if df.empty:
+                logger.warning(f"[{symbol}] No data available, skipping")
+                continue
+            
+            new_strategies = self.auto_discover_and_add(
+                df=df,
+                orchestrator=orchestrator,
+                max_strategies=max_strategies_per_symbol,
+                symbol=symbol,
+            )
+            
+            all_new_strategies[symbol] = new_strategies
+        
+        return all_new_strategies
     
     def save_discovered_patterns(self, output_path: str):
         """保存发现的模式"""
@@ -442,31 +506,37 @@ class StrategyDiscoveryEngine:
         logger.info(f"Discovered patterns saved to: {output_path}")
     
     def print_discovery_report(self):
-        """打印发现报告"""
+        """打印发现报告（按币种）"""
         print("\n" + "=" * 100)
-        print("🤖 Auto Strategy Discovery Report")
+        print("🤖 Auto Strategy Discovery Report (Multi-Symbol)")
         print("=" * 100)
         
         if not self.discovered_patterns:
             print("  No patterns discovered yet")
             return
         
-        sorted_patterns = sorted(
-            self.discovered_patterns.values(),
-            key=lambda p: p.win_rate * p.avg_return * np.sqrt(p.sample_size),
-            reverse=True
-        )
-        
-        print(f"  Total patterns discovered: {len(self.discovered_patterns)}")
-        print()
-        
-        for i, pattern in enumerate(sorted_patterns[:5], 1):
-            direction = "LONG" if pattern.direction == 1 else "SHORT"
-            print(f"  {i}. {pattern.name} ({direction})")
-            print(f"     Win rate: {pattern.win_rate*100:.1f}%, Avg return: {pattern.avg_return*100:.2f}%")
-            print(f"     Samples: {pattern.sample_size}, Strength: {pattern.strength.value}")
-            print(f"     Conditions: {pattern.conditions}")
-            print()
+        for symbol, patterns in self.discovered_patterns.items():
+            if not patterns:
+                continue
+                
+            print(f"\n📊 [{symbol}]")
+            print("-" * 60)
+            
+            sorted_patterns = sorted(
+                patterns.values(),
+                key=lambda p: p.win_rate * p.avg_return * np.sqrt(p.sample_size),
+                reverse=True
+            )
+            
+            print(f"  Total patterns: {len(patterns)}")
+            
+            for i, pattern in enumerate(sorted_patterns[:5], 1):
+                direction = "LONG" if pattern.direction == 1 else "SHORT"
+                print(f"  {i}. {pattern.name} ({direction})")
+                print(f"     Win rate: {pattern.win_rate*100:.1f}%, Avg return: {pattern.avg_return*100:.2f}%")
+                print(f"     Samples: {pattern.sample_size}, Strength: {pattern.strength.value}")
+                print(f"     Conditions: {pattern.conditions}")
+                print()
 
 
 def demo_auto_discovery():
