@@ -19,6 +19,7 @@ import {
 import { api } from '../services/api/client'
 import type { Position } from '../../types'
 import clsx from 'clsx'
+import { isMockMode } from '../config/mock'
 
 interface TradingSignal {
   signal_id: string
@@ -52,6 +53,7 @@ export function LiveTradingPage() {
 
   const [signals, setSignals] = useState<TradingSignal[]>([])
   const [positions, setPositions] = useState<Position[]>([])
+  const [accountBalance, setAccountBalance] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [config, setConfig] = useState<TradingConfig>({
     auto_follow: false,
@@ -74,15 +76,19 @@ export function LiveTradingPage() {
 
   const loadData = async () => {
     try {
-      const [signalsRes, positionsRes] = await Promise.all([
+      const [signalsRes, positionsRes, accountRes] = await Promise.all([
         api.get('/execution/signals'),
         api.get('/execution/positions'),
+        api.get('/account/balance'),
       ])
       if (signalsRes.data && Array.isArray(signalsRes.data)) {
         setSignals(signalsRes.data)
       }
       if (positionsRes.data && Array.isArray(positionsRes.data)) {
         setPositions(positionsRes.data)
+      }
+      if (accountRes.data?.balance !== undefined) {
+        setAccountBalance(accountRes.data.balance)
       }
     } catch (error) {
       console.error('Failed to load trading data:', error)
@@ -160,7 +166,7 @@ export function LiveTradingPage() {
           <Card className="bg-surface border-border">
             <Statistic
               title={<span className="text-text-secondary text-xs">账户余额</span>}
-              value={10452.50}
+              value={accountBalance ?? (isMockMode ? 10452.50 : 0)}
               precision={2}
               prefix={<DollarSign className="w-4 h-4 text-bullish" />}
               valueStyle={{ color: 'var(--text-primary)', fontSize: '24px' }}

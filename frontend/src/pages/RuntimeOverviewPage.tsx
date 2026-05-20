@@ -26,6 +26,7 @@ import {
 } from '../services/runtime'
 import { api } from '../services/api/client'
 import clsx from 'clsx'
+import { isMockMode } from '../config/mock'
 
 interface RuntimeStats {
   state: string
@@ -438,7 +439,7 @@ export function RuntimeOverviewPage() {
                   <span className="text-primary">{(latestInsight.confidence * 100).toFixed(0)}%</span>
                 </div>
               </div>
-            ) : (
+            ) : isMockMode ? (
               <div className="space-y-3">
                 <div className="p-3 bg-background rounded-lg border border-border">
                   <div className="flex items-center gap-2 mb-2">
@@ -458,6 +459,13 @@ export function RuntimeOverviewPage() {
                     美联储政策不确定性上升
                   </div>
                 </div>
+              </div>
+            ) : (
+              <div className="py-8">
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={<span className="text-text-secondary text-xs">暂无 AI 洞察</span>}
+                />
               </div>
             )}
           </Card>

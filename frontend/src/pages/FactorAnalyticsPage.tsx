@@ -1,12 +1,31 @@
-import { useState } from 'react'
-import { Card, Row, Col, Statistic, Table, Progress, Tabs, Typography, Tag, Space, Alert } from 'antd'
+import { useState, useEffect } from 'react'
+import { Card, Row, Col, Statistic, Table, Progress, Tabs, Typography, Tag, Space, Spin, Empty } from 'antd'
 import { BarChartOutlined, LineChartOutlined, DotChartOutlined } from '@ant-design/icons'
+import { api } from '../services/api/client'
+import { isMockMode } from '../config/mock'
 
 const { Title, Text } = Typography
 const { TabPane } = Tabs
 
-// 模拟因子数据
-const factorContributionData = [
+interface FactorData {
+  factor: string
+  shortName: string
+  contribution: number
+  weight: number
+  correlation: number
+  recentPnL: string
+  volatility: number
+  color: string
+}
+
+interface FactorMetrics {
+  activeFactors: number
+  totalContribution: number
+  avgCorrelation: number
+  riskAdjustedReturn: number
+}
+
+const mockFactorContributionData: FactorData[] = [
   {
     factor: '趋势因子',
     shortName: 'Trend',
@@ -49,23 +68,70 @@ const factorContributionData = [
   },
 ]
 
-// 因子相关性矩阵
-const correlationMatrix = [
+const mockCorrelationMatrix = [
   [1.00, 0.45, 0.32, 0.18],
   [0.45, 1.00, 0.28, 0.35],
   [0.32, 0.28, 1.00, 0.15],
   [0.18, 0.35, 0.15, 1.00],
 ]
 
+const mockMetrics: FactorMetrics = {
+  activeFactors: 4,
+  totalContribution: 4.5,
+  avgCorrelation: 0.42,
+  riskAdjustedReturn: 1.25,
+}
+
 export function FactorAnalyticsPage() {
   const [activeTab, setActiveTab] = useState('contribution')
+  const [loading, setLoading] = useState(true)
+  const [factorData, setFactorData] = useState<FactorData[]>([])
+  const [correlationMatrix, setCorrelationMatrix] = useState<number[][]>([])
+  const [metrics, setMetrics] = useState<FactorMetrics | null>(null)
+
+  useEffect(() => {
+    loadData()
+    const interval = setInterval(loadData, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const loadData = async () => {
+    if (isMockMode) {
+      setFactorData(mockFactorContributionData)
+      setCorrelationMatrix(mockCorrelationMatrix)
+      setMetrics(mockMetrics)
+      setLoading(false)
+      return
+    }
+
+    try {
+      const [factorsRes, correlationRes, metricsRes] = await Promise.all([
+        api.get('/factor/contributions'),
+        api.get('/factor/correlation'),
+        api.get('/factor/metrics'),
+      ])
+      if (factorsRes.data && Array.isArray(factorsRes.data)) {
+        setFactorData(factorsRes.data)
+      }
+      if (correlationRes.data && Array.isArray(correlationRes.data)) {
+        setCorrelationMatrix(correlationRes.data)
+      }
+      if (metricsRes.data) {
+        setMetrics(metricsRes.data)
+      }
+    } catch (error) {
+      console.error('Failed to load factor data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const columns = [
     {
       title: '因子',
       dataIndex: 'factor',
       key: 'factor',
-      render: (text: string, record: any) => (
+      render: (text: string, record: FactorData) => (
         <Space>
           <div
             style={{
@@ -123,6 +189,19 @@ export function FactorAnalyticsPage() {
     },
   ]
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <Spin size="large" />
+      </div>
+    )
+  }
+
+  const activeFactors = metrics?.activeFactors ?? factorData.length
+  const totalContribution = metrics?.totalContribution ?? factorData.reduce((sum, f) => sum + f.contribution, 0)
+  const avgCorrelation = metrics?.avgCorrelation ?? 0.42
+  const riskAdjustedReturn = metrics?.riskAdjustedReturn ?? 1.25
+
   return (
     <div className="space-y-4">
       <Title level={4}>📊 因子分析</Title>
@@ -138,13 +217,12 @@ export function FactorAnalyticsPage() {
         style={{ marginBottom: 16 }}
       />
 
-      {/* 关键统计概览 */}
       <Row gutter={16}>
         <Col xs={24} md={6}>
           <Card>
             <Statistic
               title="活跃因子"
-              value={4}
+              value={activeFactors}
               prefix={<BarChartOutlined />}
               valueStyle={{ color: '#3B82F6' }}
             />
@@ -154,10 +232,10 @@ export function FactorAnalyticsPage() {
           <Card>
             <Statistic
               title="总贡献"
-              value={4.5}
+              value={totalContribution}
               precision={1}
-              prefix="+"
-              valueStyle={{ color: '#10B981' }}
+              prefix={totalContribution >= 0 ? '+' : ''}
+              valueStyle={{ color: totalContribution >= 0 ? '#10B981' : '#EF4444' }}
               suffix="%"
             />
           </Card>
@@ -166,7 +244,7 @@ export function FactorAnalyticsPage() {
           <Card>
             <Statistic
               title="平均相关性"
-              value={0.42}
+              value={avgCorrelation}
               precision={2}
               prefix={<DotChartOutlined />}
             />
@@ -176,7 +254,7 @@ export function FactorAnalyticsPage() {
           <Card>
             <Statistic
               title="风险调整收益"
-              value={1.25}
+              value={riskAdjustedReturn}
               precision={2}
               valueStyle={{ color: '#F59E0B' }}
             />
@@ -195,42 +273,48 @@ export function FactorAnalyticsPage() {
             }
             key="contribution"
           >
-            <div className="mb-6">
-              <Title level={5}>因子贡献详情</Title>
-              <Table
-                dataSource={factorContributionData}
-                columns={columns}
-                rowKey="factor"
-                pagination={false}
-              />
-            </div>
+            {factorData.length === 0 ? (
+              <Empty description="暂无因子数据" />
+            ) : (
+              <>
+                <div className="mb-6">
+                  <Title level={5}>因子贡献详情</Title>
+                  <Table
+                    dataSource={factorData}
+                    columns={columns}
+                    rowKey="factor"
+                    pagination={false}
+                  />
+                </div>
 
-            <div className="mt-6">
-              <Title level={5}>各因子贡献可视化</Title>
-              <div className="space-y-3">
-                {factorContributionData.map((factor) => (
-                  <div key={factor.factor}>
-                    <div className="flex justify-between mb-1">
-                      <Text strong>{factor.factor}</Text>
-                      <Text
-                        style={{
-                          color: factor.contribution >= 0 ? '#10B981' : '#EF4444',
-                        }}
-                      >
-                        {factor.contribution >= 0 ? '+' : ''}
-                        {factor.contribution.toFixed(2)}
-                      </Text>
-                    </div>
-                    <Progress
-                      percent={Math.abs(factor.contribution * 40)}
-                      strokeColor={factor.contribution >= 0 ? '#10B981' : '#EF4444'}
-                      trailColor="#1E293B"
-                      showInfo={false}
-                    />
+                <div className="mt-6">
+                  <Title level={5}>各因子贡献可视化</Title>
+                  <div className="space-y-3">
+                    {factorData.map((factor) => (
+                      <div key={factor.factor}>
+                        <div className="flex justify-between mb-1">
+                          <Text strong>{factor.factor}</Text>
+                          <Text
+                            style={{
+                              color: factor.contribution >= 0 ? '#10B981' : '#EF4444',
+                            }}
+                          >
+                            {factor.contribution >= 0 ? '+' : ''}
+                            {factor.contribution.toFixed(2)}
+                          </Text>
+                        </div>
+                        <Progress
+                          percent={Math.abs(factor.contribution * 40)}
+                          strokeColor={factor.contribution >= 0 ? '#10B981' : '#EF4444'}
+                          trailColor="#1E293B"
+                          showInfo={false}
+                        />
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
+              </>
+            )}
           </TabPane>
 
           <TabPane
@@ -242,66 +326,72 @@ export function FactorAnalyticsPage() {
             }
             key="correlation"
           >
-            <div className="mb-4">
-              <Title level={5}>因子相关性分析</Title>
-              <Text type="secondary">
-                高相关性因子应该避免同时配置，以降低风险。
-              </Text>
-            </div>
+            {correlationMatrix.length === 0 ? (
+              <Empty description="暂无相关性数据" />
+            ) : (
+              <>
+                <div className="mb-4">
+                  <Title level={5}>因子相关性分析</Title>
+                  <Text type="secondary">
+                    高相关性因子应该避免同时配置，以降低风险。
+                  </Text>
+                </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-center border-collapse">
-                <thead>
-                  <tr>
-                    <th className="p-2 bg-gray-800 border border-gray-700"></th>
-                    {factorContributionData.map((factor, i) => (
-                      <th
-                        key={i}
-                        className="p-2 bg-gray-800 border border-gray-700 text-sm"
-                      >
-                        {factor.shortName}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {correlationMatrix.map((row, i) => (
-                    <tr key={i}>
-                      <td className="p-2 bg-gray-800 border border-gray-700 font-semibold">
-                        {factorContributionData[i].shortName}
-                      </td>
-                      {row.map((cell, j) => (
-                        <td
-                          key={j}
-                          className="p-2 border border-gray-700"
-                          style={{
-                            backgroundColor:
-                              i === j
-                                ? '#3B82F6'
-                                : Math.abs(cell) > 0.7
-                                ? 'rgba(16, 184, 129, 0.3)'
-                                : Math.abs(cell) > 0.5
-                                ? 'rgba(245, 158, 11, 0.3)'
-                                : 'transparent',
-                          }}
-                        >
-                          <Text
-                            style={{
-                              color:
-                                i === j || Math.abs(cell) > 0.7
-                                  ? 'white'
-                                  : 'gray-400',
-                            }}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-center border-collapse">
+                    <thead>
+                      <tr>
+                        <th className="p-2 bg-gray-800 border border-gray-700"></th>
+                        {factorData.map((factor, i) => (
+                          <th
+                            key={i}
+                            className="p-2 bg-gray-800 border border-gray-700 text-sm"
                           >
-                            {cell.toFixed(2)}
-                          </Text>
-                        </td>
+                            {factor.shortName}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {correlationMatrix.map((row, i) => (
+                        <tr key={i}>
+                          <td className="p-2 bg-gray-800 border border-gray-700 font-semibold">
+                            {factorData[i]?.shortName || ''}
+                          </td>
+                          {row.map((cell, j) => (
+                            <td
+                              key={j}
+                              className="p-2 border border-gray-700"
+                              style={{
+                                backgroundColor:
+                                  i === j
+                                    ? '#3B82F6'
+                                    : Math.abs(cell) > 0.7
+                                    ? 'rgba(16, 184, 129, 0.3)'
+                                    : Math.abs(cell) > 0.5
+                                    ? 'rgba(245, 158, 11, 0.3)'
+                                    : 'transparent',
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  color:
+                                    i === j || Math.abs(cell) > 0.7
+                                      ? 'white'
+                                      : 'gray-400',
+                                }}
+                              >
+                                {cell.toFixed(2)}
+                              </Text>
+                            </td>
+                          ))}
+                        </tr>
                       ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </TabPane>
 
           <TabPane
@@ -313,33 +403,37 @@ export function FactorAnalyticsPage() {
             }
             key="performance"
           >
-            <div className="space-y-4">
-              <Title level={5}>因子历史表现</Title>
+            {factorData.length === 0 ? (
+              <Empty description="暂无历史表现数据" />
+            ) : (
+              <div className="space-y-4">
+                <Title level={5}>因子历史表现</Title>
 
-              {factorContributionData.map((factor) => (
-                <Card size="small" key={factor.factor}>
-                  <div className="flex justify-between items-center mb-2">
-                    <Text strong>{factor.factor}</Text>
-                    <Tag color={factor.recentPnL.startsWith('+') ? 'green' : 'red'}>
-                      {factor.recentPnL}
-                    </Tag>
-                  </div>
-                  <div className="flex justify-between text-sm text-gray-500">
-                    <span>波动率: {(factor.volatility * 100).toFixed(1)}%</span>
-                    <span>权重: {(factor.weight * 100).toFixed(0)}%</span>
-                  </div>
-                  <div className="mt-2">
-                    <Progress
-                      percent={70 + factor.contribution * 20}
-                      strokeColor={factor.color}
-                      trailColor="#1E293B"
-                      size="small"
-                      showInfo={false}
-                    />
-                  </div>
-                </Card>
-              ))}
-            </div>
+                {factorData.map((factor) => (
+                  <Card size="small" key={factor.factor}>
+                    <div className="flex justify-between items-center mb-2">
+                      <Text strong>{factor.factor}</Text>
+                      <Tag color={factor.recentPnL.startsWith('+') ? 'green' : 'red'}>
+                        {factor.recentPnL}
+                      </Tag>
+                    </div>
+                    <div className="flex justify-between text-sm text-gray-500">
+                      <span>波动率: {(factor.volatility * 100).toFixed(1)}%</span>
+                      <span>权重: {(factor.weight * 100).toFixed(0)}%</span>
+                    </div>
+                    <div className="mt-2">
+                      <Progress
+                        percent={70 + factor.contribution * 20}
+                        strokeColor={factor.color}
+                        trailColor="#1E293B"
+                        size="small"
+                        showInfo={false}
+                      />
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
           </TabPane>
         </Tabs>
       </Card>
