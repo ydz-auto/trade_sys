@@ -6,13 +6,13 @@
  */
 
 import { create } from 'zustand'
-import { runtimeManager } from '../runtime/runtimeManager'
+import { runtimeManager } from '../services/runtime/runtimeManager'
 import type { 
   RuntimeState, 
   RuntimeType, 
   RuntimeConfig 
 } from '../../types'
-import { wsService, type ChannelType } from '../websocket/wsService'
+import { wsService, type ChannelType } from '../services/websocket/wsService'
 
 interface RuntimeStore {
   // Current active runtime

@@ -1,4 +1,4 @@
-import { apiClient } from './client'
+import { api } from './client'
 import {
   FeatureMetadata,
   FeatureValue,
@@ -31,22 +31,22 @@ export interface SuccessResponse {
 
 // Feature Matrix APIs
 export const getFeatureMetadata = async (): Promise<FeatureMetadata[]> => {
-  const response = await apiClient.get('/features/metadata')
+  const response = await api.get('/features/metadata')
   return response.data
 }
 
 export const getSingleFeatureMetadata = async (featureName: string): Promise<FeatureMetadata> => {
-  const response = await apiClient.get(`/features/metadata/${featureName}`)
+  const response = await api.get(`/features/metadata/${featureName}`)
   return response.data
 }
 
 export const getSymbolFeatures = async (symbol: string): Promise<FeatureValue[]> => {
-  const response = await apiClient.get(`/features/${symbol}`)
+  const response = await api.get(`/features/${symbol}`)
   return response.data
 }
 
 export const getFeatureMatrixSummary = async (symbol: string): Promise<FeatureMatrixSummary> => {
-  const response = await apiClient.get(`/features/${symbol}/summary`)
+  const response = await api.get(`/features/${symbol}/summary`)
   return response.data
 }
 
@@ -54,7 +54,7 @@ export const getFeaturesByCategory = async (
   symbol: string,
   category: string
 ): Promise<FeatureValue[]> => {
-  const response = await apiClient.get(`/features/${symbol}/category/${category}`)
+  const response = await api.get(`/features/${symbol}/category/${category}`)
   return response.data
 }
 
@@ -63,7 +63,7 @@ export const updateFeatureWeight = async (
   featureName: string,
   request: UpdateFeatureWeightRequest
 ): Promise<SuccessResponse> => {
-  const response = await apiClient.put(
+  const response = await api.put(
     `/features/${symbol}/weight/${featureName}`,
     request
   )
@@ -74,23 +74,23 @@ export const updateSymbolFeatures = async (
   symbol: string,
   request: UpdateSymbolFeaturesRequest
 ): Promise<SuccessResponse> => {
-  const response = await apiClient.put(`/features/${symbol}`, request)
+  const response = await api.put(`/features/${symbol}`, request)
   return response.data
 }
 
 export const triggerBacktest = async (symbol: string): Promise<SuccessResponse> => {
-  const response = await apiClient.post(`/features/${symbol}/backtest`)
+  const response = await api.post(`/features/${symbol}/backtest`)
   return response.data
 }
 
 // Symbol Config APIs (under /config prefix)
 export const getAllSymbolConfigs = async (): Promise<SymbolConfigsResponse> => {
-  const response = await apiClient.get('/config/symbols')
+  const response = await api.get('/config/symbols')
   return response.data
 }
 
 export const getSymbolConfig = async (symbol: string): Promise<SymbolConfig> => {
-  const response = await apiClient.get(`/config/symbols/${symbol}`)
+  const response = await api.get(`/config/symbols/${symbol}`)
   return response.data
 }
 
@@ -98,13 +98,13 @@ export const updateSymbolConfig = async (
   symbol: string,
   request: UpdateSymbolConfigRequest
 ): Promise<SuccessResponse> => {
-  const response = await apiClient.put(`/config/symbols/${symbol}`, request)
+  const response = await api.put(`/config/symbols/${symbol}`, request)
   return response.data
 }
 
 export const getOptimizationSuggestions = async (
   symbol: string
 ): Promise<OptimizationSuggestion[]> => {
-  const response = await apiClient.get(`/config/symbols/${symbol}/suggestions`)
+  const response = await api.get(`/config/symbols/${symbol}/suggestions`)
   return response.data
 }

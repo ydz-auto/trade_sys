@@ -1,4 +1,4 @@
-import { apiClient } from './client'
+import { api } from './client'
 
 export type OrderSide = 'BUY' | 'SELL'
 export type OrderType = 'MARKET' | 'LIMIT' | 'STOP' | 'TAKE_PROFIT' | 'TRAILING_STOP'
@@ -89,22 +89,22 @@ export interface SignalAction {
 
 // Order APIs
 export const createOrder = async (request: OrderRequest): Promise<Order> => {
-  const response = await apiClient.post('/execution/orders', request)
+  const response = await api.post('/execution/orders', request)
   return response.data
 }
 
 export const getOrder = async (orderId: string): Promise<Order> => {
-  const response = await apiClient.get(`/execution/orders/${orderId}`)
+  const response = await api.get(`/execution/orders/${orderId}`)
   return response.data
 }
 
 export const cancelOrder = async (orderId: string): Promise<void> => {
-  await apiClient.delete(`/execution/orders/${orderId}`)
+  await api.delete(`/execution/orders/${orderId}`)
 }
 
 export const getOpenOrders = async (symbol?: string): Promise<Order[]> => {
   const params = symbol ? { symbol } : {}
-  const response = await apiClient.get('/execution/orders/open', { params })
+  const response = await api.get('/execution/orders/open', { params })
   return response.data
 }
 
@@ -113,42 +113,42 @@ export const getOrderHistory = async (
   limit: number = 100
 ): Promise<Order[]> => {
   const params = { symbol, limit }
-  const response = await apiClient.get('/execution/orders/history', { params })
+  const response = await api.get('/execution/orders/history', { params })
   return response.data
 }
 
 // Position APIs
 export const getPositions = async (symbol?: string): Promise<Position[]> => {
   const params = symbol ? { symbol } : {}
-  const response = await apiClient.get('/execution/positions', { params })
+  const response = await api.get('/execution/positions', { params })
   return response.data
 }
 
 export const closePosition = async (positionId: string): Promise<void> => {
-  await apiClient.post(`/execution/positions/${positionId}/close`)
+  await api.post(`/execution/positions/${positionId}/close`)
 }
 
 export const modifyPosition = async (
   positionId: string,
   updates: Partial<{ stopLoss: number; takeProfit: number; leverage: number }>
 ): Promise<Position> => {
-  const response = await apiClient.put(`/execution/positions/${positionId}`, updates)
+  const response = await api.put(`/execution/positions/${positionId}`, updates)
   return response.data
 }
 
 // Signal-based Trading
 export const executeSignal = async (signalAction: SignalAction): Promise<Order> => {
-  const response = await apiClient.post('/execution/signals/execute', signalAction)
+  const response = await api.post('/execution/signals/execute', signalAction)
   return response.data
 }
 
 export const batchExecuteSignals = async (signals: SignalAction[]): Promise<Order[]> => {
-  const response = await apiClient.post('/execution/signals/batch', signals)
+  const response = await api.post('/execution/signals/batch', signals)
   return response.data
 }
 
 // Execution State
 export const getExecutionState = async (): Promise<ExecutionState> => {
-  const response = await apiClient.get('/execution/state')
+  const response = await api.get('/execution/state')
   return response.data
 }

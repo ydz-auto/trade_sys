@@ -1,9 +1,12 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { ConfigProvider, Layout, App as AntApp } from 'antd'
 import { useState, useEffect } from 'react'
-import { DashboardPage } from './pages/DashboardPage'
-import { WeightConfigPage } from './pages/WeightConfigPage'
-import { FeatureConfigPage } from './pages/FeatureConfigPage'
+import { RuntimeOverviewPage } from './pages/RuntimeOverviewPage'
+import { RuntimeSignalsPage } from './pages/RuntimeSignalsPage'
+import { FeatureContributionPage } from './pages/FeatureContributionPage'
+import { LiveTradingPage } from './pages/LiveTradingPage'
+import { RuntimeReplayPage } from './pages/RuntimeReplayPage'
+import { NarrativePage } from './pages/NarrativePage'
 import { StrategyManagementPage } from './pages/StrategyManagementPage'
 import { RegimePage } from './pages/RegimePage'
 import { RiskPage } from './pages/RiskPage'
@@ -13,13 +16,12 @@ import { PositionsPage } from './pages/PositionsPage'
 import { ExecutionPage } from './pages/ExecutionPage'
 import { SystemMonitorPage } from './pages/SystemMonitorPage'
 import { AlphaLifecyclePage } from './pages/AlphaLifecyclePage'
-import { ReplayPage } from './pages/ReplayPage'
-import { FactorAnalyticsPage } from './pages/FactorAnalyticsPage'
 import { RiskPropagationPage } from './pages/RiskPropagationPage'
 import { SettingsPage } from './pages/SettingsPage'
-import { DataConfigPage } from './pages/DataConfigPage'
-import { TradingPage } from './pages/TradingPage'
-import { AppSidebar } from './components/AppSidebar'
+import { MarketMonitorPage } from './pages/MarketMonitorPage'
+import { DataPipelinePage } from './pages/DataPipelinePage'
+import { BacktestingPage } from './pages/BacktestingPage'
+import { Sidebar } from './components/layout/Sidebar'
 import { AppHeader } from './components/AppHeader'
 import { EventTimeline } from './components/EventTimeline'
 import { useDataLoader } from './hooks'
@@ -31,7 +33,6 @@ const isMobile = () => window.innerWidth < 768
 
 function AppContent() {
   const { error } = useDataLoader()
-  const [collapsed, setCollapsed] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isMobileDevice, setIsMobileDevice] = useState(false)
 
@@ -42,11 +43,6 @@ function AppContent() {
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
-  const handleCollapse = (newCollapsed: boolean) => {
-    setCollapsed(newCollapsed)
-  }
-
-  // 不阻塞页面，立即显示布局
   if (error) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#0F172A' }}>
@@ -58,44 +54,39 @@ function AppContent() {
     )
   }
 
-  const marginLeft = isMobileDevice ? 0 : (collapsed ? 0 : 220)
-
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <AppSidebar
-        collapsed={collapsed}
-        onCollapse={handleCollapse}
-        mobileOpen={mobileMenuOpen}
-        onMobileClose={() => setMobileMenuOpen(false)}
-      />
-      <Layout style={{ marginLeft, transition: 'margin-left 0.2s' }}>
+      {!isMobileDevice && <Sidebar />}
+      <Layout style={{ marginLeft: isMobileDevice ? 0 : 240, transition: 'margin-left 0.2s' }}>
         <AppHeader onMobileMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)} />
-        <Content style={{ padding: 24, overflow: 'auto', minHeight: 'calc(100vh - 64px - 180px)' }}>
+        <Content style={{ padding: 0, overflow: 'auto', minHeight: 'calc(100vh - 64px - 180px)' }}>
           <Routes>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/factors" element={<WeightConfigPage />} />
-            <Route path="/weights" element={<WeightConfigPage />} />
-            <Route path="/versions" element={<WeightConfigPage />} />
-            <Route path="/features" element={<FeatureConfigPage />} />
-            <Route path="/strategy" element={<StrategyManagementPage />} />
-            <Route path="/factor-analytics" element={<FactorAnalyticsPage />} />
+            <Route path="/" element={<RuntimeOverviewPage />} />
+            <Route path="/markets" element={<MarketMonitorPage />} />
             <Route path="/regime" element={<RegimePage />} />
+            <Route path="/data-pipeline" element={<DataPipelinePage />} />
+            <Route path="/signals" element={<RuntimeSignalsPage />} />
+            <Route path="/feature-contribution" element={<FeatureContributionPage />} />
+            <Route path="/strategy" element={<StrategyManagementPage />} />
+            <Route path="/alpha" element={<AlphaLifecyclePage />} />
+            <Route path="/execution" element={<ExecutionPage />} />
+            <Route path="/positions" element={<PositionsPage />} />
+            <Route path="/trading" element={<LiveTradingPage />} />
+            <Route path="/replay" element={<RuntimeReplayPage />} />
+            <Route path="/backtest" element={<BacktestingPage />} />
             <Route path="/risk" element={<RiskPage />} />
             <Route path="/risk-propagation" element={<RiskPropagationPage />} />
-            <Route path="/decision" element={<DecisionPage />} />
+            <Route path="/narrative" element={<NarrativePage />} />
+            <Route path="/sentiment" element={<NarrativePage />} />
+            <Route path="/events" element={<NarrativePage />} />
             <Route path="/control" element={<ControlPage />} />
-            <Route path="/positions" element={<PositionsPage />} />
-            <Route path="/execution" element={<ExecutionPage />} />
             <Route path="/monitor" element={<SystemMonitorPage />} />
-            <Route path="/alpha" element={<AlphaLifecyclePage />} />
-            <Route path="/replay" element={<ReplayPage />} />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/data-config" element={<DataConfigPage />} />
-            <Route path="/trading" element={<TradingPage />} />
+            <Route path="/decision" element={<DecisionPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Content>
-        <Footer style={{ padding: 0, position: 'fixed', bottom: 0, left: marginLeft, right: 0, zIndex: 999 }}>
+        <Footer style={{ padding: 0, position: 'fixed', bottom: 0, left: isMobileDevice ? 0 : 240, right: 0, zIndex: 999 }}>
           <EventTimeline />
         </Footer>
       </Layout>

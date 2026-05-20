@@ -5,8 +5,8 @@
  */
 
 import React, { createContext, useContext, useEffect, ReactNode } from 'react'
-import { useRuntimeStore, initializeRuntime } from '../store/runtimeStore'
-import type { RuntimeState, RuntimeConfig } from '../types'
+import { useRuntimeStore, initializeRuntime } from '../../store/runtimeStore'
+import type { RuntimeState, RuntimeConfig } from '../../types'
 
 interface RuntimeContextType {
   // State

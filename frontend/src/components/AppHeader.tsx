@@ -106,7 +106,9 @@ export function AppHeader({ onMobileMenuToggle }: AppHeaderProps) {
       padding: '0 12px', 
       height: 56, 
       borderBottom: '1px solid #334155',
-      backgroundColor: '#1E293B'
+      backgroundColor: '#1E293B',
+      position: 'relative',
+      zIndex: 40
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         {isMobile && (

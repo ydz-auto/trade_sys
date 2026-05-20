@@ -17,15 +17,13 @@ import {
   Spin,
 } from 'antd'
 import {
-  TrendingUpOutlined,
-  TrendingDownOutlined,
   ShoppingCartOutlined,
   CheckCircleOutlined,
-  XCircleOutlined,
+  XOutlined,
   ClockCircleOutlined,
-  AlertCircleOutlined,
-  ZapOutlined,
+  ExclamationCircleOutlined,
 } from '@ant-design/icons'
+import { TrendingUp, TrendingDown, Zap } from 'lucide-react'
 import { useRuntime, useSignalsState, usePnLState, useRuntimeStatus } from '../services/runtime'
 import {
   executeSignal,
@@ -121,9 +119,9 @@ export function SignalTradingPanel() {
   }
 
   const getActionIcon = (action: string) => {
-    if (action === 'BUY') return <TrendingUpOutlined className="text-green-500" />
-    if (action === 'SELL') return <TrendingDownOutlined className="text-red-500" />
-    return <AlertCircleOutlined className="text-gray-500" />
+    if (action === 'BUY') return <TrendingUp className="text-green-500" size={16} />
+    if (action === 'SELL') return <TrendingDown className="text-red-500" size={16} />
+    return <ExclamationCircleOutlined className="text-gray-500" />
   }
 
   const getActionColor = (action: string) => {
@@ -138,7 +136,7 @@ export function SignalTradingPanel() {
         return <CheckCircleOutlined className="text-green-500" />
       case 'CANCELLED':
       case 'REJECTED':
-        return <XCircleOutlined className="text-red-500" />
+        return <XOutlined className="text-red-500" />
       case 'PENDING':
       case 'ACKED':
       case 'PARTIAL_FILL':
@@ -217,7 +215,7 @@ export function SignalTradingPanel() {
                     render: (_, record) => (
                       <Button
                         type="primary"
-                        icon={<ZapOutlined />}
+                        icon={<Zap size={14} />}
                         size="small"
                         onClick={() => handleExecuteSignal(record)}
                       >

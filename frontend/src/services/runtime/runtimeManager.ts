@@ -17,7 +17,7 @@ import {
   RuntimeStatus,
   createInitialRuntimeState
 } from '../../types'
-import { wsService, type ChannelType } from './wsService'
+import { wsService, type ChannelType } from '../websocket/wsService'
 
 interface RuntimeInstance {
   config: RuntimeConfig

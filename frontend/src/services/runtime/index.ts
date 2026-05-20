@@ -30,7 +30,7 @@ export { RuntimeManager, runtimeManager } from './runtimeManager'
 export type { RuntimeInstance } from './runtimeManager'
 
 // Export Runtime Store
-export { useRuntimeStore, initializeRuntime } from '../store/runtimeStore'
+export { useRuntimeStore, initializeRuntime } from '../../store/runtimeStore'
 
 // Export Runtime Provider & Hooks
 export {
@@ -49,4 +49,4 @@ export {
 } from './RuntimeProvider'
 
 // Export types
-export * from '../types'
+export * from '../../types'

@@ -166,7 +166,7 @@ export function EventTimeline({
             whiteSpace: 'nowrap',
           }}
         >
-          {currentEvent?.title || 'No events yet. Waiting for runtime activity...'}
+          {currentEvent?.title || '暂无事件，等待运行态活动...'}
         </Text>
       </div>
 
@@ -189,7 +189,7 @@ export function EventTimeline({
     <>
       {allEvents.length === 0 && !loading ? (
         <Empty 
-          description="No events yet" 
+          description="暂无事件" 
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           style={{ padding: '20px 0' }}
         />
@@ -272,7 +272,7 @@ export function EventTimeline({
               )}
               {!hasMore && allEvents.length > 0 && (
                 <Text style={{ fontSize: '12px', color: '#64748B' }}>
-                  No more events
+                  没有更多事件了
                 </Text>
               )}
               {error && (
@@ -285,7 +285,7 @@ export function EventTimeline({
                     size="small"
                     onClick={loadMore}
                   >
-                    Retry
+                    重试
                   </Button>
                 </div>
               )}
@@ -302,7 +302,7 @@ export function EventTimeline({
       title={
         <Space onClick={collapsible ? toggleCollapse : undefined} style={{ cursor: collapsible ? 'pointer' : 'default' }}>
           <ClockCircleOutlined />
-          <span>Event Timeline</span>
+          <span>事件时间线</span>
           {collapsed && <Tag color="blue">{allEvents.length}</Tag>}
         </Space>
       }

@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Card, Row, Col, Button, Tag, Table, Statistic, Space, Form, Input, Select, Alert, Typography } from 'antd'
 import { 
-  TrendingUpOutlined, 
-  TrendingDownOutlined, 
   ShoppingCartOutlined, 
   WalletOutlined,
   BarChartOutlined,
 } from '@ant-design/icons'
+import { TrendingUp, TrendingDown } from 'lucide-react'
 import { useRuntime } from '../services/runtime'
 import { SignalTradingPanel } from '../components/SignalTradingPanel'
 import { getPositions, getOrderHistory, type Position, type Order } from '../services/api/executionApi'
@@ -125,7 +124,7 @@ export function TradingPage() {
                 key: 'side',
                 render: (side: string) => (
                   <Tag color={side === 'LONG' ? 'green' : 'red'}>
-                    {side === 'LONG' ? <><TrendingUpOutlined /> 多</> : <><TrendingDownOutlined /> 空</>}
+                    {side === 'LONG' ? <><TrendingUp size={14} /> 多</> : <><TrendingDown size={14} /> 空</>}
                   </Tag>
                 ),
               },
