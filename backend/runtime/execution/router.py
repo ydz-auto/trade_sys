@@ -16,7 +16,7 @@ Execution Router - 执行路由器
     ↓             ↓
 PaperAdapter   LiveAdapter
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable
 from datetime import datetime
 from enum import Enum
 import asyncio

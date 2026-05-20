@@ -13,6 +13,7 @@ from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
 import asyncio
+import numpy as np
 
 from .imbalance import calculate_imbalance, ImbalanceTracker
 from .wall_detection import detect_walls
