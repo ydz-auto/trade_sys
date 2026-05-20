@@ -30,6 +30,8 @@ interface RuntimeContextType {
   // Status
   isConnected: boolean
   isLive: boolean
+  isPaper: boolean
+  isRealTrading: boolean
 }
 
 const RuntimeContext = createContext<RuntimeContextType | undefined>(undefined)
@@ -65,6 +67,7 @@ export function RuntimeProvider({
     }
   }, [autoInitialize])
 
+  const runtimeType = activeRuntimeState?.status.type
   const value: RuntimeContextType = {
     activeRuntimeId,
     activeRuntimeState,
@@ -79,7 +82,9 @@ export function RuntimeProvider({
     createRuntime,
     destroyRuntime,
     isConnected: activeRuntimeState?.status.status !== 'error' && activeRuntimeState?.status.status !== 'idle',
-    isLive: activeRuntimeState?.status.type === 'live',
+    isLive: runtimeType === 'live',
+    isPaper: runtimeType === 'paper',
+    isRealTrading: runtimeType === 'live' || runtimeType === 'paper',
   }
 
   return (

@@ -229,7 +229,7 @@ export interface SymbolConfigsResponse {
 }
 
 // Runtime State Types - Unified Runtime Visualization Layer
-export type RuntimeType = 'live' | 'backtest' | 'replay' | 'ai'
+export type RuntimeType = 'live' | 'paper' | 'backtest' | 'replay' | 'ai'
 
 export interface RuntimeStatus {
   type: RuntimeType

@@ -26,7 +26,7 @@ import {
   AlertCircleOutlined,
   ZapOutlined,
 } from '@ant-design/icons'
-import { useRuntime, useSignalsState, usePnLState } from '../services/runtime'
+import { useRuntime, useSignalsState, usePnLState, useRuntimeStatus } from '../services/runtime'
 import {
   executeSignal,
   getPositions,
@@ -47,9 +47,10 @@ const EXCHANGES: { value: ExchangeType; label: string }[] = [
 ]
 
 export function SignalTradingPanel() {
-  const { isLive } = useRuntime()
+  const { isLive, isPaper } = useRuntime()
   const signalsState = useSignalsState()
   const pnlState = usePnLState()
+  const runtimeStatus = useRuntimeStatus()
   
   const [positions, setPositions] = useState<Position[]>([])
   const [openOrders, setOpenOrders] = useState<Order[]>([])
@@ -147,6 +148,12 @@ export function SignalTradingPanel() {
     }
   }
 
+  const getRuntimeTag = () => {
+    if (isLive) return <Tag color="red">实盘交易</Tag>
+    if (isPaper) return <Tag color="blue">模拟交易</Tag>
+    return <Tag color="gray">回测模式</Tag>
+  }
+
   const latestSignals = signalsState?.latest 
     ? Object.values(signalsState.latest).flat().slice(0, 5)
     : []
@@ -164,7 +171,7 @@ export function SignalTradingPanel() {
 
       <Row gutter={16}>
         <Col xs={24} md={16}>
-          <Card title="最新策略信号" extra={isLive ? <Tag color="green">实时模式</Tag> : <Tag color="blue">模拟模式</Tag>}>
+          <Card title="最新策略信号" extra={getRuntimeTag()}>
             {latestSignals.length === 0 ? (
               <Alert message="暂无信号" type="info" />
             ) : (
@@ -401,8 +408,8 @@ export function SignalTradingPanel() {
 
                 <Form.Item>
                   <Space>
-                    <Button type="primary" htmlType="submit" icon={<ShoppingCartOutlined />}>
-                      {isLive ? '确认下单' : '模拟下单'}
+                    <Button type="primary" htmlType="submit" icon={<ShoppingCartOutlined />} danger={isLive}>
+                      {isLive ? '⚠️ 实盘下单' : isPaper ? '模拟下单' : '回测下单'}
                     </Button>
                     <Button onClick={() => setSignalModalVisible(false)}>取消</Button>
                   </Space>

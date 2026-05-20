@@ -1,9 +1,10 @@
 /**
  * Runtime Manager - 管理多个独立的 Runtime
  *
- * Live Runtime - 实时交易运行时
- * Backtest Runtime - 回测运行时
- * Replay Runtime - 回放运行时
+ * Live Runtime - 实时交易运行时（真实资金）
+ * Paper Runtime - 模拟交易运行时（真实数据+模拟下单）
+ * Backtest Runtime - 回测运行时（历史数据）
+ * Replay Runtime - 历史回放运行时（历史数据）
  * AI Runtime - AI 研究运行时
  *
  * 每个 Runtime 独立运行，防止互相阻塞
@@ -48,6 +49,13 @@ export class RuntimeManager {
         type: 'live',
         id: 'live',
         name: '实时交易',
+        autoSubscribe: true,
+        channels: ['dashboard', 'decision', 'risk', 'position', 'timeline'],
+      },
+      {
+        type: 'paper',
+        id: 'paper',
+        name: '模拟交易',
         autoSubscribe: true,
         channels: ['dashboard', 'decision', 'risk', 'position', 'timeline'],
       },
@@ -147,8 +155,8 @@ export class RuntimeManager {
 
     channels.forEach(ch => runtime.subscriptions.add(ch))
     
-    // Only live runtime connects to WebSocket
-    if (runtime.config.type === 'live') {
+    // Live and Paper runtimes connect to WebSocket for real-time data
+    if (runtime.config.type === 'live' || runtime.config.type === 'paper') {
       const channelNames = channels.map(ch => `channel:${ch}`)
       wsService.subscribe(channelNames)
     }
@@ -160,7 +168,7 @@ export class RuntimeManager {
     const runtime = this.runtimes.get(runtimeId)
     if (!runtime) return false
 
-    if (runtime.config.type === 'live') {
+    if (runtime.config.type === 'live' || runtime.config.type === 'paper') {
       const channelNames = Array.from(runtime.subscriptions).map(ch => `channel:${ch}`)
       wsService.unsubscribe(channelNames)
     }
