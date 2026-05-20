@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import logging
 
-from ...services.strategy_service.symbol_registry import (
+from services.strategy_service.symbol_registry import (
     SymbolStrategyRegistry,
     get_symbol_registry,
 )

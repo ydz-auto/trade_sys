@@ -431,7 +431,11 @@ class FeatureMatrix:
     }
 
     def __init__(self, data_path: Optional[str] = None):
-        self.data_path = data_path or Path(__file__).parent.parent / "data_lake" / "features"
+        if data_path:
+            self.data_path = Path(data_path)
+        else:
+            backend_path = Path(__file__).parent.parent.parent
+            self.data_path = backend_path / "data_lake" / "features"
         self.df: Optional[pd.DataFrame] = None
         self.symbol: str = ""
 
@@ -453,7 +457,7 @@ class FeatureMatrix:
             return instance
             
         instance.df = pd.read_parquet(feature_path)
-        logger.info(f"Loaded Feature Matrix for {symbol}: {len(instance.df.shape[0]} rows, {len(instance.df.shape[1]} features")
+        logger.info(f"Loaded Feature Matrix for {symbol}: {instance.df.shape[0]} rows, {instance.df.shape[1]} features")
         return instance
 
     def get_features_by_category(self, category: FeatureCategory) -> List[str]:

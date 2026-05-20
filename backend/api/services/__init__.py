@@ -14,6 +14,8 @@ from .alpha import (
     create_snapshot,
     get_factor_lineage,
 )
+from .strategy_api_service import StrategyAPIService, get_strategy_api_service
+from .execution_api_service import ExecutionAPIService, get_execution_api_service
 
 __all__ = [
     "ProjectionReader",
@@ -30,4 +32,8 @@ __all__ = [
     "get_all_snapshots",
     "create_snapshot",
     "get_factor_lineage",
+    "StrategyAPIService",
+    "get_strategy_api_service",
+    "ExecutionAPIService",
+    "get_execution_api_service",
 ]
