@@ -3,145 +3,168 @@ import { useTradingStore } from '../../store/tradingStore'
 import clsx from 'clsx'
 import {
   LayoutDashboard,
-  LineChart,
-  Shield,
-  Database,
-  Radio,
-  BarChart3,
-  Settings,
-  Zap,
-  Target,
-  History,
-  AlertTriangle,
-  Brain,
-  MessageSquare,
-  Activity,
   TrendingUp,
-  Boxes,
-  Cpu,
-  Network,
-  Sparkles,
+  Radio,
+  Zap,
+  History,
+  Shield,
+  Brain,
+  Settings,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
+import { useState } from 'react'
 
 const modeConfig = {
-  BACKTEST: { color: 'neutral', text: 'NEUTRAL 回测' },
-  SIMULATION: { color: 'warning', text: 'SIMULATION 模拟' },
-  LIVE: { color: 'bullish', text: 'LIVE 实盘' },
+  BACKTEST: { text: 'BACKTEST', bgClass: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
+  SIMULATION: { text: 'PAPER', bgClass: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
+  LIVE: { text: 'LIVE', bgClass: 'bg-red-500/20 text-red-400 border-red-500/30' },
 }
 
 const navStructure = [
   {
-    section: '总览',
+    section: '首页',
+    icon: LayoutDashboard,
     items: [
-      { path: '/', label: '运行态总览', icon: LayoutDashboard },
+      { path: '/', label: 'Runtime 总览' },
     ],
   },
   {
     section: '市场',
+    icon: TrendingUp,
     items: [
-      { path: '/markets', label: '市场监控', icon: LineChart },
-      { path: '/regime', label: '市场状态', icon: Shield },
-      { path: '/data-pipeline', label: '数据管道', icon: Database },
+      { path: '/markets', label: '市场监控' },
+      { path: '/regime', label: '市场状态' },
+      { path: '/data-pipeline', label: '数据流监控' },
     ],
   },
   {
     section: '策略',
+    icon: Radio,
     items: [
-      { path: '/signals', label: '运行态信号', icon: Radio },
-      { path: '/feature-contribution', label: '特征贡献度', icon: BarChart3 },
-      { path: '/strategy', label: '策略管理', icon: Settings },
-      { path: '/alpha', label: 'Alpha生命周期', icon: TrendingUp },
+      { path: '/signals', label: '策略运行态', highlight: true },
+      { path: '/feature-contribution', label: 'Feature 贡献' },
+      { path: '/strategy', label: '策略管理' },
+      { path: '/alpha', label: 'Alpha 生命周期' },
+      { path: '/behaviour', label: '行为检测' },
     ],
   },
   {
     section: '交易',
+    icon: Zap,
     items: [
-      { path: '/execution', label: '执行管理', icon: Zap },
-      { path: '/positions', label: '持仓管理', icon: Boxes },
-      { path: '/trading', label: '跟随交易', icon: Target },
+      { path: '/trading', label: '实盘交易', highlight: true },
+      { path: '/execution', label: '订单执行' },
+      { path: '/positions', label: '持仓管理' },
     ],
   },
   {
-    section: '回放',
+    section: 'Replay',
+    icon: History,
     items: [
-      { path: '/replay', label: '运行态回放', icon: History },
-      { path: '/backtest', label: '历史回测', icon: Activity },
+      { path: '/replay', label: 'Runtime 回放', highlight: true },
+      { path: '/backtest', label: 'Backtest' },
     ],
   },
   {
     section: '风险',
+    icon: Shield,
     items: [
-      { path: '/risk', label: '风险引擎', icon: AlertTriangle },
-      { path: '/risk-propagation', label: '风险传导', icon: Network },
+      { path: '/risk', label: '风险引擎', highlight: true },
+      { path: '/risk-propagation', label: '风险传播' },
     ],
   },
   {
-    section: '智能分析',
+    section: 'AI',
+    icon: Brain,
     items: [
-      { path: '/narrative', label: '叙事分析', icon: Sparkles },
-      { path: '/sentiment', label: '情绪监控', icon: Brain },
-      { path: '/events', label: '事件智能', icon: MessageSquare },
+      { path: '/narrative', label: 'Narrative' },
+      { path: '/sentiment', label: 'Sentiment' },
+      { path: '/events', label: 'Event Intelligence' },
     ],
   },
   {
     section: '系统',
+    icon: Settings,
     items: [
-      { path: '/control', label: '控制中心', icon: Cpu },
-      { path: '/monitor', label: '系统监控', icon: Activity },
-      { path: '/settings', label: '系统设置', icon: Settings },
+      { path: '/control', label: 'Runtime 控制中心' },
+      { path: '/trading-mode', label: '交易模式', highlight: true },
+      { path: '/monitor', label: 'Runtime 监控' },
+      { path: '/settings', label: '设置' },
     ],
   },
 ]
+
+function NavSection({ section, icon: Icon, items }: { section: string; icon: React.ElementType; items: Array<{ path: string; label: string; highlight?: boolean }> }) {
+  const [expanded, setExpanded] = useState(true)
+
+  return (
+    <div className="mb-1">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-text-tertiary uppercase tracking-widest font-medium hover:text-text-secondary transition-colors"
+      >
+        <Icon className="w-3.5 h-3.5" />
+        <span className="flex-1 text-left">{section}</span>
+        {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+      </button>
+      
+      {expanded && (
+        <div className="space-y-0.5">
+          {items.map((item) => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) =>
+                clsx(
+                  'flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all duration-200',
+                  'hover:bg-border/50',
+                  isActive
+                    ? 'bg-primary/10 text-primary border border-primary/20 font-medium'
+                    : 'text-text-secondary hover:text-text-primary border border-transparent',
+                  item.highlight && !isActive && 'text-text-primary/80'
+                )
+              }
+            >
+              <span className="truncate">{item.label}</span>
+              {item.highlight && (
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+              )}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function Sidebar() {
   const { mode, isConnected } = useTradingStore()
 
   return (
-    <aside style={{ position: 'fixed', left: 0, top: 0, bottom: 0, width: 240, zIndex: 50 }} className="bg-surface border-r border-border flex flex-col">
-      <div className="h-16 flex items-center gap-3 px-4 border-b border-border">
-        <div className="w-9 h-9 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
-          <Zap className="w-5 h-5 text-background" />
+    <aside 
+      style={{ position: 'fixed', left: 0, top: 0, bottom: 0, width: 220, zIndex: 50 }} 
+      className="bg-surface border-r border-border flex flex-col"
+    >
+      <div className="h-14 flex items-center gap-2.5 px-3 border-b border-border">
+        <div className="w-8 h-8 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
+          <Zap className="w-4 h-4 text-background" />
         </div>
-        <div>
-          <span className="font-heading font-bold text-sm tracking-tight">TradeAgent</span>
-          <span className="block text-[10px] text-text-secondary tracking-wide">RUNTIME TERMINAL</span>
+        <div className="flex-1">
+          <div className="font-heading font-bold text-sm tracking-tight">TradeAgent</div>
+          <div className="text-[9px] text-text-tertiary tracking-wide">RUNTIME PLATFORM</div>
         </div>
       </div>
 
-      <nav className="flex-1 p-2 space-y-1 overflow-y-auto scrollbar-hide">
+      <nav className="flex-1 p-2 overflow-y-auto scrollbar-hide">
         {navStructure.map((section) => (
-          <div key={section.section} className="mb-3">
-            <div className="text-[10px] text-text-tertiary uppercase tracking-widest px-3 py-1.5 font-medium">
-              {section.section}
-            </div>
-            {section.items.map((item) => {
-              const Icon = item.icon
-              return (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  className={({ isActive }) =>
-                    clsx(
-                      'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all duration-200',
-                      'hover:bg-border/50',
-                      isActive
-                        ? 'bg-primary/10 text-primary border border-primary/20'
-                        : 'text-text-secondary hover:text-text-primary border border-transparent'
-                    )
-                  }
-                >
-                  <Icon className="w-4 h-4 flex-shrink-0" />
-                  <span className="truncate">{item.label}</span>
-                </NavLink>
-              )
-            })}
-          </div>
+          <NavSection key={section.section} {...section} />
         ))}
       </nav>
 
-      <div className="p-3 border-t border-border bg-surface/50">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
+      <div className="p-2.5 border-t border-border bg-surface/50">
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-1.5">
             <span className="relative flex h-2 w-2">
               {isConnected && (
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-bullish opacity-75"></span>
@@ -153,22 +176,20 @@ export function Sidebar() {
                 )}
               ></span>
             </span>
-            <span className="text-xs text-text-secondary">
-              {isConnected ? '系统正常' : '系统异常'}
+            <span className="text-[10px] text-text-secondary">
+              {isConnected ? 'Runtime Active' : 'Offline'}
             </span>
           </div>
           <span
             className={clsx(
-              'px-2 py-0.5 rounded text-[10px] font-medium tracking-wide',
-              modeConfig[mode].color === 'bullish' && 'bg-bullish/20 text-bullish',
-              modeConfig[mode].color === 'warning' && 'bg-warning/20 text-warning',
-              modeConfig[mode].color === 'neutral' && 'bg-neutral/20 text-neutral'
+              'px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide border',
+              modeConfig[mode].bgClass
             )}
           >
-            {modeConfig[mode].text.split(' ')[0]}
+            {modeConfig[mode].text}
           </span>
         </div>
-        <div className="text-[10px] text-text-tertiary">v2.1.0 Runtime</div>
+        <div className="text-[9px] text-text-tertiary">v2.2.0 Runtime System</div>
       </div>
     </aside>
   )

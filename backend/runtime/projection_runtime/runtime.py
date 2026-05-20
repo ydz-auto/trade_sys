@@ -7,6 +7,7 @@ Projection Runtime - CQRS 投影运行时
 - 重试机制
 - 健康检查
 - 指标收集
+- 写入 RuntimeStateStore（统一状态来源）
 
 业务逻辑：调用 services/projection_service/projections/
 """
@@ -30,6 +31,7 @@ from runtime.shared import (
     PublisherConfig,
     RuntimeHealthCheck,
 )
+from runtime.state import get_runtime_state_store
 from infrastructure.messaging import Topics
 from infrastructure.messaging.kafka_config import ConsumerGroup
 from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
@@ -77,6 +79,8 @@ class ProjectionRuntime(BaseRuntime):
         
         self._redis: Any = None
         self._redis_pubsub: Any = None
+        
+        self._state_store = get_runtime_state_store()
     
     async def initialize(self) -> None:
         """初始化运行时组件"""
@@ -208,7 +212,31 @@ class ProjectionRuntime(BaseRuntime):
                 except Exception as e:
                     self.logger.error(f"Error in {projection.name}: {e}")
         
+        self._update_state_store(event_type, event)
+        
         self.metrics.increment("events_processed")
+    
+    def _update_state_store(self, event_type: str, event: Dict[str, Any]) -> None:
+        """更新 RuntimeStateStore（统一状态来源）"""
+        try:
+            state_mapping = {
+                "signal": "signal",
+                "order": "execution",
+                "position": "portfolio",
+                "risk": "risk",
+                "market": "market",
+                "feature": "feature",
+                "decision": "signal",
+            }
+            
+            state_type = state_mapping.get(event_type)
+            if state_type:
+                self._state_store.update(state_type, {
+                    "last_event": event,
+                    "last_update": datetime.now().isoformat(),
+                })
+        except Exception as e:
+            self.logger.error(f"Error updating state store: {e}")
     
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""

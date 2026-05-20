@@ -1,0 +1,195 @@
+"""
+Trading Mode Router - 交易模式管理 API
+
+端点:
+- GET /trading-mode - 获取当前模式状态
+- GET /trading-mode/modes - 获取所有模式信息
+- POST /trading-mode/transition - 切换模式
+- GET /trading-mode/portfolio - 获取当前 Portfolio
+- GET /trading-mode/stats - 获取统计信息
+"""
+from fastapi import APIRouter, HTTPException
+from typing import Dict, Any
+from pydantic import BaseModel, Field
+
+from domain.trading_mode import (
+    TradingMode,
+    get_trading_mode_manager,
+    ModeTransitionRequest,
+)
+
+router = APIRouter(prefix="/trading-mode", tags=["Trading Mode"])
+
+
+class TransitionRequest(BaseModel):
+    target_mode: str = Field(..., description="目标模式: backtest, paper, live")
+    reason: str = Field(default="", description="切换原因")
+    confirmed: bool = Field(default=False, description="是否已确认 (LIVE 模式必须)")
+    force: bool = Field(default=False, description="强制切换 (跳过确认)")
+
+
+class SetExchangeRequest(BaseModel):
+    exchange: str = Field(..., description="交易所: binance, okx")
+
+
+@router.get("")
+async def get_trading_mode_status() -> Dict[str, Any]:
+    """获取当前交易模式状态"""
+    manager = get_trading_mode_manager()
+    status = manager.get_status()
+    config = manager.config
+    
+    return {
+        "mode": status.mode.value,
+        "state": status.state.value,
+        "previous_mode": status.previous_mode.value if status.previous_mode else None,
+        "config": {
+            "market_data_source": config.market_data_source,
+            "order_execution": config.order_execution,
+            "risk_engine": config.risk_engine,
+            "portfolio_isolated": config.portfolio_isolated,
+            "require_confirmation": config.require_confirmation,
+            "color": config.color,
+            "warning": config.warning,
+        },
+        "is_safe_to_trade": manager.is_safe_to_trade(),
+    }
+
+
+@router.get("/modes")
+async def get_all_modes() -> Dict[str, Any]:
+    """获取所有交易模式信息"""
+    manager = get_trading_mode_manager()
+    modes = manager.get_all_modes_info()
+    
+    return {
+        "modes": modes,
+        "current_mode": manager.mode.value,
+    }
+
+
+@router.post("/transition")
+async def transition_mode(request: TransitionRequest) -> Dict[str, Any]:
+    """切换交易模式
+    
+    注意:
+    - 切换到 LIVE 模式需要 confirmed=true
+    - 切换会断开当前 Adapter 并连接新的 Adapter
+    - Portfolio 会自动隔离
+    """
+    manager = get_trading_mode_manager()
+    
+    try:
+        target_mode = TradingMode(request.target_mode.lower())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid mode: {request.target_mode}. Must be one of: backtest, paper, live"
+        )
+    
+    result = await manager.transition_to(
+        target_mode=target_mode,
+        reason=request.reason,
+        confirmed=request.confirmed,
+        force=request.force,
+    )
+    
+    if not result.get("success"):
+        if result.get("requires_confirmation"):
+            return result
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error", "Transition failed")
+        )
+    
+    return result
+
+
+@router.post("/transition/preview")
+async def preview_transition(request: TransitionRequest) -> Dict[str, Any]:
+    """预览模式切换 (不实际执行)"""
+    manager = get_trading_mode_manager()
+    
+    try:
+        target_mode = TradingMode(request.target_mode.lower())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid mode: {request.target_mode}"
+        )
+    
+    can_transition, message = await manager.can_transition_to(target_mode)
+    
+    target_config = manager.get_all_modes_info()
+    target_info = next((m for m in target_config if m["mode"] == target_mode.value), None)
+    
+    return {
+        "can_transition": can_transition,
+        "message": message,
+        "current_mode": manager.mode.value,
+        "target_mode": target_mode.value,
+        "target_config": target_info["config"] if target_info else None,
+        "requires_confirmation": target_info["config"]["require_confirmation"] if target_info else False,
+    }
+
+
+@router.get("/portfolio")
+async def get_portfolio(mode: str = None) -> Dict[str, Any]:
+    """获取 Portfolio
+    
+    Args:
+        mode: 可选，指定模式。不指定则返回当前模式的 Portfolio
+    """
+    manager = get_trading_mode_manager()
+    
+    target_mode = None
+    if mode:
+        try:
+            target_mode = TradingMode(mode.lower())
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid mode: {mode}")
+    
+    portfolio = manager.get_portfolio(target_mode)
+    
+    return {
+        "mode": (target_mode or manager.mode).value,
+        "portfolio": portfolio,
+    }
+
+
+@router.get("/stats")
+async def get_stats() -> Dict[str, Any]:
+    """获取交易模式统计信息"""
+    manager = get_trading_mode_manager()
+    return manager.get_stats()
+
+
+@router.post("/exchange")
+async def set_exchange(request: SetExchangeRequest) -> Dict[str, Any]:
+    """设置交易所"""
+    manager = get_trading_mode_manager()
+    
+    try:
+        manager.set_exchange(request.exchange)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    return {
+        "success": True,
+        "exchange": request.exchange,
+        "mode": manager.mode.value,
+    }
+
+
+@router.get("/safety-check")
+async def safety_check() -> Dict[str, Any]:
+    """安全检查 - 是否可以安全交易"""
+    manager = get_trading_mode_manager()
+    is_safe, message = manager.is_safe_to_trade()
+    
+    return {
+        "is_safe": is_safe,
+        "message": message,
+        "mode": manager.mode.value,
+        "state": manager.state.value,
+    }

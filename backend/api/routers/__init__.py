@@ -19,6 +19,7 @@ from .refresh import router as refresh_router
 from .feature_matrix import router as feature_matrix_router
 from .strategy import router as strategy_router
 from .execution import router as execution_router
+from .trading_mode import router as trading_mode_router
 
 
 api_router = APIRouter()
@@ -39,5 +40,6 @@ api_router.include_router(backtest_router, prefix="/backtest-api", tags=["Backte
 api_router.include_router(replay_router, tags=["Replay"])
 api_router.include_router(correlation_router, prefix="/correlation", tags=["Correlation"])
 api_router.include_router(refresh_router, tags=["Refresh"])
+api_router.include_router(trading_mode_router, tags=["Trading Mode"])
 
 __all__ = ["api_router"]

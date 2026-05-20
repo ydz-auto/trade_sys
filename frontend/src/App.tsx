@@ -22,6 +22,7 @@ import { SettingsPage } from './pages/SettingsPage'
 import { MarketMonitorPage } from './pages/MarketMonitorPage'
 import { DataPipelinePage } from './pages/DataPipelinePage'
 import { BacktestingPage } from './pages/BacktestingPage'
+import { TradingModePage } from './pages/TradingModePage'
 import { Sidebar } from './components/layout/Sidebar'
 import { AppHeader } from './components/AppHeader'
 import { EventTimeline } from './components/EventTimeline'
@@ -58,36 +59,45 @@ function AppContent() {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       {!isMobileDevice && <Sidebar />}
-      <Layout style={{ marginLeft: isMobileDevice ? 0 : 240, transition: 'margin-left 0.2s' }}>
+      <Layout style={{ marginLeft: isMobileDevice ? 0 : 220, transition: 'margin-left 0.2s' }}>
         <AppHeader onMobileMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)} />
         <Content style={{ padding: 0, overflow: 'auto', minHeight: 'calc(100vh - 64px - 180px)' }}>
           <Routes>
             <Route path="/" element={<RuntimeOverviewPage />} />
+            
             <Route path="/markets" element={<MarketMonitorPage />} />
             <Route path="/regime" element={<RegimePage />} />
             <Route path="/data-pipeline" element={<DataPipelinePage />} />
+            
             <Route path="/signals" element={<RuntimeSignalsPage />} />
             <Route path="/feature-contribution" element={<FeatureContributionPage />} />
             <Route path="/strategy" element={<StrategyManagementPage />} />
             <Route path="/alpha" element={<AlphaLifecyclePage />} />
+            <Route path="/behaviour" element={<RuntimeSignalsPage />} />
+            
+            <Route path="/trading" element={<LiveTradingPage />} />
             <Route path="/execution" element={<ExecutionPage />} />
             <Route path="/positions" element={<PositionsPage />} />
-            <Route path="/trading" element={<LiveTradingPage />} />
+            
             <Route path="/replay" element={<RuntimeReplayPage />} />
             <Route path="/backtest" element={<BacktestingPage />} />
+            
             <Route path="/risk" element={<RiskPage />} />
             <Route path="/risk-propagation" element={<RiskPropagationPage />} />
+            
             <Route path="/narrative" element={<NarrativePage />} />
             <Route path="/sentiment" element={<SentimentPage />} />
             <Route path="/events" element={<NarrativePage />} />
+            
             <Route path="/control" element={<ControlPage />} />
+            <Route path="/trading-mode" element={<TradingModePage />} />
             <Route path="/monitor" element={<SystemMonitorPage />} />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/decision" element={<DecisionPage />} />
+            
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Content>
-        <Footer style={{ padding: 0, position: 'fixed', bottom: 0, left: isMobileDevice ? 0 : 240, right: 0, zIndex: 999 }}>
+        <Footer style={{ padding: 0, position: 'fixed', bottom: 0, left: isMobileDevice ? 0 : 220, right: 0, zIndex: 999 }}>
           <EventTimeline />
         </Footer>
       </Layout>

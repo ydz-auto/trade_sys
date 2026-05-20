@@ -1,36 +1,92 @@
 """
-Runtime Layer - 统一的运行时层
+Runtime Kernel - Runtime 核心模块
 
-所有 runtime 都遵循统一的 Runtime Contract：
-- 统一的生命周期管理
-- 统一的配置加载
-- 统一的可观测性
-- 统一的健康检查
+这是整个 Runtime Trading System 的核心，包含:
+- ExecutionRouter: 统一下单入口
+- RuntimeIsolation: namespace 隔离
+- RuntimeStateStore: 统一状态存储
+- EventNamespace: 事件命名空间
 
-Runtime 列表：
-- ingestion_runtime: 数据采集 + 聚合
-- projection_runtime: CQRS 投影
-- signal_runtime: 信号生成
-- execution_runtime: 订单执行
-- replay_runtime: 回放引擎
-- correlation_runtime: 多数据源相关性分析
-- narrative_runtime: AI 叙事引擎
-- monitoring_runtime: 监控服务
-- scheduler_runtime: 定时调度
+架构:
+    TradeModeManager
+           │
+    ───────────────────────
+    Market Runtime
+           ↓
+    Feature Runtime
+           ↓
+    Behaviour Runtime
+           ↓
+    Strategy Runtime
+           ↓
+    Execution Router  ← 本模块
+       ├─ Paper Execution
+       └─ Live Execution
+           ↓
+    Portfolio Runtime
+           ↓
+    Risk Runtime
+           ↓
+    Projection Runtime
+           ↓
+    RuntimeStateStore  ← 本模块
+           ↓
+    WebSocket Gateway
+           ↓
+    Frontend Runtime UI
 """
+from .execution import (
+    ExecutionRouter,
+    ExecutionRoute,
+    ExecutionBlockedError,
+    get_execution_router,
+    safe_execute,
+)
 
-from runtime.base import (
-    BaseRuntime,
-    RuntimeConfig,
-    RuntimeState,
-    RuntimeContext,
-    get_runtime_context,
+from .isolation import (
+    RuntimeNamespace,
+    RuntimeIsolation,
+    get_runtime_isolation,
+    ns_topic,
+    ns_event,
+)
+
+from .state import (
+    StateSnapshot,
+    RuntimeStateStore,
+    get_runtime_state_store,
+    set_state,
+    get_state,
+)
+
+from .event import (
+    EventDomain,
+    EventType,
+    EventNamespace,
+    get_event_namespace,
 )
 
 __all__ = [
-    "BaseRuntime",
-    "RuntimeConfig",
-    "RuntimeState",
-    "RuntimeContext",
-    "get_runtime_context",
+    "ExecutionRouter",
+    "ExecutionRoute",
+    "ExecutionBlockedError",
+    "get_execution_router",
+    "safe_execute",
+    
+    "RuntimeNamespace",
+    "RuntimeIsolation",
+    "get_runtime_isolation",
+    "ns_topic",
+    "ns_event",
+    
+    "StateSnapshot",
+    "RuntimeStateStore",
+    "get_runtime_state_store",
+    "set_state",
+    "get_state",
+    
+    "EventDomain",
+    "EventType",
+    "EventNamespace",
+    "get_event_namespace",
 ]
