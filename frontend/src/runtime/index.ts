@@ -1,3 +1,5 @@
 export { RuntimeProvider, useRuntime, useRuntimeMode, useOrchestrator } from './contexts/RuntimeContext'
 export { useRuntimeStore, getModeBadgeClass, getModeLabel } from './stores/runtimeStore'
+export { useRuntimeStream, RuntimeStreamProvider } from './streams/runtimeStream'
 export type { TradingMode, RuntimeState, RuntimeInfo } from './stores/runtimeStore'
+export type { ProjectionEvent, RuntimeStreamConfig } from './streams/runtimeStream'
