@@ -13,7 +13,9 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-DATA_LAKE_ROOT = project_root / "data_lake"
+from infrastructure.data_lake import get_data_lake_root_cached
+
+DATA_LAKE_ROOT = get_data_lake_root_cached()
 
 
 def ensure_data_dirs():

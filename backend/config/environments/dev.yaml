@@ -31,3 +31,10 @@ observability:
   jaeger:
     enabled: true
     endpoint: "http://localhost:4317"
+
+data_lake:
+  smb_host: "192.168.1.14"
+  smb_share: "00_crypto"
+  smb_path: "00_code/backend/data_lake"
+  local_path: "./data_lake"
+  use_smb: true

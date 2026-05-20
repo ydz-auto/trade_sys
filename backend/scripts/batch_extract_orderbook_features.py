@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from services.aggregation_service.publishers.parquet_writer import (
     get_parquet_writer,
 )
+from infrastructure.data_lake import get_data_lake_subpath
 
 
 class BinanceHistoricalCollector:
@@ -39,9 +40,11 @@ class BinanceHistoricalCollector:
     def __init__(
         self,
         symbol: str,
-        output_path: str = "data_lake/orderbook_features"
+        output_path: str = None
     ):
         self.symbol = symbol.upper()
+        if output_path is None:
+            output_path = str(get_data_lake_subpath("orderbook_features"))
         self.output_path = output_path
         self.writer = None
     
@@ -305,7 +308,7 @@ async def main():
     parser.add_argument(
         '--output',
         type=str,
-        default='data_lake/orderbook_features',
+        default=None,
         help='Output path for parquet files'
     )
     

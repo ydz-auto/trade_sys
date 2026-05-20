@@ -65,6 +65,27 @@ class ObservabilityConfig(BaseModel):
     log_level: str = "INFO"
 
 
+class DataLakeStorageConfig(BaseModel):
+    """数据湖存储配置"""
+    smb_host: str = "192.168.1.14"
+    smb_share: str = "00_crypto"
+    smb_path: str = "00_code/backend/data_lake"
+    local_path: str = "./data_lake"
+    use_smb: bool = True
+    
+    @property
+    def smb_url(self) -> str:
+        """获取完整的 SMB URL"""
+        return f"smb://{self.smb_host}/{self.smb_share}/{self.smb_path}"
+    
+    @property
+    def effective_path(self) -> str:
+        """获取有效路径（根据 use_smb 决定使用 SMB 还是本地路径）"""
+        if self.use_smb:
+            return self.smb_url
+        return self.local_path
+
+
 class InfraConfig(BaseModel):
     """基础设施配置"""
     kafka: KafkaConfig = Field(default_factory=KafkaConfig)
@@ -72,6 +93,7 @@ class InfraConfig(BaseModel):
     clickhouse: ClickHouseConfig = Field(default_factory=ClickHouseConfig)
     postgresql: PostgreSQLConfig = Field(default_factory=PostgreSQLConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
+    data_lake: DataLakeStorageConfig = Field(default_factory=DataLakeStorageConfig)
 
 
 class EnvironmentConfig(BaseModel):

@@ -14,6 +14,7 @@ import argparse
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from services.aggregation_service.publishers.parquet_writer import get_parquet_writer
+from infrastructure.data_lake import get_data_lake_subpath
 
 
 class TradeFeatureExtractor:
@@ -21,10 +22,10 @@ class TradeFeatureExtractor:
     
     def __init__(self, trades_root: Path = None, output_root: Path = None):
         if trades_root is None:
-            trades_root = Path(__file__).parent.parent / "data_lake" / "crypto" / "binance" / "trades"
+            trades_root = get_data_lake_subpath("crypto", "binance", "trades")
         
         if output_root is None:
-            output_root = Path(__file__).parent.parent / "data_lake" / "orderbook_features"
+            output_root = get_data_lake_subpath("orderbook_features")
         
         self.trades_root = trades_root
         self.writer = get_parquet_writer(base_path=str(output_root))

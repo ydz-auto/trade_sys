@@ -19,6 +19,7 @@ import pandas as pd
 import numpy as np
 
 from infrastructure.logging import get_logger
+from infrastructure.data_lake import get_features_path, get_research_path
 
 logger = get_logger("context_aware_backtest")
 
@@ -61,7 +62,7 @@ class ContextAwareBacktester:
         self.results: Dict[str, StrategyResult] = {}
     
     def load_data(self) -> pd.DataFrame:
-        data_path = backend_path / "data_lake/features/binance/BTCUSDT/features_with_structure.parquet"
+        data_path = get_features_path("binance", "BTCUSDT") / "features_with_structure.parquet"
         
         try:
             df = pd.read_parquet(data_path)
@@ -572,7 +573,7 @@ class ContextAwareBacktester:
         print("\n" + "=" * 120)
     
     def save_results(self):
-        output_dir = backend_path / "data_lake/research"
+        output_dir = get_research_path()
         output_dir.mkdir(parents=True, exist_ok=True)
         
         output_data = {

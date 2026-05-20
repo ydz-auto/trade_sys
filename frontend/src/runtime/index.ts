@@ -1,5 +1,7 @@
 export { RuntimeProvider, useRuntime, useRuntimeMode, useOrchestrator } from './contexts/RuntimeContext'
+export { ProjectionProvider, useProjection, useMarketState, useSignalState, useExecutionState, usePortfolioState, useRiskState } from './contexts/ProjectionContext'
 export { useRuntimeStore, getModeBadgeClass, getModeLabel } from './stores/runtimeStore'
 export { useRuntimeStream, RuntimeStreamProvider } from './streams/runtimeStream'
 export type { TradingMode, RuntimeState, RuntimeInfo } from './stores/runtimeStore'
 export type { ProjectionEvent, RuntimeStreamConfig } from './streams/runtimeStream'
+export type { ProjectionState } from './contexts/ProjectionContext'

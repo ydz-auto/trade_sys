@@ -6,20 +6,23 @@
 3. 等等
 """
 
+import sys
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import json
 from pathlib import Path
 
-# 项目路径
 project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from infrastructure.data_lake import get_features_path, get_research_path
 
 
 def load_data():
     """加载数据"""
     print("📊 加载数据...")
-    features_path = project_root / "data_lake" / "features" / "binance" / "BTCUSDT" / "features_with_structure.parquet"
+    features_path = get_features_path("binance", "BTCUSDT") / "features_with_structure.parquet"
     
     df = pd.read_parquet(features_path)
     print(f"✅ 数据加载完成: {len(df)} 条")
@@ -278,7 +281,7 @@ def run_backtest(df, start_date=None, end_date=None):
             'strategy_stats': strategy_stats
         }
         
-        output_file = project_root / "data_lake" / "research" / "smart_money_backtest_results.json"
+        output_file = get_research_path() / "smart_money_backtest_results.json"
         with open(output_file, 'w') as f:
             json.dump(results, f, indent=2, default=str)
         
