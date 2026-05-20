@@ -188,7 +188,7 @@ export function SentimentPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Market Sentiment</h1>
+          <h1 className="text-2xl font-bold text-text-primary">市场情绪</h1>
           <p className="text-text-secondary text-sm mt-1">市场情绪分析 - 市场现在情绪如何</p>
         </div>
         <div className="flex items-center gap-3">

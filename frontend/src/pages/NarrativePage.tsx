@@ -206,7 +206,7 @@ export function NarrativePage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Narrative Analysis</h1>
+          <h1 className="text-2xl font-bold text-text-primary">叙事分析</h1>
           <p className="text-text-secondary text-sm mt-1">市场叙事分析 - 当前市场正在相信什么故事</p>
         </div>
         <Button icon={<RefreshCw className="w-4 h-4" />} onClick={loadData}>刷新</Button>
@@ -214,7 +214,7 @@ export function NarrativePage() {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={16}>
-          <Card className="bg-surface border-border" title={<span className="text-sm font-medium">Current Narratives</span>}>
+          <Card className="bg-surface border-border" title={<span className="text-sm font-medium">当前叙事</span>}>
             {narratives.length === 0 ? (
               <Empty description="暂无活跃叙事" />
             ) : (
@@ -315,7 +315,7 @@ export function NarrativePage() {
         </Col>
 
         <Col xs={24} lg={8}>
-          <Card className="bg-surface border-border" title={<span className="text-sm font-medium">Narrative Heatmap</span>}>
+          <Card className="bg-surface border-border" title={<span className="text-sm font-medium">叙事热度图</span>}>
             <div className="space-y-3">
               {heatmap.map((item) => (
                 <div key={item.narrative} className="flex items-center gap-3">
@@ -344,7 +344,7 @@ export function NarrativePage() {
             </div>
           </Card>
 
-          <Card className="bg-surface border-border mt-4" title={<span className="text-sm font-medium">Narrative Rotation</span>}>
+          <Card className="bg-surface border-border mt-4" title={<span className="text-sm font-medium">叙事轮动</span>}>
             {rotations.length === 0 ? (
               <div className="py-4 text-center text-xs text-text-secondary">暂无轮动预测</div>
             ) : (
@@ -372,7 +372,7 @@ export function NarrativePage() {
             )}
           </Card>
 
-          <Card className="bg-surface border-border mt-4" title={<span className="text-sm font-medium">Narrative Impact</span>}>
+          <Card className="bg-surface border-border mt-4" title={<span className="text-sm font-medium">叙事影响</span>}>
             {selectedNarrative && (
               <div className="space-y-3">
                 <div>

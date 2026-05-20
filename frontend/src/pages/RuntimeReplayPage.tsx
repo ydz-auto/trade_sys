@@ -445,7 +445,7 @@ export function RuntimeReplayPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Runtime Replay</h1>
+          <h1 className="text-2xl font-bold text-text-primary">运行态回放</h1>
           <p className="text-text-secondary text-sm mt-1">
             市场事件 → 特征 → 行为 → 策略 → 执行 全链路回放
           </p>
