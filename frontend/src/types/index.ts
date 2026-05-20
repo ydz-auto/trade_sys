@@ -158,3 +158,72 @@ export interface PriceSourceStatus {
     latencyMs: number
   }
 }
+
+// === Feature Matrix Types ===
+export type FeatureCategory = 'raw' | 'derived' | 'microstructure' | 'cross_market' | 'event'
+
+export interface FeatureMetadata {
+  name: string
+  nameEn: string
+  category: FeatureCategory
+  description: string
+  dataType: string
+  normalizationRange?: [number, number]
+  isFactor: boolean
+  source: string
+  defaultWeight: number
+  lastUpdated: string
+}
+
+export interface FeatureValue {
+  name: string
+  category: FeatureCategory
+  value: number
+  normalizedValue?: number
+  weight: number
+  confidence: number
+}
+
+export interface FeatureMatrixSummary {
+  symbol: string
+  rows: number
+  featuresTotal: number
+  featuresRaw: number
+  featuresDerived: number
+  featuresMicrostructure: number
+  featuresCrossMarket: number
+  featuresEvent: number
+  dateRange?: { [key: string]: any }
+}
+
+export interface StrategyPerformance {
+  strategyId: string
+  winRate: number
+  avgReturn: number
+  maxDrawdown: number
+  totalTrades: number
+  lastUpdated: string
+}
+
+export interface OptimizationSuggestion {
+  type: string
+  feature: string
+  currentValue: number
+  suggestedValue: number
+  reason: string
+  expectedImprovement?: number
+}
+
+export interface SymbolConfig {
+  symbol: string
+  weights: Record<string, number>
+  thresholds: Record<string, number>
+  enabledStrategies: string[]
+  performance?: Record<string, StrategyPerformance>
+  optimizationSuggestions?: OptimizationSuggestion[]
+  lastUpdated: string
+}
+
+export interface SymbolConfigsResponse {
+  configs: Record<string, SymbolConfig>
+}

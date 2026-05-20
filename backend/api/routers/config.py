@@ -29,7 +29,15 @@ from ..schemas import (
     TelegramChannelUpdate,
     TelegramConfigUpdate,
 )
+from ..schemas.symbol_registry import (
+    SymbolConfigItem,
+    SymbolConfigsResponse,
+    UpdateSymbolConfigRequest,
+    OptimizationSuggestionItem,
+)
+from ..schemas.common import SuccessResponse
 from ..services.config_service import ConfigService
+from ..services import symbol_registry as sr_service
 
 router = APIRouter()
 
@@ -410,3 +418,38 @@ async def delete_telegram_channel(channel_id: str):
     if not success:
         raise HTTPException(status_code=404, detail="Channel not found")
     return {"success": True, "message": f"Channel {channel_id} deleted"}
+
+
+# ==================== Symbol Strategy Registry ====================
+
+@router.get("/symbols", response_model=SymbolConfigsResponse)
+async def get_all_symbol_configs():
+    """获取所有币种配置"""
+    return sr_service.get_all_symbol_configs()
+
+
+@router.get("/symbols/{symbol}", response_model=SymbolConfigItem)
+async def get_symbol_config_endpoint(symbol: str):
+    """获取单个币种配置"""
+    return sr_service.get_symbol_config(symbol)
+
+
+@router.put("/symbols/{symbol}", response_model=SuccessResponse)
+async def update_symbol_config_endpoint(
+    symbol: str,
+    request: UpdateSymbolConfigRequest
+):
+    """更新币种配置"""
+    success = sr_service.update_symbol_config(symbol, request)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to update symbol config")
+    return SuccessResponse(
+        success=True,
+        message=f"Config updated for {symbol}",
+    )
+
+
+@router.get("/symbols/{symbol}/suggestions", response_model=List[OptimizationSuggestionItem])
+async def get_optimization_suggestions_endpoint(symbol: str):
+    """获取币种优化建议"""
+    return sr_service.get_optimization_suggestions(symbol)
