@@ -17,6 +17,7 @@ import {
   ExperimentOutlined,
   PlayCircleOutlined,
   WarningOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -32,6 +33,7 @@ const menuItems: MenuProps['items'] = [
           children: [
             { key: '/', icon: <DashboardOutlined />, label: '数据大盘' },
             { key: '/factors', icon: <AreaChartOutlined />, label: '因子面板' },
+            { key: '/features', icon: <DatabaseOutlined />, label: '特征矩阵' },
             { key: '/factor-analytics', icon: <BarChartOutlined />, label: '因子分析' },
           ],
         },
