@@ -2,6 +2,7 @@
 """
 Binance K线数据下载脚本
 从 Binance Data Vision 下载历史K线数据并转换为 Parquet 格式
+支持 Spot (现货) 和 Futures (期货) 数据
 """
 
 import os
@@ -13,7 +14,8 @@ from datetime import datetime
 from tqdm import tqdm
 import time
 
-BASE_URL = "https://data.binance.vision/data/futures/um/monthly/klines"
+SPOT_BASE_URL = "https://data.binance.vision/data/spot/monthly/klines"
+FUTURES_BASE_URL = "https://data.binance.vision/data/futures/um/monthly/klines"
 
 KLINES_COLUMNS = [
     "open_time",
@@ -36,6 +38,7 @@ def download_klines(
     years: list,
     interval: str = "1m",
     data_root: Path = None,
+    market: str = "futures",
 ):
     """
     下载Binance K线数据
@@ -45,11 +48,18 @@ def download_klines(
         years: 年份列表, 如 [2024, 2025]
         interval: K线周期, 默认1m
         data_root: 数据根目录
+        market: 市场类型 "spot" 或 "futures"
     """
     if data_root is None:
         data_root = Path(__file__).parent.parent / "data_lake"
     
-    save_base = data_root / "crypto" / "binance" / "klines"
+    if market == "spot":
+        base_url = SPOT_BASE_URL
+        save_base = data_root / "crypto" / "binance" / "spot_klines"
+    else:
+        base_url = FUTURES_BASE_URL
+        save_base = data_root / "crypto" / "binance" / "klines"
+    
     save_base.mkdir(parents=True, exist_ok=True)
     
     total_tasks = len(symbols) * len(years) * 12
@@ -69,7 +79,7 @@ def download_klines(
                 
                 mm = str(month).zfill(2)
                 filename = f"{symbol}-{interval}-{year}-{mm}.zip"
-                url = f"{BASE_URL}/{symbol}/{interval}/{filename}"
+                url = f"{base_url}/{symbol}/{interval}/{filename}"
                 
                 save_dir = save_base / f"symbol={symbol}" / f"year={year}" / f"month={mm}"
                 save_dir.mkdir(parents=True, exist_ok=True)
@@ -83,7 +93,7 @@ def download_klines(
                     continue
                 
                 try:
-                    r = requests.get(url, timeout=30)
+                    r = requests.get(url, timeout=60)
                     
                     if r.status_code != 200:
                         stats["not_found"] += 1
@@ -104,19 +114,27 @@ def download_klines(
                     
                     csv_file = csv_files[0]
                     
-                    df = pd.read_csv(csv_file)
+                    df = pd.read_csv(csv_file, header=None, names=KLINES_COLUMNS)
                     
                     df["timestamp"] = pd.to_datetime(df["open_time"], unit="ms")
                     df["exchange"] = "binance"
                     df["symbol"] = symbol
                     df["interval"] = interval
+                    df["market"] = market
                     
                     final_df = df[[
-                        "timestamp", "exchange", "symbol", "interval",
+                        "timestamp", "exchange", "symbol", "interval", "market",
+                        "open", "high", "low", "close", "volume",
+                        "quote_asset_volume", "number_of_trades",
+                        "taker_buy_base", "taker_buy_quote"
+                    ]]
+                    
+                    final_df.columns = [
+                        "timestamp", "exchange", "symbol", "interval", "market",
                         "open", "high", "low", "close", "volume",
                         "quote_volume", "count",
                         "taker_buy_volume", "taker_buy_quote_volume"
-                    ]]
+                    ]
                     
                     final_df.to_parquet(
                         parquet_path,
@@ -139,7 +157,7 @@ def download_klines(
     pbar.close()
     
     print("\n" + "=" * 60)
-    print("下载统计:")
+    print(f"下载统计 ({market}):")
     print(f"  成功: {stats['success']}")
     print(f"  跳过: {stats['skip']}")
     print(f"  未找到: {stats['not_found']}")
@@ -154,14 +172,16 @@ if __name__ == "__main__":
     parser.add_argument("--symbols", nargs="+", default=["BTCUSDT", "ETHUSDT", "SOLUSDT", "ZECUSDT"])
     parser.add_argument("--years", nargs="+", type=int, default=[2024, 2025, 2026])
     parser.add_argument("--interval", default="1m")
+    parser.add_argument("--market", choices=["spot", "futures"], default="futures", help="市场类型")
     
     args = parser.parse_args()
     
     print("=" * 60)
     print("Binance K线数据下载")
+    print(f"市场: {args.market}")
     print(f"交易对: {args.symbols}")
     print(f"年份: {args.years}")
     print(f"周期: {args.interval}")
     print("=" * 60)
     
-    download_klines(args.symbols, args.years, args.interval)
+    download_klines(args.symbols, args.years, args.interval, market=args.market)

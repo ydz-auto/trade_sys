@@ -29,30 +29,55 @@ class UnifiedMarketData:
         self.data_root = Path(data_root)
     
     def _load_klines(self, exchange: str, symbol: str) -> pd.DataFrame:
-        """加载所有K线数据"""
-        klines_dir = self.data_root / "crypto" / exchange / "klines" / f"symbol={symbol}"
-        
-        if not klines_dir.exists():
-            return pd.DataFrame()
-        
+        """加载所有K线数据（合并Spot和Futures）"""
         dfs = []
-        for year_dir in klines_dir.iterdir():
-            if not year_dir.is_dir() or not year_dir.name.startswith("year="):
+        
+        spot_klines_dir = self.data_root / "crypto" / exchange / "spot_klines" / f"symbol={symbol}"
+        futures_klines_dir = self.data_root / "crypto" / exchange / "klines" / f"symbol={symbol}"
+        
+        for klines_dir, market in [(spot_klines_dir, "spot"), (futures_klines_dir, "futures")]:
+            if not klines_dir.exists():
                 continue
             
-            for month_dir in year_dir.iterdir():
-                if not month_dir.is_dir() or not month_dir.name.startswith("month="):
+            for year_dir in klines_dir.iterdir():
+                if not year_dir.is_dir() or not year_dir.name.startswith("year="):
                     continue
                 
-                parquet_path = month_dir / "data.parquet"
-                if parquet_path.exists():
-                    df = pd.read_parquet(parquet_path)
-                    dfs.append(df)
+                for month_dir in year_dir.iterdir():
+                    if not month_dir.is_dir() or not month_dir.name.startswith("month="):
+                        continue
+                    
+                    parquet_path = month_dir / "data.parquet"
+                    csv_files = list(month_dir.glob("*.csv"))
+                    
+                    if parquet_path.exists():
+                        df = pd.read_parquet(parquet_path)
+                        dfs.append(df)
+                    elif csv_files:
+                        for csv_file in csv_files:
+                            try:
+                                df = pd.read_csv(csv_file, header=None)
+                                if len(df.columns) >= 11:
+                                    df.columns = [
+                                        "open_time", "open", "high", "low", "close", "volume",
+                                        "close_time", "quote_volume", "trades", "taker_buy_base",
+                                        "taker_buy_quote", "ignore"
+                                    ][:len(df.columns)]
+                                    df["timestamp"] = pd.to_datetime(df["open_time"], unit="ms")
+                                    df["exchange"] = exchange
+                                    df["symbol"] = symbol
+                                    df["interval"] = "1m"
+                                    df = df[["timestamp", "exchange", "symbol", "interval",
+                                            "open", "high", "low", "close", "volume"]]
+                                    dfs.append(df)
+                            except Exception as e:
+                                print(f"读取CSV失败 {csv_file}: {e}")
         
         if not dfs:
             return pd.DataFrame()
         
         result = pd.concat(dfs, ignore_index=True)
+        result = result.drop_duplicates(subset=["timestamp"], keep="last")
         result = result.sort_values("timestamp").reset_index(drop=True)
         
         return result
