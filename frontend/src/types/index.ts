@@ -227,3 +227,245 @@ export interface SymbolConfig {
 export interface SymbolConfigsResponse {
   configs: Record<string, SymbolConfig>
 }
+
+// Runtime State Types - Unified Runtime Visualization Layer
+export type RuntimeType = 'live' | 'backtest' | 'replay' | 'ai'
+
+export interface RuntimeStatus {
+  type: RuntimeType
+  status: 'idle' | 'running' | 'paused' | 'completed' | 'error'
+  startTime?: string
+  endTime?: string
+  currentTimestamp?: string
+  progress?: number
+  error?: string
+}
+
+// Market State
+export interface MarketState {
+  prices: Record<string, PriceData>
+  orderbook?: Record<string, any>
+  lastUpdate: string
+}
+
+// Signals State
+export interface SignalItem {
+  signalId: string
+  strategyId: string
+  symbol: string
+  action: 'BUY' | 'SELL' | 'HOLD'
+  confidence: number
+  reason: string
+  timestamp: string
+  metadata?: Record<string, any>
+}
+
+export interface SignalsState {
+  latest: Record<string, SignalItem[]>
+  history: SignalItem[]
+  summary: {
+    total: number
+    long: number
+    short: number
+    hold: number
+    avgConfidence: number
+  }
+}
+
+// Risk State
+export interface RiskState {
+  level: 'low' | 'medium' | 'high' | 'extreme'
+  score: number
+  components: {
+    volatility: number
+    flow: number
+    sentiment: number
+    macro: number
+    liquidity: number
+  }
+  warnings: string[]
+  alerts: string[]
+}
+
+// PnL State
+export interface PositionPnL {
+  symbol: string
+  unrealizedPnL: number
+  realizedPnL: number
+  totalPnL: number
+  pnlPercent: number
+  entryPrice: number
+  currentPrice: number
+  size: number
+}
+
+export interface PnLState {
+  total: {
+    unrealized: number
+    realized: number
+    total: number
+  }
+  positions: PositionPnL[]
+  history: {
+    timestamp: string
+    totalPnL: number
+  }[]
+  performance: {
+    winRate: number
+    sharpeRatio: number
+    maxDrawdown: number
+  }
+}
+
+// AI State
+export interface AIInsight {
+  insightId: string
+  type: 'prediction' | 'analysis' | 'alert' | 'recommendation'
+  title: string
+  content: string
+  confidence: number
+  timestamp: string
+  relatedSymbols: string[]
+  metadata?: Record<string, any>
+}
+
+export interface AIState {
+  latestInsight: AIInsight | null
+  recentInsights: AIInsight[]
+  modelStatus: {
+    isRunning: boolean
+    lastUpdate: string
+    version: string
+  }
+}
+
+// Replay State
+export interface ReplayState {
+  config: {
+    startDate: string
+    endDate: string
+    speed: number
+    symbols: string[]
+  } | null
+  currentIndex: number
+  isPlaying: boolean
+  playbackSpeed: number
+}
+
+// Combined Runtime State
+export interface RuntimeState {
+  status: RuntimeStatus
+  
+  // Feature Matrix
+  features: {
+    metadata: FeatureMetadata[]
+    values: Record<string, FeatureValue[]>
+    summaries: Record<string, FeatureMatrixSummary>
+  }
+  
+  // Market
+  market: MarketState
+  
+  // Signals
+  signals: SignalsState
+  
+  // Risk
+  risk: RiskState
+  
+  // PnL
+  pnl: PnLState
+  
+  // AI
+  ai: AIState
+  
+  // Replay
+  replay: ReplayState
+  
+  // Positions
+  positions: Position[]
+  
+  // Timeline
+  timeline: TimelineEvent[]
+}
+
+// Runtime Config
+export interface RuntimeConfig {
+  type: RuntimeType
+  id: string
+  name: string
+  autoSubscribe: boolean
+  channels: string[]
+  symbolWhitelist?: string[]
+}
+
+// Initial State Factory
+export const createInitialRuntimeState = (type: RuntimeType): RuntimeState => ({
+  status: {
+    type,
+    status: 'idle',
+  },
+  features: {
+    metadata: [],
+    values: {},
+    summaries: {},
+  },
+  market: {
+    prices: {},
+    lastUpdate: new Date().toISOString(),
+  },
+  signals: {
+    latest: {},
+    history: [],
+    summary: {
+      total: 0,
+      long: 0,
+      short: 0,
+      hold: 0,
+      avgConfidence: 0,
+    },
+  },
+  risk: {
+    level: 'low',
+    score: 0,
+    components: {
+      volatility: 0,
+      flow: 0,
+      sentiment: 0,
+      macro: 0,
+      liquidity: 0,
+    },
+    warnings: [],
+    alerts: [],
+  },
+  pnl: {
+    total: {
+      unrealized: 0,
+      realized: 0,
+      total: 0,
+    },
+    positions: [],
+    history: [],
+    performance: {
+      winRate: 0,
+      sharpeRatio: 0,
+      maxDrawdown: 0,
+    },
+  },
+  ai: {
+    latestInsight: null,
+    recentInsights: [],
+    modelStatus: {
+      isRunning: false,
+      lastUpdate: new Date().toISOString(),
+      version: '1.0.0',
+    },
+  },
+  replay: {
+    config: null,
+    currentIndex: 0,
+    isPlaying: false,
+    playbackSpeed: 1,
+  },
+  positions: [],
+  timeline: [],
+})
