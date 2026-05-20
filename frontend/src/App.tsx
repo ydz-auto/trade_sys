@@ -7,6 +7,7 @@ import { FeatureContributionPage } from './pages/FeatureContributionPage'
 import { LiveTradingPage } from './pages/LiveTradingPage'
 import { RuntimeReplayPage } from './pages/RuntimeReplayPage'
 import { NarrativePage } from './pages/NarrativePage'
+import { SentimentPage } from './pages/SentimentPage'
 import { StrategyManagementPage } from './pages/StrategyManagementPage'
 import { RegimePage } from './pages/RegimePage'
 import { RiskPage } from './pages/RiskPage'
@@ -77,7 +78,7 @@ function AppContent() {
             <Route path="/risk" element={<RiskPage />} />
             <Route path="/risk-propagation" element={<RiskPropagationPage />} />
             <Route path="/narrative" element={<NarrativePage />} />
-            <Route path="/sentiment" element={<NarrativePage />} />
+            <Route path="/sentiment" element={<SentimentPage />} />
             <Route path="/events" element={<NarrativePage />} />
             <Route path="/control" element={<ControlPage />} />
             <Route path="/monitor" element={<SystemMonitorPage />} />
