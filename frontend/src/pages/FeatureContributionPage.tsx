@@ -9,6 +9,10 @@ import {
   Zap,
   Activity,
 } from 'lucide-react'
+import {
+  useRuntime,
+  useFeaturesState,
+} from '../services/runtime'
 import { api } from '../services/api/client'
 import clsx from 'clsx'
 
@@ -55,6 +59,9 @@ const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']
 const STRATEGIES = ['Panic Reversal', 'Funding Trap', 'Short Squeeze', 'Liquidity Vacuum']
 
 export function FeatureContributionPage() {
+  const { isConnected } = useRuntime()
+  const featuresState = useFeaturesState()
+
   const [selectedSymbol, setSelectedSymbol] = useState<string>('BTCUSDT')
   const [selectedStrategy, setSelectedStrategy] = useState<string>('Panic Reversal')
   const [explanation, setExplanation] = useState<StrategyExplanation | null>(null)
@@ -77,6 +84,9 @@ export function FeatureContributionPage() {
       setLoading(false)
     }
   }
+
+  const featureMetadata = featuresState?.metadata || []
+  const featureValues = featuresState?.values?.[selectedSymbol] || []
 
   const columns = [
     {
@@ -153,7 +163,7 @@ export function FeatureContributionPage() {
     },
   ]
 
-  if (loading) {
+  if (loading && !featuresState) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <Spin size="large" />

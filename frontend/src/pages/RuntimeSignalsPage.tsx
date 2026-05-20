@@ -18,23 +18,14 @@ import {
   ChevronRight,
   RefreshCw,
 } from 'lucide-react'
+import {
+  useRuntime,
+  useSignalsState,
+  useRiskState,
+  usePnLState,
+} from '../services/runtime'
 import { api } from '../services/api/client'
 import clsx from 'clsx'
-
-interface StrategySignal {
-  signal_id: string
-  strategy_id: string
-  strategy_name: string
-  symbol: string
-  action: 'ENTER' | 'HOLD' | 'EXIT' | 'NONE'
-  confidence: number
-  price: number
-  quantity: number
-  reason: string
-  features: Record<string, number>
-  timestamp: string
-  state: 'pending' | 'executed' | 'rejected' | 'expired'
-}
 
 interface StrategyRuntime {
   strategy_id: string
@@ -84,33 +75,30 @@ const executionStateConfig = {
 const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'DOGEUSDT']
 
 export function RuntimeSignalsPage() {
-  const [signals, setSignals] = useState<StrategySignal[]>([])
+  const { isConnected } = useRuntime()
+  const signalsState = useSignalsState()
+  const riskState = useRiskState()
+  const pnlState = usePnLState()
+
   const [runtimes, setRuntimes] = useState<StrategyRuntime[]>([])
   const [selectedSymbol, setSelectedSymbol] = useState<string>('ALL')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
-    loadSignals()
-    const interval = setInterval(loadSignals, 3000)
+    loadRuntimes()
+    const interval = setInterval(loadRuntimes, 3000)
     return () => clearInterval(interval)
-  }, [selectedSymbol])
+  }, [])
 
-  const loadSignals = async () => {
+  const loadRuntimes = async () => {
     try {
-      const [signalsRes, runtimesRes] = await Promise.all([
-        api.get('/strategy/active'),
-        api.get('/execution/state'),
-      ])
-      
-      if (signalsRes.data && Array.isArray(signalsRes.data)) {
-        setSignals(signalsRes.data)
-      }
+      const runtimesRes = await api.get('/execution/state')
       if (runtimesRes.data && Array.isArray(runtimesRes.data)) {
         setRuntimes(runtimesRes.data)
       }
     } catch (error) {
-      console.error('Failed to load signals:', error)
+      console.error('Failed to load runtimes:', error)
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -119,14 +107,17 @@ export function RuntimeSignalsPage() {
 
   const handleRefresh = () => {
     setRefreshing(true)
-    loadSignals()
+    loadRuntimes()
   }
+
+  const signals = signalsState?.history || []
+  const signalsSummary = signalsState?.summary
 
   const filteredSignals = selectedSymbol === 'ALL' 
     ? signals 
     : signals.filter(s => s.symbol === selectedSymbol)
 
-  if (loading) {
+  if (loading && !signalsState) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <Spin size="large" />
@@ -166,7 +157,7 @@ export function RuntimeSignalsPage() {
           <Card className="bg-surface border-border">
             <Statistic
               title={<span className="text-text-secondary text-xs">活跃信号</span>}
-              value={signals.filter(s => s.action !== 'NONE').length}
+              value={signalsSummary?.total || 0}
               prefix={<Radio className="w-4 h-4 text-primary" />}
               valueStyle={{ color: 'var(--text-primary)' }}
             />
@@ -176,7 +167,7 @@ export function RuntimeSignalsPage() {
           <Card className="bg-surface border-border">
             <Statistic
               title={<span className="text-text-secondary text-xs">入场信号</span>}
-              value={signals.filter(s => s.action === 'ENTER').length}
+              value={signalsSummary?.long || 0}
               prefix={<TrendingUp className="w-4 h-4 text-bullish" />}
               valueStyle={{ color: 'var(--bullish)' }}
             />
@@ -186,7 +177,7 @@ export function RuntimeSignalsPage() {
           <Card className="bg-surface border-border">
             <Statistic
               title={<span className="text-text-secondary text-xs">平均置信度</span>}
-              value={signals.length > 0 ? (signals.reduce((a, s) => a + s.confidence, 0) / signals.length * 100).toFixed(0) : 0}
+              value={signalsSummary?.avgConfidence ? (signalsSummary.avgConfidence * 100).toFixed(0) : 0}
               suffix="%"
               prefix={<Target className="w-4 h-4 text-accent" />}
               valueStyle={{ color: 'var(--text-primary)' }}
@@ -211,11 +202,11 @@ export function RuntimeSignalsPage() {
                 <Empty description="暂无信号" />
               ) : (
                 filteredSignals.map((signal) => {
-                  const config = signalStateConfig[signal.action]
+                  const config = signalStateConfig[signal.action] || signalStateConfig.NONE
                   const Icon = config.icon
                   return (
                     <div
-                      key={signal.signal_id}
+                      key={signal.signalId}
                       className="p-4 bg-background rounded-lg border border-border hover:border-primary/30 transition-all"
                     >
                       <div className="flex items-start justify-between mb-3">
@@ -225,7 +216,7 @@ export function RuntimeSignalsPage() {
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-medium text-text-primary">{signal.strategy_name}</span>
+                              <span className="font-medium text-text-primary">{signal.strategyId}</span>
                               <Tag className="text-[10px] bg-primary/10 text-primary border-0">{signal.symbol}</Tag>
                             </div>
                             <div className="text-xs text-text-secondary mt-0.5">{signal.reason}</div>
@@ -239,43 +230,15 @@ export function RuntimeSignalsPage() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-4 mb-3">
-                        <div className="flex-1">
-                          <div className="text-xs text-text-secondary mb-1">特征贡献度</div>
-                          <div className="flex gap-1 flex-wrap">
-                            {Object.entries(signal.features).slice(0, 4).map(([name, value]) => (
-                              <Tooltip key={name} title={`${name}: ${value.toFixed(3)}`}>
-                                <Tag
-                                  className={clsx(
-                                    'text-[10px] border-0',
-                                    value > 0 ? 'bg-bullish/20 text-bullish' : 'bg-bearish/20 text-bearish'
-                                  )}
-                                >
-                                  {name.split('_')[0]} {value > 0 ? '+' : ''}{(value * 100).toFixed(0)}%
-                                </Tag>
-                              </Tooltip>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
                       <div className="flex items-center justify-between pt-3 border-t border-border">
                         <div className="flex items-center gap-4 text-xs">
                           <div>
-                            <span className="text-text-secondary">价格:</span>{' '}
-                            <span className="text-text-primary">${signal.price.toFixed(2)}</span>
-                          </div>
-                          <div>
-                            <span className="text-text-secondary">数量:</span>{' '}
-                            <span className="text-text-primary">{signal.quantity.toFixed(4)}</span>
-                          </div>
-                          <div>
-                            <span className="text-text-secondary">盈亏比:</span>{' '}
-                            <span className="text-bullish">3.2</span>
+                            <span className="text-text-secondary">时间:</span>{' '}
+                            <span className="text-text-primary">{new Date(signal.timestamp).toLocaleTimeString()}</span>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {signal.action === 'ENTER' && (
+                          {signal.action === 'BUY' && (
                             <Button type="primary" size="small" icon={<Zap className="w-3 h-3" />}>
                               跟随
                             </Button>
@@ -355,7 +318,9 @@ export function RuntimeSignalsPage() {
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-text-secondary">回撤</span>
-                <span className="text-warning">⚠ 8.2%</span>
+                <span className={clsx(riskState?.score && riskState.score > 0.1 ? 'text-warning' : 'text-bullish')}>
+                  {riskState?.score ? `⚠ ${(riskState.score * 100).toFixed(1)}%` : '✓ 正常'}
+                </span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-text-secondary">相关性</span>

@@ -16,6 +16,10 @@ import {
   ChevronRight,
   RefreshCw,
 } from 'lucide-react'
+import {
+  useRuntime,
+  useAIState,
+} from '../services/runtime'
 import { api } from '../services/api/client'
 import clsx from 'clsx'
 
@@ -69,6 +73,9 @@ const severityConfig = {
 const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']
 
 export function NarrativePage() {
+  const { isConnected } = useRuntime()
+  const aiState = useAIState()
+
   const [narratives, setNarratives] = useState<Narrative[]>([])
   const [sentiment, setSentiment] = useState<SentimentData | null>(null)
   const [events, setEvents] = useState<EventIntelligence[]>([])
@@ -106,7 +113,10 @@ export function NarrativePage() {
     }
   }
 
-  if (loading) {
+  const latestInsight = aiState?.latestInsight
+  const recentInsights = aiState?.recentInsights || []
+
+  if (loading && !aiState) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <Spin size="large" />
@@ -159,6 +169,28 @@ export function NarrativePage() {
         <Row gutter={[16, 16]}>
           <Col xs={24} lg={16}>
             <div className="space-y-4">
+              {latestInsight && (
+                <Card className="bg-surface border-border border-primary/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sparkles className="w-4 h-4 text-primary" />
+                    <span className="text-xs text-primary font-medium">最新洞察</span>
+                  </div>
+                  <h3 className="text-lg font-medium text-text-primary mb-2">{latestInsight.title}</h3>
+                  <p className="text-sm text-text-secondary mb-3">{latestInsight.content}</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {latestInsight.relatedSymbols.map((s) => (
+                        <Tag key={s} className="text-[10px] bg-primary/10 text-primary border-0">
+                          {s}
+                        </Tag>
+                      ))}
+                    </div>
+                    <span className="text-xs text-text-secondary">
+                      置信度: {(latestInsight.confidence * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                </Card>
+              )}
               {narratives.map((narrative) => {
                 const config = categoryConfig[narrative.category]
                 const Icon = config.icon
@@ -250,15 +282,22 @@ export function NarrativePage() {
               </div>
             </Card>
 
-            <Card className="bg-surface border-border mt-4" title={<span className="text-sm font-medium">热门关键词</span>}>
-              <div className="flex flex-wrap gap-1">
-                {['ETF', '美联储', '机构', '通胀', '利率', 'AI', '清算', '资金费率']
-                  .slice(0, 8)
-                  .map((kw) => (
-                    <Tag key={kw} className="text-xs bg-primary/10 text-primary border-0">
-                      {kw}
-                    </Tag>
-                  ))}
+            <Card className="bg-surface border-border mt-4" title={<span className="text-sm font-medium">AI 模型状态</span>}>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-text-secondary">运行状态</span>
+                  <span className={clsx('text-xs', aiState?.modelStatus?.isRunning ? 'text-bullish' : 'text-text-secondary')}>
+                    {aiState?.modelStatus?.isRunning ? '运行中' : '空闲'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-text-secondary">版本</span>
+                  <span className="text-xs text-text-primary">{aiState?.modelStatus?.version || '-'}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-text-secondary">最近洞察</span>
+                  <span className="text-xs text-text-primary">{recentInsights.length}</span>
+                </div>
               </div>
             </Card>
           </Col>

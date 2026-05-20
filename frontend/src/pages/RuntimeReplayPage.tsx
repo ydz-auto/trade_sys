@@ -19,6 +19,10 @@ import {
   RefreshCw,
   Settings,
 } from 'lucide-react'
+import {
+  useRuntime,
+  useRuntimeState,
+} from '../services/runtime'
 import { api } from '../services/api/client'
 import clsx from 'clsx'
 
@@ -58,11 +62,14 @@ const eventTypeConfig = {
 const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']
 
 export function RuntimeReplayPage() {
+  const { isConnected } = useRuntime()
+  const replayState = useRuntimeState('replay')
+
   const [sessions, setSessions] = useState<ReplaySession[]>([])
   const [selectedSession, setSelectedSession] = useState<ReplaySession | null>(null)
-  const [currentEventIndex, setCurrentEventIndex] = useState(0)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [playbackSpeed, setPlaybackSpeed] = useState(1)
+  const [currentEventIndex, setCurrentEventIndex] = useState(replayState?.currentIndex || 0)
+  const [isPlaying, setIsPlaying] = useState(replayState?.isPlaying || false)
+  const [playbackSpeed, setPlaybackSpeed] = useState(replayState?.playbackSpeed || 1)
   const [loading, setLoading] = useState(true)
   const playIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -141,7 +148,7 @@ export function RuntimeReplayPage() {
     return `${mins}分 ${secs}秒`
   }
 
-  if (loading) {
+  if (loading && !replayState) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <Spin size="large" />

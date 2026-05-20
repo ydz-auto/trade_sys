@@ -16,11 +16,18 @@ import {
   ArrowDownRight,
   Minus,
 } from 'lucide-react'
-import { useTradingStore } from '../store/tradingStore'
+import {
+  useRuntime,
+  useMarketState,
+  useSignalsState,
+  useRiskState,
+  usePnLState,
+  useAIState,
+} from '../services/runtime'
 import { api } from '../services/api/client'
 import clsx from 'clsx'
 
-interface RuntimeState {
+interface RuntimeStats {
   state: string
   governor_stats: {
     events_processed: number
@@ -43,14 +50,6 @@ interface ActiveStrategy {
   symbol: string
   enabled: boolean
   enabled_at: string
-}
-
-interface Signal {
-  signal_id: string
-  symbol: string
-  action: string
-  confidence: number
-  timestamp: string
 }
 
 const regimeColors: Record<string, string> = {
@@ -84,28 +83,33 @@ const signalLabels: Record<string, string> = {
 }
 
 export function RuntimeOverviewPage() {
-  const { mode, isConnected } = useTradingStore()
-  const [runtimeState, setRuntimeState] = useState<RuntimeState | null>(null)
+  const { isConnected, isLive, isPaper } = useRuntime()
+  const marketState = useMarketState()
+  const signalsState = useSignalsState()
+  const riskState = useRiskState()
+  const pnlState = usePnLState()
+  const aiState = useAIState()
+
+  const [runtimeStats, setRuntimeStats] = useState<RuntimeStats | null>(null)
   const [activeStrategies, setActiveStrategies] = useState<ActiveStrategy[]>([])
-  const [signals, setSignals] = useState<Signal[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    loadData()
-    const interval = setInterval(loadData, 5000)
+    loadRuntimeStats()
+    const interval = setInterval(loadRuntimeStats, 5000)
     return () => clearInterval(interval)
   }, [])
 
-  const loadData = async () => {
+  const loadRuntimeStats = async () => {
     try {
       const [runtimeRes, strategiesRes] = await Promise.all([
         api.get('/runtime/stats'),
         api.get('/strategy/active'),
       ])
-      setRuntimeState(runtimeRes.data)
+      setRuntimeStats(runtimeRes.data)
       setActiveStrategies(strategiesRes.data || [])
     } catch (error) {
-      console.error('Failed to load runtime data:', error)
+      console.error('Failed to load runtime stats:', error)
     } finally {
       setLoading(false)
     }
@@ -117,7 +121,13 @@ export function RuntimeOverviewPage() {
     return `${hours}小时 ${minutes}分钟`
   }
 
-  if (loading) {
+  const prices = marketState?.prices || {}
+  const btcPrice = prices['BTCUSDT']
+  const ethPrice = prices['ETHUSDT']
+  const signals = signalsState?.history?.slice(0, 5) || []
+  const latestInsight = aiState?.latestInsight
+
+  if (loading && !marketState) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <Spin size="large" />
@@ -137,8 +147,8 @@ export function RuntimeOverviewPage() {
             status={isConnected ? 'success' : 'error'}
             text={isConnected ? '运行中' : '已离线'}
           />
-          <Tag color={mode === 'LIVE' ? 'green' : mode === 'SIMULATION' ? 'orange' : 'default'}>
-            {mode === 'LIVE' ? '实盘' : mode === 'SIMULATION' ? '模拟' : '回测'}
+          <Tag color={isLive ? 'green' : isPaper ? 'orange' : 'default'}>
+            {isLive ? '实盘' : isPaper ? '模拟' : '回测'}
           </Tag>
         </div>
       </div>
@@ -173,12 +183,12 @@ export function RuntimeOverviewPage() {
           <Card className="bg-surface border-border h-full">
             <Statistic
               title={<span className="text-text-secondary text-xs">已处理事件</span>}
-              value={runtimeState?.governor_stats.events_processed || 0}
+              value={runtimeStats?.governor_stats.events_processed || 0}
               prefix={<Activity className="w-4 h-4 text-accent" />}
               valueStyle={{ color: 'var(--text-primary)', fontSize: '28px' }}
             />
             <div className="mt-3 text-xs text-text-secondary">
-              运行时间: {formatUptime(runtimeState?.governor_stats.uptime_seconds || 0)}
+              运行时间: {formatUptime(runtimeStats?.governor_stats.uptime_seconds || 0)}
             </div>
           </Card>
         </Col>
@@ -188,11 +198,11 @@ export function RuntimeOverviewPage() {
             <div className="flex items-center justify-between mb-2">
               <span className="text-text-secondary text-xs">CPU 使用率</span>
               <span className="text-text-primary text-sm font-medium">
-                {runtimeState?.degradation_stats.load_metrics.cpu_percent.toFixed(1)}%
+                {runtimeStats?.degradation_stats.load_metrics.cpu_percent.toFixed(1) || 0}%
               </span>
             </div>
             <Progress
-              percent={runtimeState?.degradation_stats.load_metrics.cpu_percent || 0}
+              percent={runtimeStats?.degradation_stats.load_metrics.cpu_percent || 0}
               showInfo={false}
               strokeColor={{
                 '0%': '#10B981',
@@ -204,11 +214,11 @@ export function RuntimeOverviewPage() {
             <div className="flex items-center justify-between mt-3">
               <span className="text-text-secondary text-xs">内存</span>
               <span className="text-text-primary text-sm">
-                {runtimeState?.degradation_stats.load_metrics.memory_percent.toFixed(1)}%
+                {runtimeStats?.degradation_stats.load_metrics.memory_percent.toFixed(1) || 0}%
               </span>
             </div>
             <Progress
-              percent={runtimeState?.degradation_stats.load_metrics.memory_percent || 0}
+              percent={runtimeStats?.degradation_stats.load_metrics.memory_percent || 0}
               showInfo={false}
               size="small"
               strokeColor="var(--primary)"
@@ -224,31 +234,31 @@ export function RuntimeOverviewPage() {
               <Tag
                 className={clsx(
                   'text-[10px] font-medium',
-                  runtimeState?.degradation_stats.current_mode === 'normal'
+                  runtimeStats?.degradation_stats.current_mode === 'normal'
                     ? 'bg-bullish/20 text-bullish'
                     : 'bg-warning/20 text-warning'
                 )}
               >
-                {runtimeState?.degradation_stats.current_mode === 'normal' ? '正常' : '降级'}
+                {runtimeStats?.degradation_stats.current_mode === 'normal' ? '正常' : '降级'}
               </Tag>
             </div>
             <div className="mt-4 space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-text-secondary">事件速率</span>
                 <span className="text-text-primary">
-                  {runtimeState?.degradation_stats.load_metrics.event_rate.toFixed(1)}/秒
+                  {runtimeStats?.degradation_stats.load_metrics.event_rate.toFixed(1) || 0}/秒
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-text-secondary">错误数</span>
                 <span
                   className={clsx(
-                    runtimeState?.governor_stats.errors
+                    runtimeStats?.governor_stats.errors
                       ? 'text-bearish'
                       : 'text-bullish'
                   )}
                 >
-                  {runtimeState?.governor_stats.errors || 0}
+                  {runtimeStats?.governor_stats.errors || 0}
                 </span>
               </div>
             </div>
@@ -277,9 +287,9 @@ export function RuntimeOverviewPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {signals.slice(0, 5).map((signal) => (
+                {signals.map((signal) => (
                   <div
-                    key={signal.signal_id}
+                    key={signal.signalId}
                     className="flex items-center justify-between p-3 bg-background rounded-lg border border-border"
                   >
                     <div className="flex items-center gap-3">
@@ -322,24 +332,28 @@ export function RuntimeOverviewPage() {
               <div className="flex items-center justify-between p-4 bg-background rounded-lg border border-border">
                 <div>
                   <div className="text-xs text-text-secondary mb-1">BTCUSDT</div>
-                  <Tag className={clsx('text-xs', regimeColors.TRENDING_UP || 'bg-border text-text-secondary')}>
-                    {regimeLabels.TRENDING_UP}
+                  <Tag className={clsx('text-xs', btcPrice?.change24h && btcPrice.change24h > 0 ? regimeColors.TRENDING_UP : regimeColors.RANGING)}>
+                    {btcPrice?.change24h && btcPrice.change24h > 0 ? regimeLabels.TRENDING_UP : regimeLabels.RANGING}
                   </Tag>
                 </div>
                 <div className="text-right">
-                  <div className="text-lg font-bold text-bullish">+2.34%</div>
+                  <div className={clsx('text-lg font-bold', btcPrice?.change24h && btcPrice.change24h > 0 ? 'text-bullish' : 'text-bearish')}>
+                    {btcPrice?.change24h ? `${btcPrice.change24h > 0 ? '+' : ''}${btcPrice.change24h.toFixed(2)}%` : '-'}
+                  </div>
                   <div className="text-xs text-text-secondary">24小时</div>
                 </div>
               </div>
               <div className="flex items-center justify-between p-4 bg-background rounded-lg border border-border">
                 <div>
                   <div className="text-xs text-text-secondary mb-1">ETHUSDT</div>
-                  <Tag className={clsx('text-xs', regimeColors.RANGING || 'bg-border text-text-secondary')}>
-                    {regimeLabels.RANGING}
+                  <Tag className={clsx('text-xs', ethPrice?.change24h && ethPrice.change24h > 0 ? regimeColors.TRENDING_UP : regimeColors.RANGING)}>
+                    {ethPrice?.change24h && ethPrice.change24h > 0 ? regimeLabels.TRENDING_UP : regimeLabels.RANGING}
                   </Tag>
                 </div>
                 <div className="text-right">
-                  <div className="text-lg font-bold text-warning">+0.52%</div>
+                  <div className={clsx('text-lg font-bold', ethPrice?.change24h && ethPrice.change24h > 0 ? 'text-bullish' : 'text-bearish')}>
+                    {ethPrice?.change24h ? `${ethPrice.change24h > 0 ? '+' : ''}${ethPrice.change24h.toFixed(2)}%` : '-'}
+                  </div>
                   <div className="text-xs text-text-secondary">24小时</div>
                 </div>
               </div>
@@ -383,8 +397,10 @@ export function RuntimeOverviewPage() {
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="text-right">
-                        <div className="text-sm font-medium text-bullish">+12.5%</div>
-                        <div className="text-xs text-text-secondary">收益</div>
+                        <div className="text-sm font-medium text-bullish">
+                          {pnlState?.performance?.winRate ? `+${(pnlState.performance.winRate * 100).toFixed(1)}%` : '-'}
+                        </div>
+                        <div className="text-xs text-text-secondary">胜率</div>
                       </div>
                       <Badge status="success" />
                     </div>
@@ -406,26 +422,44 @@ export function RuntimeOverviewPage() {
             }
             extra={<a href="/narrative" className="text-xs text-primary hover:underline">更多 →</a>}
           >
-            <div className="space-y-3">
-              <div className="p-3 bg-background rounded-lg border border-border">
-                <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="w-3 h-3 text-bullish" />
-                  <span className="text-xs font-medium text-text-primary">ETF 资金流</span>
+            {latestInsight ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-background rounded-lg border border-border">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp className="w-3 h-3 text-bullish" />
+                    <span className="text-xs font-medium text-text-primary">{latestInsight.title}</span>
+                  </div>
+                  <div className="text-xs text-text-secondary">
+                    {latestInsight.content}
+                  </div>
                 </div>
-                <div className="text-xs text-text-secondary">
-                  检测到强劲的机构买入压力
-                </div>
-              </div>
-              <div className="p-3 bg-background rounded-lg border border-border">
-                <div className="flex items-center gap-2 mb-2">
-                  <AlertTriangle className="w-3 h-3 text-warning" />
-                  <span className="text-xs font-medium text-text-primary">宏观风险</span>
-                </div>
-                <div className="text-xs text-text-secondary">
-                  美联储政策不确定性上升
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-text-secondary">置信度</span>
+                  <span className="text-primary">{(latestInsight.confidence * 100).toFixed(0)}%</span>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="p-3 bg-background rounded-lg border border-border">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp className="w-3 h-3 text-bullish" />
+                    <span className="text-xs font-medium text-text-primary">ETF 资金流</span>
+                  </div>
+                  <div className="text-xs text-text-secondary">
+                    检测到强劲的机构买入压力
+                  </div>
+                </div>
+                <div className="p-3 bg-background rounded-lg border border-border">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="w-3 h-3 text-warning" />
+                    <span className="text-xs font-medium text-text-primary">宏观风险</span>
+                  </div>
+                  <div className="text-xs text-text-secondary">
+                    美联储政策不确定性上升
+                  </div>
+                </div>
+              </div>
+            )}
           </Card>
         </Col>
       </Row>

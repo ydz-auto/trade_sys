@@ -10,7 +10,14 @@ import {
   Settings,
   RefreshCw,
 } from 'lucide-react'
+import {
+  useRuntime,
+  useSignalsState,
+  usePnLState,
+  useRiskState,
+} from '../services/runtime'
 import { api } from '../services/api/client'
+import type { Position } from '../../types'
 import clsx from 'clsx'
 
 interface TradingSignal {
@@ -28,20 +35,6 @@ interface TradingSignal {
   expires_at: string
 }
 
-interface Position {
-  position_id: string
-  symbol: string
-  side: 'LONG' | 'SHORT'
-  size: number
-  entry_price: number
-  current_price: number
-  pnl: number
-  pnl_percent: number
-  leverage: number
-  liquidation_price: number
-  strategy: string
-}
-
 interface TradingConfig {
   auto_follow: boolean
   max_position_size: number
@@ -52,6 +45,11 @@ interface TradingConfig {
 }
 
 export function LiveTradingPage() {
+  const { isConnected, isLive, isPaper } = useRuntime()
+  const signalsState = useSignalsState()
+  const pnlState = usePnLState()
+  const riskState = useRiskState()
+
   const [signals, setSignals] = useState<TradingSignal[]>([])
   const [positions, setPositions] = useState<Position[]>([])
   const [loading, setLoading] = useState(true)
@@ -125,7 +123,12 @@ export function LiveTradingPage() {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
 
-  if (loading) {
+  const totalPnL = pnlState?.total?.total || 0
+  const unrealizedPnL = pnlState?.total?.unrealized || 0
+  const performance = pnlState?.performance
+  const riskScore = riskState?.score || 0
+
+  if (loading && !signalsState) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <Spin size="large" />
@@ -162,7 +165,9 @@ export function LiveTradingPage() {
               prefix={<DollarSign className="w-4 h-4 text-bullish" />}
               valueStyle={{ color: 'var(--text-primary)', fontSize: '24px' }}
             />
-            <div className="mt-2 text-xs text-bullish">今日 +4.52%</div>
+            <div className={clsx('mt-2 text-xs', totalPnL >= 0 ? 'text-bullish' : 'text-bearish')}>
+              今日 {totalPnL >= 0 ? '+' : ''}{(totalPnL * 100).toFixed(2)}%
+            </div>
           </Card>
         </Col>
         <Col xs={24} sm={8}>
@@ -173,9 +178,8 @@ export function LiveTradingPage() {
               prefix={<Target className="w-4 h-4 text-primary" />}
               valueStyle={{ color: 'var(--text-primary)', fontSize: '24px' }}
             />
-            <div className="mt-2 text-xs text-text-secondary">
-              未实现盈亏: {positions.reduce((a, p) => a + p.pnl, 0) >= 0 ? '+' : ''}
-              ${positions.reduce((a, p) => a + p.pnl, 0).toFixed(2)}
+            <div className="text-xs text-text-secondary">
+              未实现盈亏: {unrealizedPnL >= 0 ? '+' : ''}${unrealizedPnL.toFixed(2)}
             </div>
           </Card>
         </Col>
@@ -183,12 +187,12 @@ export function LiveTradingPage() {
           <Card className="bg-surface border-border">
             <Statistic
               title={<span className="text-text-secondary text-xs">风险占用</span>}
-              value={12.5}
+              value={(riskScore * 100).toFixed(1)}
               suffix="%"
               prefix={<Shield className="w-4 h-4 text-warning" />}
               valueStyle={{ color: 'var(--text-primary)', fontSize: '24px' }}
             />
-            <Progress percent={12.5} showInfo={false} size="small" strokeColor="var(--warning)" />
+            <Progress percent={riskScore * 100} showInfo={false} size="small" strokeColor="var(--warning)" />
           </Card>
         </Col>
       </Row>
@@ -291,7 +295,7 @@ export function LiveTradingPage() {
               <div className="space-y-3">
                 {positions.map((position) => (
                   <div
-                    key={position.position_id}
+                    key={position.symbol}
                     className="p-4 bg-background rounded-lg border border-border"
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -302,7 +306,7 @@ export function LiveTradingPage() {
                         <span className="font-medium text-text-primary">{position.symbol}</span>
                       </div>
                       <div className={clsx('text-sm font-bold', position.pnl >= 0 ? 'text-bullish' : 'text-bearish')}>
-                        {position.pnl >= 0 ? '+' : ''}{position.pnl_percent.toFixed(2)}%
+                        {position.pnl >= 0 ? '+' : ''}{position.pnlPct?.toFixed(2) || '0.00'}%
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
@@ -312,11 +316,11 @@ export function LiveTradingPage() {
                       </div>
                       <div>
                         <span className="text-text-secondary">杠杆:</span>{' '}
-                        <span className="text-text-primary">{position.leverage}x</span>
+                        <span className="text-text-primary">{position.leverage || 1}x</span>
                       </div>
                       <div>
                         <span className="text-text-secondary">开仓价:</span>{' '}
-                        <span className="text-text-primary">${position.entry_price.toLocaleString()}</span>
+                        <span className="text-text-primary">${position.entryPrice?.toLocaleString()}</span>
                       </div>
                       <div>
                         <span className="text-text-secondary">盈亏:</span>{' '}
