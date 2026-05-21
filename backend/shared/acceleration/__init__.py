@@ -227,6 +227,11 @@ def get_accelerator_info() -> dict:
     }
 
 
+def get_backend_info() -> dict:
+    """获取后端信息（兼容别名）"""
+    return get_accelerator_info()
+
+
 def clear_cache():
     """清理 GPU 缓存"""
     if _device is None:
