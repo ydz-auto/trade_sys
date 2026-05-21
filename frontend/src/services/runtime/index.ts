@@ -48,5 +48,16 @@ export {
   useRuntimeSwitcher,
 } from './RuntimeProvider'
 
+// Export Projection Provider & Hooks (唯一状态源)
+export {
+  ProjectionProvider,
+  useProjection,
+  useMarketState as useProjectionMarketState,
+  useSignalState,
+  useExecutionState,
+  usePortfolioState,
+  useRiskState as useProjectionRiskState,
+} from '../../runtime/contexts/ProjectionContext'
+
 // Export types
 export * from '../../types'

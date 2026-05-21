@@ -24,6 +24,7 @@ import numpy as np
 from pathlib import Path
 
 from infrastructure.logging import get_logger
+from infrastructure.data_lake import get_features_path
 
 logger = get_logger("feature_matrix")
 
@@ -434,8 +435,7 @@ class FeatureMatrix:
         if data_path:
             self.data_path = Path(data_path)
         else:
-            backend_path = Path(__file__).parent.parent.parent
-            self.data_path = backend_path / "data_lake" / "features"
+            self.data_path = get_features_path()
         self.df: Optional[pd.DataFrame] = None
         self.symbol: str = ""
 

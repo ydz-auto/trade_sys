@@ -44,6 +44,7 @@ Runtime Kernel - Runtime 核心模块
            ↓
     Frontend Runtime UI
 """
+from .types import RuntimeType, RuntimeState
 from .execution import (
     ExecutionRouter,
     ExecutionRoute,
@@ -96,6 +97,9 @@ from .bus import (
 )
 
 __all__ = [
+    "RuntimeType",
+    "RuntimeState",
+    
     "ExecutionRouter",
     "ExecutionRoute",
     "ExecutionBlockedError",

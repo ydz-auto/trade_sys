@@ -29,6 +29,15 @@ except ImportError:
     logger.warning("pyarrow not installed, parquet storage disabled")
 
 
+def _get_default_base_path() -> str:
+    """获取默认的基础路径"""
+    try:
+        from infrastructure.data_lake import get_data_lake_subpath
+        return str(get_data_lake_subpath("orderbook_features"))
+    except ImportError:
+        return "data_lake/orderbook_features"
+
+
 class OrderBookFeatureParquetWriter:
     """OrderBook特征Parquet写入器
     
@@ -94,13 +103,15 @@ class OrderBookFeatureParquetWriter:
     
     def __init__(
         self,
-        base_path: str = "data_lake/orderbook_features",
+        base_path: str = None,
         buffer_size: int = 1000,
         flush_interval_seconds: int = 60
     ):
         if not HAS_PARQUET:
             raise RuntimeError("pyarrow not installed")
         
+        if base_path is None:
+            base_path = _get_default_base_path()
         self.base_path = Path(base_path)
         self.buffer_size = buffer_size
         self.flush_interval_seconds = flush_interval_seconds
@@ -319,7 +330,7 @@ _writer: Optional[OrderBookFeatureParquetWriter] = None
 
 
 def get_parquet_writer(
-    base_path: str = "data_lake/orderbook_features"
+    base_path: str = None
 ) -> OrderBookFeatureParquetWriter:
     global _writer
     if _writer is None:

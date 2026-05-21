@@ -13,15 +13,16 @@ from pathlib import Path
 
 warnings.filterwarnings('ignore')
 
-# 添加项目路径
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
+from infrastructure.data_lake import get_features_path, get_models_path
 
 
 def load_data():
     """加载特征数据"""
     print("📊 加载数据...")
-    features_path = project_root / "data_lake" / "features" / "binance" / "BTCUSDT" / "features_with_structure.parquet"
+    features_path = get_features_path("binance", "BTCUSDT") / "features_with_structure.parquet"
     
     if not features_path.exists():
         print(f"❌ 文件不存在: {features_path}")
@@ -187,7 +188,7 @@ def train_model(X_train, X_val, y_train, y_val):
 
 def save_model(model, scaler, features, history=None):
     """保存模型和相关文件"""
-    output_dir = project_root / "data_lake" / "models"
+    output_dir = get_models_path()
     output_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"\n💾 保存模型到: {output_dir}")

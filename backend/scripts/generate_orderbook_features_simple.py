@@ -4,16 +4,21 @@
 直接保存到Parquet文件
 """
 
+import sys
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from datetime import datetime, timedelta
-import sys
 import argparse
+
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from infrastructure.data_lake import get_data_lake_subpath
 
 
 def load_trades(symbol: str, year: int, month: int) -> pd.DataFrame:
-    trades_path = Path(__file__).parent.parent / "data_lake" / "crypto" / "binance" / "trades"
+    trades_path = get_data_lake_subpath("crypto", "binance", "trades")
     path = trades_path / f"symbol={symbol}" / f"year={year}" / f"month={str(month).zfill(2)}" / "data.parquet"
     
     if not path.exists():
@@ -123,7 +128,7 @@ def main():
     
     args = parser.parse_args()
     
-    output_root = Path(__file__).parent.parent / "data_lake" / "orderbook_features"
+    output_root = get_data_lake_subpath("orderbook_features")
     output_root.mkdir(parents=True, exist_ok=True)
     
     print("=" * 80)

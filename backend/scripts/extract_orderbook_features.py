@@ -35,6 +35,7 @@ from services.aggregation_service.aggregators.orderbook.orderbook_aggregator imp
 from services.aggregation_service.publishers.parquet_writer import (
     get_parquet_writer,
 )
+from infrastructure.data_lake import get_data_lake_subpath
 
 
 class BinanceWebSocketCollector:
@@ -43,10 +44,12 @@ class BinanceWebSocketCollector:
     def __init__(
         self,
         symbols: List[str],
-        output_path: str = "data_lake/orderbook_features",
+        output_path: str = None,
         buffer_size: int = 1000
     ):
         self.symbols = [s.upper() for s in symbols]
+        if output_path is None:
+            output_path = str(get_data_lake_subpath("orderbook_features"))
         self.output_path = output_path
         self.buffer_size = buffer_size
         
@@ -252,7 +255,7 @@ async def main():
     parser.add_argument(
         '--output',
         type=str,
-        default='data_lake/orderbook_features',
+        default=None,
         help='Output path for parquet files'
     )
     parser.add_argument(

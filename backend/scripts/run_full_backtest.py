@@ -26,6 +26,7 @@ import pandas as pd
 import numpy as np
 
 from infrastructure.logging import get_logger
+from infrastructure.data_lake import get_features_path, get_research_path
 
 logger = get_logger("full_backtest")
 
@@ -63,7 +64,7 @@ class FullBacktester:
         self.results: Dict[str, StrategyResult] = {}
     
     def load_data(self, months: int = None) -> pd.DataFrame:
-        data_path = backend_path / "data_lake/features/binance/BTCUSDT/features_with_structure.parquet"
+        data_path = get_features_path("binance", "BTCUSDT") / "features_with_structure.parquet"
         try:
             df = pd.read_parquet(data_path)
         except Exception as e:
@@ -857,7 +858,7 @@ class FullBacktester:
             print(f"{cat:<25} | 总交易: {total_trades:>6} | 平均胜率: {avg_win_rate*100:>5.1f}% | 总收益: ${total_return:>12,.2f}")
     
     def save_results(self, filename: str = "full_backtest_results.json"):
-        output_dir = backend_path / "data_lake/research"
+        output_dir = get_research_path()
         output_dir.mkdir(parents=True, exist_ok=True)
         
         output_data = {

@@ -15,6 +15,7 @@
 2. 创新策略: Leveraged Short Squeeze, Micro Range Ripples, Cascade Flip, Funding Exhaustion Trap, Meme Mania Rotation, Session Gap Exploit, Dead Cat Echo, Liquidity Vacuum Breakout
 """
 
+import sys
 from pathlib import Path
 from typing import Dict, Optional, List, Any
 from datetime import datetime, timedelta
@@ -25,6 +26,11 @@ import json
 
 import pandas as pd
 import numpy as np
+
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from infrastructure.data_lake import get_features_path, get_research_path
 
 
 # ============================================================
@@ -849,8 +855,7 @@ def main():
     print("🚀 系统全策略回测 - 所有策略统一回测")
     print("=" * 100)
 
-    # 加载数据
-    data_path = Path("data_lake/features/binance/BTCUSDT/features_with_structure.parquet")
+    data_path = get_features_path("binance", "BTCUSDT") / "features_with_structure.parquet"
     if not data_path.exists():
         print(f"❌ 数据文件不存在: {data_path}")
         return
@@ -910,8 +915,7 @@ def main():
 
     print_backtest_report(metrics)
 
-    # 保存结果
-    output_dir = Path("data_lake/research")
+    output_dir = get_research_path()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     result = {

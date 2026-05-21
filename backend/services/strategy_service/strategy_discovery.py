@@ -19,6 +19,7 @@ import numpy as np
 from pathlib import Path
 
 from infrastructure.logging import get_logger
+from infrastructure.data_lake import get_features_path, get_research_path
 from services.strategy_service.strategies import (
     BaseStrategy, StrategySignal, StrategyType, ActionType
 )
@@ -144,12 +145,12 @@ class StrategyDiscoveryEngine:
         self.min_avg_return = min_avg_return
         
         if data_path is None:
-            data_path = Path(__file__).parent.parent.parent / "data_lake" / "features" / "binance"
+            data_path = get_features_path(exchange="binance")
         self.data_path = Path(data_path)
         
         self.symbols = symbols or ["BTCUSDT", "ETHUSDT"]
         
-        self.discovered_patterns: Dict[str, Dict[str, DiscoveredPattern]] = {}  # symbol -> patterns
+        self.discovered_patterns: Dict[str, Dict[str, DiscoveredPattern]] = {}
         
         logger.info(f"StrategyDiscoveryEngine initialized for symbols: {self.symbols}")
     
@@ -558,7 +559,7 @@ def demo_auto_discovery():
         engine.print_discovery_report()
         
         if new_strategies:
-            output_path = Path(__file__).parent.parent / "data_lake" / "research" / "auto_discovered_patterns.json"
+            output_path = get_research_path() / "auto_discovered_patterns.json"
             engine.save_discovered_patterns(str(output_path))
             
             print(f"\n✅ {len(new_strategies)} new strategies discovered!")

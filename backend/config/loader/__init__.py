@@ -93,12 +93,31 @@ class ObservabilityConfig(BaseModel):
     jaeger_endpoint: str = "http://localhost:4317"
 
 
+class DataLakeStorageConfig(BaseModel):
+    smb_host: str = "192.168.1.14"
+    smb_share: str = "00_crypto"
+    smb_path: str = "00_code/backend/data_lake"
+    local_path: str = "./data_lake"
+    use_smb: bool = True
+    
+    @property
+    def smb_url(self) -> str:
+        return f"smb://{self.smb_host}/{self.smb_share}/{self.smb_path}"
+    
+    @property
+    def effective_path(self) -> str:
+        if self.use_smb:
+            return self.smb_url
+        return self.local_path
+
+
 class InfraConfig(BaseModel):
     kafka: KafkaConfig = Field(default_factory=KafkaConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
     clickhouse: ClickHouseConfig = Field(default_factory=ClickHouseConfig)
     postgresql: PostgreSQLConfig = Field(default_factory=PostgreSQLConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
+    data_lake: DataLakeStorageConfig = Field(default_factory=DataLakeStorageConfig)
 
 
 class EnvironmentConfig(BaseModel):

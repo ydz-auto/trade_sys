@@ -4,6 +4,7 @@
 """
 
 import os
+import sys
 import zipfile
 import requests
 import pandas as pd
@@ -11,14 +12,18 @@ from pathlib import Path
 from datetime import datetime
 import time
 
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from infrastructure.data_lake import get_data_lake_subpath
+
 BASE_URL = "https://data.binance.vision/data/futures/um/monthly/trades"
 
 
 def download_single_month(symbol: str, year: int, month: int):
     """下载单个月份的Trades数据"""
     
-    data_root = Path(__file__).parent.parent / "data_lake"
-    save_base = data_root / "crypto" / "binance" / "trades"
+    save_base = get_data_lake_subpath("crypto", "binance", "trades")
     save_base.mkdir(parents=True, exist_ok=True)
     
     mm = str(month).zfill(2)

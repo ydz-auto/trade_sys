@@ -3,11 +3,11 @@ Runtime Orchestrator - Runtime 总控制器
 
 核心职责:
 1. 统一管理所有 runtime
-2. 协调 runtime 启动顺序
+2. 协调 runtime 启动顺序 (DependencyGraph 驱动)
 3. 模式切换编排
-4. 健康检查协调
+4. 健康检查协调 (HealthSystem 统一)
 """
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, List, Callable, Set
 from datetime import datetime
 from dataclasses import dataclass, field
 import asyncio
@@ -15,6 +15,9 @@ import asyncio
 from domain.trading_mode import TradingMode, get_trading_mode_manager
 from .registry import RuntimeRegistry, RuntimeType, RuntimeState, RuntimeInfo, get_runtime_registry
 from .lifecycle import RuntimeLifecycle, get_runtime_lifecycle
+from runtime.dependency.graph import get_dependency_graph
+from runtime.lifecycle.runtime_health import get_health_system, HealthStatus
+from runtime.lifecycle.state_machine import get_state_machine, RuntimeState as LifecycleState
 from runtime.state import get_runtime_state_store
 from infrastructure.logging import get_logger
 
@@ -59,6 +62,10 @@ class RuntimeOrchestrator:
         self._registry = get_runtime_registry()
         self._lifecycle = get_runtime_lifecycle()
         self._state_store = get_runtime_state_store()
+        
+        self._dependency_graph = get_dependency_graph()
+        self._health_system = get_health_system()
+        self._state_machine = get_state_machine()
         
         self._is_running = False
         self._started_at: Optional[datetime] = None
@@ -105,7 +112,7 @@ class RuntimeOrchestrator:
             "mode_changes": 0,
         }
         
-        logger.info("RuntimeOrchestrator initialized")
+        logger.info("RuntimeOrchestrator initialized with DependencyGraph + HealthSystem")
 
     async def start(self) -> Dict[str, Any]:
         if self._is_running:
@@ -117,26 +124,44 @@ class RuntimeOrchestrator:
         self._started_at = datetime.now()
         
         mode = self._mode_manager.mode
-        runtime_types = self._mode_runtimes.get(mode, [])
+        runtime_types = set(self._mode_runtimes.get(mode, []))
         
-        startup_order = self._registry.get_startup_order()
-        startup_order = [r for r in startup_order if r.runtime_type in runtime_types]
+        startup_order_types = self._dependency_graph.get_startup_order(runtime_types)
         
-        results = {"started": [], "failed": []}
+        logger.info(f"DependencyGraph startup order: {[rt.value for rt in startup_order_types]}")
         
-        for info in startup_order:
-            try:
-                success = await self._lifecycle.start(info.runtime_id)
-                if success:
-                    results["started"].append(info.runtime_id)
-                else:
+        results = {"started": [], "failed": [], "skipped": []}
+        started_types: Set[RuntimeType] = set()
+        
+        for runtime_type in startup_order_types:
+            can_start, missing = self._dependency_graph.can_start(runtime_type, started_types)
+            
+            if not can_start:
+                logger.warning(f"Skipping {runtime_type.value}: missing dependencies {[m.value for m in missing]}")
+                results["skipped"].append(runtime_type.value)
+                continue
+            
+            runtime_infos = self._registry.get_by_type(runtime_type)
+            
+            for info in runtime_infos:
+                self._state_machine.register(info.runtime_id, LifecycleState.CREATED)
+                await self._state_machine.transition(info.runtime_id, LifecycleState.STARTING, reason="orchestrator_start")
+                
+                try:
+                    success = await self._lifecycle.start(info.runtime_id)
+                    if success:
+                        await self._state_machine.transition(info.runtime_id, LifecycleState.RUNNING, reason="started")
+                        results["started"].append(info.runtime_id)
+                        started_types.add(runtime_type)
+                    else:
+                        await self._state_machine.transition(info.runtime_id, LifecycleState.FAILED, reason="start_failed")
+                        results["failed"].append(info.runtime_id)
+                except Exception as e:
+                    logger.error(f"Failed to start {info.runtime_id}: {e}")
+                    await self._state_machine.transition(info.runtime_id, LifecycleState.FAILED, reason=str(e))
                     results["failed"].append(info.runtime_id)
-            except Exception as e:
-                logger.error(f"Failed to start {info.runtime_id}: {e}")
-                results["failed"].append(info.runtime_id)
         
-        if self._config.health_check_interval > 0:
-            self._health_check_task = asyncio.create_task(self._health_check_loop())
+        await self._health_system.start()
         
         self._stats["total_starts"] += 1
         
@@ -144,6 +169,7 @@ class RuntimeOrchestrator:
             "orchestrator_running": True,
             "started_at": self._started_at.isoformat(),
             "mode": mode.value,
+            "startup_order": [rt.value for rt in startup_order_types],
         })
         
         logger.info(f"Runtime Orchestrator started: {len(results['started'])} runtimes")
@@ -152,6 +178,7 @@ class RuntimeOrchestrator:
             "success": True,
             "mode": mode.value,
             "results": results,
+            "startup_order": [rt.value for rt in startup_order_types],
         }
 
     async def stop(self) -> Dict[str, Any]:
@@ -160,23 +187,31 @@ class RuntimeOrchestrator:
         
         logger.info("Stopping Runtime Orchestrator...")
         
-        if self._health_check_task:
-            self._health_check_task.cancel()
-            self._health_check_task = None
+        await self._health_system.stop()
         
-        active = self._registry.get_active()
+        mode = self._mode_manager.mode
+        runtime_types = set(self._mode_runtimes.get(mode, []))
+        
+        shutdown_order_types = self._dependency_graph.get_shutdown_order(runtime_types)
+        
         results = {"stopped": [], "failed": []}
         
-        for info in reversed(active):
-            try:
-                success = await self._lifecycle.stop(info.runtime_id)
-                if success:
-                    results["stopped"].append(info.runtime_id)
-                else:
+        for runtime_type in shutdown_order_types:
+            runtime_infos = self._registry.get_by_type(runtime_type)
+            
+            for info in runtime_infos:
+                try:
+                    await self._state_machine.transition(info.runtime_id, LifecycleState.STOPPING, reason="orchestrator_stop")
+                    
+                    success = await self._lifecycle.stop(info.runtime_id)
+                    if success:
+                        await self._state_machine.transition(info.runtime_id, LifecycleState.STOPPED, reason="stopped")
+                        results["stopped"].append(info.runtime_id)
+                    else:
+                        results["failed"].append(info.runtime_id)
+                except Exception as e:
+                    logger.error(f"Failed to stop {info.runtime_id}: {e}")
                     results["failed"].append(info.runtime_id)
-            except Exception as e:
-                logger.error(f"Failed to stop {info.runtime_id}: {e}")
-                results["failed"].append(info.runtime_id)
         
         self._is_running = False
         self._stats["total_stops"] += 1
@@ -186,6 +221,7 @@ class RuntimeOrchestrator:
         return {
             "success": True,
             "results": results,
+            "shutdown_order": [rt.value for rt in shutdown_order_types],
         }
 
     async def restart(self) -> Dict[str, Any]:
@@ -293,6 +329,7 @@ class RuntimeOrchestrator:
 
     def get_stats(self) -> Dict[str, Any]:
         status = self.get_status()
+        health_metrics = self._health_system.get_metrics()
         return {
             "is_running": status.is_running,
             "mode": status.mode.value,
@@ -301,7 +338,35 @@ class RuntimeOrchestrator:
             "uptime_seconds": status.uptime_seconds,
             "stats": self._stats.copy(),
             "registry": self._registry.get_stats(),
+            "health": {
+                "total_runtimes": health_metrics.total_runtimes,
+                "healthy": health_metrics.healthy_count,
+                "degraded": health_metrics.degraded_count,
+                "unhealthy": health_metrics.unhealthy_count,
+                "critical": health_metrics.critical_count,
+                "avg_latency_ms": health_metrics.avg_latency_ms,
+                "uptime_percentage": health_metrics.uptime_percentage,
+            },
+            "state_machine": self._state_machine.get_stats(),
+            "dependency_graph": self._dependency_graph.get_graph(),
         }
+    
+    def get_health(self) -> Dict[str, Any]:
+        return self._health_system.get_stats()
+    
+    def get_alerts(self, limit: int = 20) -> List[Dict[str, Any]]:
+        alerts = self._health_system.get_alerts(limit=limit)
+        return [
+            {
+                "alert_id": a.alert_id,
+                "level": a.level.value,
+                "runtime_id": a.runtime_id,
+                "message": a.message,
+                "timestamp": a.timestamp.isoformat(),
+                "acknowledged": a.acknowledged,
+            }
+            for a in alerts
+        ]
 
 
 def get_runtime_orchestrator() -> RuntimeOrchestrator:

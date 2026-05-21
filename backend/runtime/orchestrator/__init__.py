@@ -9,9 +9,8 @@ Runtime Orchestrator Module - Runtime 编排层
 - RuntimeTimeline: 时间线
 - RuntimeInspector: 调试器
 """
+from runtime.types import RuntimeType, RuntimeState
 from .registry import (
-    RuntimeType,
-    RuntimeState,
     RuntimeInfo,
     RuntimeRegistry,
     get_runtime_registry,

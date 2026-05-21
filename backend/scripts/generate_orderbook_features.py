@@ -26,17 +26,20 @@ import argparse
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from services.aggregation_service.publishers.parquet_writer import get_parquet_writer
+from infrastructure.data_lake import get_data_lake_subpath
 
 
 class OrderBookFeatureGenerator:
     """基于Trade+K线生成OrderBook特征"""
     
-    def __init__(self, output_path: str = "data_lake/orderbook_features"):
+    def __init__(self, output_path: str = None):
+        if output_path is None:
+            output_path = str(get_data_lake_subpath("orderbook_features"))
         self.writer = get_parquet_writer(base_path=output_path)
     
     def load_trades(self, symbol: str, year: int, month: int) -> pd.DataFrame:
         """加载Trades数据"""
-        trades_path = Path(__file__).parent.parent / "data_lake" / "crypto" / "binance" / "trades"
+        trades_path = get_data_lake_subpath("crypto", "binance", "trades")
         path = trades_path / f"symbol={symbol}" / f"year={year}" / f"month={str(month).zfill(2)}" / "data.parquet"
         
         if not path.exists():
@@ -49,7 +52,7 @@ class OrderBookFeatureGenerator:
     
     def load_klines(self, symbol: str, year: int, month: int) -> pd.DataFrame:
         """加载K线数据"""
-        klines_path = Path(__file__).parent.parent / "data_lake" / "crypto" / "binance" / "klines"
+        klines_path = get_data_lake_subpath("crypto", "binance", "klines")
         path = klines_path / f"symbol={symbol}" / f"year={year}" / f"month={str(month).zfill(2)}" / "data.parquet"
         
         if not path.exists():

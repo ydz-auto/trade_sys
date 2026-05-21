@@ -33,6 +33,15 @@ from .manager import (
     LayerStats,
     get_data_lake_manager,
 )
+from .path_utils import (
+    get_data_lake_root,
+    get_data_lake_subpath,
+    get_data_lake_root_cached,
+    get_features_path,
+    get_models_path,
+    get_research_path,
+    get_crypto_data_path,
+)
 
 __all__ = [
     "DataLayer",
@@ -50,4 +59,11 @@ __all__ = [
     "QueryRequest",
     "LayerStats",
     "get_data_lake_manager",
+    "get_data_lake_root",
+    "get_data_lake_subpath",
+    "get_data_lake_root_cached",
+    "get_features_path",
+    "get_models_path",
+    "get_research_path",
+    "get_crypto_data_path",
 ]

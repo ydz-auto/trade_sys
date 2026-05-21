@@ -12,6 +12,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from services.aggregation_service.publishers.parquet_writer import get_parquet_writer
+from infrastructure.data_lake import get_data_lake_subpath
 
 
 def main():
@@ -19,8 +20,7 @@ def main():
     print("Trade特征提取 + OrderBook特征生成")
     print("=" * 80)
     
-    # 加载Trades数据
-    trades_path = Path(__file__).parent.parent / "data_lake" / "crypto" / "binance" / "trades" / "symbol=BTCUSDT" / "year=2024" / "month=01" / "data.parquet"
+    trades_path = get_data_lake_subpath("crypto", "binance", "trades", "symbol=BTCUSDT", "year=2024", "month=01", "data.parquet")
     
     if not trades_path.exists():
         print(f"错误：未找到Trades数据: {trades_path}")
@@ -131,8 +131,7 @@ def main():
     print(f"  特征记录数: {len(features_df):,}")
     print(f"  特征列数: {len(features_df.columns)}")
     
-    # 保存到Parquet
-    output_path = Path(__file__).parent.parent / "data_lake" / "orderbook_features"
+    output_path = get_data_lake_subpath("orderbook_features")
     writer = get_parquet_writer(base_path=str(output_path))
     
     for _, row in features_df.iterrows():
@@ -145,7 +144,6 @@ def main():
     print(f"  总文件数: {stats['total_files']}")
     print(f"  总大小: {stats['total_size_mb']:.2f} MB")
     
-    # 输出样本数据
     print("\n样本特征数据:")
     sample = features_df.head(5)[[
         'timestamp', 'mid_price', 'spread', 'spread_pct',

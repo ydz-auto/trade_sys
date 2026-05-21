@@ -8,42 +8,15 @@ Runtime Registry - Runtime 注册中心
 4. 提供 runtime 发现能力
 """
 from typing import Dict, Any, Optional, List, Callable, Type
-from enum import Enum
 from datetime import datetime
 from dataclasses import dataclass, field
 import asyncio
 
 from domain.trading_mode import TradingMode
+from runtime.types import RuntimeType, RuntimeState
 from infrastructure.logging import get_logger
 
 logger = get_logger("runtime.registry")
-
-
-class RuntimeType(str, Enum):
-    MARKET = "market"
-    INGESTION = "ingestion"
-    FEATURE = "feature"
-    BEHAVIOUR = "behaviour"
-    SIGNAL = "signal"
-    EXECUTION = "execution"
-    PORTFOLIO = "portfolio"
-    RISK = "risk"
-    PROJECTION = "projection"
-    REPLAY = "replay"
-    NARRATIVE = "narrative"
-    MONITORING = "monitoring"
-
-
-class RuntimeState(str, Enum):
-    REGISTERED = "registered"
-    STARTING = "starting"
-    RUNNING = "running"
-    PAUSED = "paused"
-    DEGRADED = "degraded"
-    STOPPING = "stopping"
-    STOPPED = "stopped"
-    FAILED = "failed"
-    RECOVERING = "recovering"
 
 
 @dataclass

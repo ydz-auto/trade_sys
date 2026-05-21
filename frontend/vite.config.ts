@@ -19,7 +19,7 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/execution': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8001',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/execution/, '')
       },

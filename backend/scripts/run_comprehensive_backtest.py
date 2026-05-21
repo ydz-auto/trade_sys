@@ -26,6 +26,7 @@ import pandas as pd
 import numpy as np
 
 from infrastructure.logging import get_logger
+from infrastructure.data_lake import get_features_path, get_research_path
 
 logger = get_logger("comprehensive_backtest")
 
@@ -70,7 +71,7 @@ class ComprehensiveBacktester:
         self.results: Dict[str, StrategyResult] = {}
         
     def load_data(self, months=60):
-        data_path = backend_path / "data_lake/features/binance/BTCUSDT/features_with_structure.parquet"
+        data_path = get_features_path("binance", "BTCUSDT") / "features_with_structure.parquet"
         
         try:
             df = pd.read_parquet(data_path)
@@ -78,7 +79,6 @@ class ComprehensiveBacktester:
             logger.error(f"Cannot load parquet file: {e}")
             return pd.DataFrame()
         
-        # 不做时间截断，加载全部数据
         logger.info(f"Loaded {len(df)} rows, date range: {df['timestamp'].min()} to {df['timestamp'].max()}")
         
         self.df = df
@@ -834,7 +834,7 @@ class ComprehensiveBacktester:
             print(f"{cat:<25} | 总交易: {total_trades:>6} | 平均胜率: {avg_win_rate*100:>5.1f}% | 总收益: ${total_return:>12,.2f}")
     
     def save_results(self):
-        output_dir = backend_path / "data_lake/research"
+        output_dir = get_research_path()
         output_dir.mkdir(parents=True, exist_ok=True)
         
         output_data = {

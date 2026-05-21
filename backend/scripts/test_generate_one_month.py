@@ -3,17 +3,22 @@
 快速生成一个月的特征用于测试
 """
 
+import sys
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from datetime import datetime
 
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from infrastructure.data_lake import get_data_lake_subpath
+
 print("=" * 80)
 print("📊 生成一个月的特征用于测试")
 print("=" * 80)
 
-# 加载Trades数据
-trades_path = Path("data_lake/crypto/binance/trades/symbol=BTCUSDT/year=2024/month=01/data.parquet")
+trades_path = get_data_lake_subpath("crypto", "binance", "trades", "symbol=BTCUSDT", "year=2024", "month=01", "data.parquet")
 print(f"\n📂 加载Trades数据: {trades_path}")
 
 if not trades_path.exists():
@@ -120,8 +125,7 @@ for idx, (window_start, group) in enumerate(trades_df.groupby('window')):
 features_df = pd.DataFrame(features)
 print(f"✅ 特征计算完成，{len(features_df):,}条记录")
 
-# 保存
-output_path = Path("data_lake/orderbook_features/symbol=BTCUSDT/year=2024/month=01")
+output_path = get_data_lake_subpath("orderbook_features", "symbol=BTCUSDT", "year=2024", "month=01")
 output_path.mkdir(parents=True, exist_ok=True)
 
 output_file = output_path / "features.parquet"

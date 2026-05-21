@@ -8,11 +8,10 @@ Runtime Dependency Graph - Runtime 依赖图
 4. 支持部分启动
 """
 from typing import Dict, Any, Optional, List, Set, Tuple
-from enum import Enum
 from dataclasses import dataclass, field
 from collections import defaultdict
 
-from runtime.orchestrator.registry import RuntimeType
+from runtime.types import RuntimeType
 from infrastructure.logging import get_logger
 
 logger = get_logger("runtime.dependency")
