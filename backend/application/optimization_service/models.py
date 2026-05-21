@@ -105,6 +105,7 @@ class OptimizationConfig:
     method: OptimizationMethod = OptimizationMethod.GRID_SEARCH
     metric: OptimizationMetric = OptimizationMetric.SHARPE
     
+    param_grid: Optional[dict] = None
     n_trials: int = 50
     max_concurrent: int = 3
     
@@ -112,6 +113,14 @@ class OptimizationConfig:
     enable_slippage: bool = True
     enable_latency: bool = True
     enable_partial_fill: bool = True
+    
+    # 策略参数
+    stop_loss: float = 0.02
+    take_profit: float = 0.04
+    max_hold_hours: int = 48
+    
+    # 数据重采样
+    resample_freq: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -131,6 +140,10 @@ class OptimizationConfig:
             "enable_slippage": self.enable_slippage,
             "enable_latency": self.enable_latency,
             "enable_partial_fill": self.enable_partial_fill,
+            "stop_loss": self.stop_loss,
+            "take_profit": self.take_profit,
+            "max_hold_hours": self.max_hold_hours,
+            "resample_freq": self.resample_freq,
         }
 
 

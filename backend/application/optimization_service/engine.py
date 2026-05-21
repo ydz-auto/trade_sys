@@ -48,6 +48,9 @@ class BacktestConfig:
     enable_latency: bool = True
     enable_partial_fill: bool = True
     enable_feature_guard: bool = True
+    
+    # 数据重采样配置
+    resample_freq: Optional[str] = None  # 例如 "10min", "1h", "1d" 等，None 表示不重采样
 
 
 @dataclass
@@ -249,6 +252,10 @@ class OptimizationBacktestEngine:
         
         df = df[(df['timestamp'] >= start_dt) & (df['timestamp'] <= end_dt)]
         
+        # 数据重采样
+        if self.config.resample_freq and not df.empty:
+            df = self._resample_data(df, self.config.resample_freq)
+        
         for idx, row in df.iterrows():
             ts = int(row['timestamp'].timestamp() * 1000) if isinstance(row['timestamp'], pd.Timestamp) else int(row['timestamp'])
             
@@ -279,6 +286,48 @@ class OptimizationBacktestEngine:
             equity = self._calculate_equity()
             self._equity_curve.append(equity)
     
+    def _resample_data(self, df: pd.DataFrame, freq: str) -> pd.DataFrame:
+        """重采样数据到指定频率"""
+        if len(df) < 2:
+            return df
+        
+        df = df.set_index('timestamp')
+        
+        # OHLCV 字段的重采样规则
+        agg_rules = {
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last',
+            'volume': 'sum',
+            'quote_volume': 'sum',
+            'trades': 'sum',
+        }
+        
+        # 技术指标字段用最后一个值
+        tech_indicators = [
+            'rsi_7', 'rsi_14', 'rsi_21',
+            'sma_10', 'sma_20', 'sma_50', 'sma_100',
+            'ema_10', 'ema_20', 'ema_50', 'ema_100',
+            'macd', 'macd_signal', 'macd_hist',
+            'bb_upper', 'bb_lower', 'bb_width',
+            'volume_ratio', 'oi_delta', 'funding_zscore',
+        ]
+        
+        for col in tech_indicators:
+            if col in df.columns:
+                agg_rules[col] = 'last'
+        
+        # 应用重采样
+        resampled = df.resample(freq).agg(
+            {col: agg_rules.get(col, 'last') for col in df.columns}
+        )
+        
+        resampled = resampled.reset_index()
+        resampled = resampled.dropna(subset=['close'])
+        
+        return resampled
+
     def _extract_features(self, row: pd.Series) -> Dict[str, float]:
         """提取特征"""
         feature_fields = [

@@ -179,21 +179,31 @@ class OptimizationService:
         self._results[task_id] = result
         
         try:
-            data_path = self._get_data_path(task.symbol)
+            data_cache_path = self._get_data_path(task.symbol)
+            opt_data_path = None
+            backtest_data_path = None
             
-            if not data_path.exists():
-                raise ValueError(f"Data not found: {data_path}")
+            if data_cache_path.name == "features_cache":
+                opt_data_path = data_cache_path / "features_opt.parquet"
+                backtest_data_path = data_cache_path / "features_backtest.parquet"
+            else:
+                opt_data_path = data_cache_path
+                backtest_data_path = data_cache_path
+            
+            if not opt_data_path.exists():
+                raise ValueError(f"Optimization data not found: {opt_data_path}")
             
             backtest_config = BacktestConfig(
                 initial_capital=task.config.initial_capital,
                 commission=task.config.commission,
                 slippage=task.config.slippage,
                 position_size=task.config.position_size,
-                stop_loss=task.strategy_config.stop_loss,
-                take_profit=task.strategy_config.take_profit,
-                max_hold_hours=task.strategy_config.max_hold_hours,
+                stop_loss=task.config.stop_loss,
+                take_profit=task.config.take_profit,
+                max_hold_hours=task.config.max_hold_hours,
                 enable_slippage=task.config.enable_slippage,
                 enable_latency=task.config.enable_latency,
+                resample_freq=task.config.resample_freq,
             )
             
             engine = OptimizationBacktestEngine(backtest_config)
@@ -211,7 +221,7 @@ class OptimizationService:
                 task.progress = task.current_combo / task.total_combos
                 
                 backtest_result = await engine.run(
-                    parquet_path=data_path,
+                    data_path=opt_data_path,
                     symbol=task.symbol,
                     strategy_id=task.strategy_config.strategy_id,
                     params=params,
@@ -238,6 +248,25 @@ class OptimizationService:
             result.all_results = sorted(all_results, key=lambda x: -x['score'])[:10]
             result.trades = [self._convert_trade(t) for t in (best_result.trades[:100] if best_result else [])]
             
+            # 回测期验证
+            if (task.config.backtest_start and task.config.backtest_end and 
+                backtest_data_path and backtest_data_path.exists()):
+                
+                backtest_result_final = await engine.run(
+                    data_path=backtest_data_path,
+                    symbol=task.symbol,
+                    strategy_id=task.strategy_config.strategy_id,
+                    params=best_params,
+                    start_time=task.config.backtest_start,
+                    end_time=task.config.backtest_end,
+                )
+                
+                # 添加回测期信息
+                result.backtest_period = f"{task.config.backtest_start} ~ {task.config.backtest_end}"
+                if result.runtime_stats is None:
+                    result.runtime_stats = {}
+                result.runtime_stats["backtest_metrics"] = backtest_result_final.to_dict()
+            
             result.status = OptimizationStatus.COMPLETED
             result.completed_at = datetime.now()
             
@@ -249,6 +278,8 @@ class OptimizationService:
             
         except Exception as e:
             logger.error(f"Optimization failed: {task_id} - {e}")
+            import traceback
+            traceback.print_exc()
             result.status = OptimizationStatus.FAILED
             result.error = str(e)
             result.completed_at = datetime.now()
@@ -301,7 +332,15 @@ class OptimizationService:
         ]
     
     def _get_data_path(self, symbol: str) -> Path:
-        """获取数据路径"""
+        """获取数据路径 - 优先使用 features_cache"""
+        # 先尝试 features_cache
+        cache_path = Path(__file__).parent.parent.parent / "data_lake" / "features_cache"
+        if cache_path.exists():
+            opt_path = cache_path / "features_opt.parquet"
+            if opt_path.exists():
+                return cache_path
+        
+        # 否则回退到原来的路径
         return Path(__file__).parent.parent.parent / "data_lake" / "features" / "binance" / symbol / "features.parquet"
     
     def _calculate_score(self, result: BacktestResult, metric: OptimizationMetric) -> float:

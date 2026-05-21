@@ -62,6 +62,8 @@ class OptimizationRequest(BaseModel):
     position_size: float = Field(default=0.3, description="仓位大小")
     stop_loss: float = Field(default=0.02, description="止损")
     take_profit: float = Field(default=0.04, description="止盈")
+    max_hold_hours: int = Field(default=48, description="最大持仓时间（小时）")
+    resample_freq: Optional[str] = Field(default=None, description="数据重采样频率（例如 '10min', '1h'）")
     
     enable_slippage: bool = Field(default=True, description="启用滑点模拟")
     enable_latency: bool = Field(default=True, description="启用延迟模拟")
@@ -140,9 +142,11 @@ async def run_optimization_task(
             param_grid=request.param_grid,
             enable_slippage=request.enable_slippage,
             enable_latency=request.enable_latency,
+            stop_loss=request.stop_loss,
+            take_profit=request.take_profit,
+            max_hold_hours=request.max_hold_hours,
+            resample_freq=request.resample_freq,
         )
-        config.stop_loss = request.stop_loss
-        config.take_profit = request.take_profit
         
         task = await service.create_task(
             strategy_id=request.strategy_id,
