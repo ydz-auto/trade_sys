@@ -4,10 +4,27 @@ Data Lake Path Utilities - 数据湖路径工具
 提供统一的数据湖路径访问接口，支持 SMB 和本地路径配置化
 """
 
+import platform
 from pathlib import Path
 from typing import Optional
 
 from config.loader import get_config
+
+
+def get_smb_mount_base() -> str:
+    """
+    获取SMB挂载基础路径
+    
+    macOS: /Volumes/
+    Linux: /mnt/
+    
+    Returns:
+        str: SMB挂载基础路径
+    """
+    if platform.system() == "Darwin":
+        return "/Volumes"
+    else:
+        return "/mnt"
 
 
 def get_data_lake_root() -> Path:
@@ -16,6 +33,9 @@ def get_data_lake_root() -> Path:
     
     根据配置决定使用 SMB 路径还是本地路径
     
+    macOS SMB挂载点: /Volumes/<share_name>/<smb_path>
+    Linux SMB挂载点: /mnt/<share_name>/<smb_path>
+    
     Returns:
         Path: 数据湖根目录路径
     """
@@ -23,9 +43,10 @@ def get_data_lake_root() -> Path:
     data_lake_config = config.infra.data_lake
     
     if data_lake_config.use_smb:
-        smb_url = data_lake_config.smb_url
-        smb_path = smb_url.replace("smb://", "")
-        return Path(f"/mnt/{smb_path}")
+        mount_base = get_smb_mount_base()
+        smb_share = data_lake_config.smb_share
+        smb_path = data_lake_config.smb_path
+        return Path(f"{mount_base}/{smb_share}/{smb_path}")
     else:
         local_path = data_lake_config.local_path
         if local_path.startswith("./"):
