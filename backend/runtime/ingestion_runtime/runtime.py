@@ -36,6 +36,10 @@ from runtime.shared import (
 from infrastructure.messaging import Topics
 from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 from dataclasses import dataclass, field
+from infrastructure.runtime_clock import get_clock
+from infrastructure.feature_availability import get_systematic_guard
+from infrastructure.label_isolation import get_label_store
+from infrastructure.storage.immutable_snapshot import get_immutable_snapshot_store
 
 
 @dataclass
@@ -69,6 +73,12 @@ class IngestionRuntime(BaseRuntime):
         super().__init__(config)
         self.config: IngestionConfig = config
         
+        # 时间因果基础设施集成
+        self._clock = get_clock()
+        self._availability_guard = get_systematic_guard()
+        self._label_store = get_label_store()
+        self._snapshot_store = None
+        
         self.lifecycle: Optional[RuntimeLifecycle] = None
         self.metrics: Optional[RuntimeMetrics] = None
         self.health_check: Optional[RuntimeHealthCheck] = None
@@ -94,7 +104,10 @@ class IngestionRuntime(BaseRuntime):
     
     async def initialize(self) -> None:
         """初始化运行时组件"""
-        self.logger.info("Initializing Ingestion Runtime...")
+        self.logger.info("Initializing Ingestion Runtime with time-causal infrastructure...")
+        
+        # 初始化时间因果基础设施
+        self._snapshot_store = get_immutable_snapshot_store("ingestion")
         
         self.lifecycle = RuntimeLifecycle("ingestion")
         self.metrics = RuntimeMetrics("ingestion")
@@ -587,9 +600,11 @@ class IngestionRuntime(BaseRuntime):
                 self.logger.error(f"Odaily collection error: {e}")
     
     async def _publish_news_events(self, news_items: list) -> None:
-        """将新闻事件发布到Kafka"""
+        """将新闻事件发布到Kafka - 支持时间因果一致性"""
         from datetime import datetime
         import uuid
+        
+        current_time = self._clock.now()
         
         for news in news_items:
             try:
@@ -598,7 +613,8 @@ class IngestionRuntime(BaseRuntime):
                     "trace_id": f"trc_{uuid.uuid4().hex[:16]}",
                     "event_type": "news",
                     "source": "ingestion_runtime",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": current_time.isoformat(),
+                    "clock_mode": self._clock.mode.value,
                     "data": {
                         "id": news.id,
                         "title": news.title,
@@ -613,19 +629,24 @@ class IngestionRuntime(BaseRuntime):
                     }
                 }
                 
+                # 保存不可变快照
+                if self._snapshot_store:
+                    self._snapshot_store.save(event, timestamp=current_time)
+                
                 await self.publisher.publish(event, key=news.id)
                 
             except Exception as e:
                 self.logger.error(f"Failed to publish news event: {e}")
     
     async def _publish_odaily_events(self, odaily_events: list) -> None:
-        """将Odaily事件发布到Kafka (raw.odaily topic)
+        """将Odaily事件发布到Kafka (raw.odaily topic) - 支持时间因果一致性
         
         数据流: 采集层 → Kafka(raw.odaily) → OdailyConsumer(LLM增强) → Redis → API
         """
         from datetime import datetime
         import uuid
         
+        current_time = self._clock.now()
         original_topic = self.publisher.config.topic
         self.publisher.config.topic = Topics.raw_odaily()
         
@@ -637,7 +658,8 @@ class IngestionRuntime(BaseRuntime):
                         "trace_id": f"trc_{uuid.uuid4().hex[:16]}",
                         "event_type": "odaily_raw",
                         "source": "clawhub_odaily",
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": current_time.isoformat(),
+                        "clock_mode": self._clock.mode.value,
                         "data": {
                             "id": event.id,
                             "title": event.title,
@@ -650,6 +672,10 @@ class IngestionRuntime(BaseRuntime):
                             "metadata": event.metadata,
                         }
                     }
+                    
+                    # 保存不可变快照
+                    if self._snapshot_store:
+                        self._snapshot_store.save(event_dict, timestamp=current_time)
                     
                     await self.publisher.publish(event_dict, key=event.id)
                     

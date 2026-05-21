@@ -258,7 +258,8 @@ class StrategyResearchMatrix:
         df["regime"] = "ranging"
         df.loc[trend > 0.01, "regime"] = "trending_up"
         df.loc[trend < -0.01, "regime"] = "trending_down"
-        df.loc[volatility > volatility.quantile(cfg["volatility_high_quantile"]), "regime"] = "volatile"
+        volatility_threshold = volatility.rolling(window=288, min_periods=20).quantile(cfg["volatility_high_quantile"])
+        df.loc[volatility > volatility_threshold, "regime"] = "volatile"
         
         funding_high = df["funding_rate"] > cfg["funding_high_threshold"]
         df["funding_context"] = np.where(funding_high, "high_funding", "low_funding")

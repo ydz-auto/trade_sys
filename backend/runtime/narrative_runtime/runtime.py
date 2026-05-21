@@ -15,6 +15,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from runtime.base import BaseRuntime, RuntimeConfig, RuntimeState
 from infrastructure.logging import get_logger
 from infrastructure.messaging import get_broker, Topics
+from infrastructure.runtime_clock import get_clock, ClockMode
+from infrastructure.feature_availability import get_systematic_guard
+from infrastructure.label_isolation import get_label_store
+from infrastructure.storage.immutable_snapshot import get_immutable_snapshot_store
 
 
 class NarrativeConfig(RuntimeConfig):
@@ -41,13 +45,22 @@ class NarrativeRuntime(BaseRuntime):
         super().__init__(config)
         self.config: NarrativeConfig = config
         
+        # 时间因果基础设施集成
+        self._clock = get_clock()
+        self._availability_guard = get_systematic_guard()
+        self._label_store = get_label_store()
+        self._snapshot_store = None
+        
         self.broker = None
         self.llm_client = None
         self.narrative_engine = None
     
     async def initialize(self) -> None:
         """初始化"""
-        self.logger.info("Initializing Narrative Runtime...")
+        self.logger.info("Initializing Narrative Runtime with time-causal infrastructure...")
+        
+        # 初始化时间因果基础设施
+        self._snapshot_store = get_immutable_snapshot_store("narrative")
         
         self.broker = get_broker(self.config.kafka_bootstrap_servers)
         
@@ -87,13 +100,28 @@ class NarrativeRuntime(BaseRuntime):
             raise
     
     async def process_event(self, msg: dict) -> None:
-        """处理事件"""
+        """处理事件 - 支持时间因果一致性"""
         try:
+            current_time = self._clock.now()
             self.context.increment_stat("events_received")
+            
+            # 标签隔离检查
+            if self._label_store:
+                self._label_store.ensure_isolation("narrative")
             
             if self.narrative_engine:
                 narrative = await self.narrative_engine.process(msg)
                 if narrative:
+                    # 保存不可变快照
+                    if self._snapshot_store:
+                        snapshot_data = {
+                            "narrative": narrative,
+                            "event": msg,
+                            "timestamp": current_time.isoformat(),
+                            "clock_mode": self._clock.mode.value
+                        }
+                        self._snapshot_store.save(snapshot_data, timestamp=current_time)
+                    
                     self.context.increment_stat("narratives_generated")
                     self.logger.info(f"Generated narrative: {narrative[:100]}...")
             

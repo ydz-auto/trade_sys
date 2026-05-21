@@ -163,11 +163,17 @@ class MarketEventEmitter:
         df = df.sort_values('timestamp').reset_index(drop=True)
         
         if start_time:
-            start_dt = pd.Timestamp(start_time)
+            if isinstance(start_time, str):
+                start_dt = pd.Timestamp(start_time)
+            else:
+                start_dt = pd.to_datetime(start_time, unit='ms')
             df = df[df['timestamp'] >= start_dt]
         
         if end_time:
-            end_dt = pd.Timestamp(end_time)
+            if isinstance(end_time, str):
+                end_dt = pd.Timestamp(end_time)
+            else:
+                end_dt = pd.to_datetime(end_time, unit='ms')
             df = df[df['timestamp'] <= end_dt]
         
         for idx, row in df.iterrows():

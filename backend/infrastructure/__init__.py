@@ -1,144 +1,289 @@
 """
-TradeAgent Infrastructure Module
-基础设施模块
-提供日志、监控、数据库、缓存、API网关、告警等基础设施服务
+Infrastructure - 交易系统基础设施模块
 
-使用延迟导入：子模块在首次访问时才加载，避免可选模块失败时阻塞启动
+核心原则：
+1. 单一时间源：所有模块必须使用 get_clock() 获取时间
+2. 严格 Label 隔离：特征和 Label 物理分离
+3. 系统化特征可用性：所有特征必须注册并检查可用性
+4. 不可变特征快照：一旦创建，特征不可修改
+5. 统一事件处理：Replay 和 Live 使用相同路径
+6. 统一 GPU 后端：所有计算通过 shared.acceleration
 """
 
-__version__ = "1.0.0"
+# GPU 加速统一后端
+from shared.acceleration import (
+    torch,
+    device,
+    is_gpu,
+    to_gpu,
+    to_cpu,
+    zeros,
+    ones,
+    tensor,
+    from_numpy,
+    get_device_info,
+    get_backend_info,
+    get_accelerator_info,
+    clear_cache,
+    synchronize
+)
 
-import sys
-from typing import TYPE_CHECKING
+# Runtime Clock - 统一时间源
+from infrastructure.runtime_clock import (
+    RuntimeClock,
+    ClockMode,
+    TimeSnapshot,
+    get_clock,
+    set_clock_mode,
+    now_ms,
+    exchange_now_ms
+)
 
-if TYPE_CHECKING:
-    from infrastructure.logging import (
-        LoggerFactory,
-        LoggerAdapter,
-        JSONFormatter,
-        TextFormatter,
-        LogContext,
-    )
-    from infrastructure.monitoring import (
-        HealthChecker,
-        MetricsCollector,
-        metrics_collector,
-        AlertManager,
-        AlertSender,
-        DashboardProvider,
-    )
-    from infrastructure.database import (
-        PostgresManager,
-        get_postgres_manager,
-        ClickHouseManager,
-        get_clickhouse_manager,
-    )
-    from infrastructure.cache import (
-        RedisClient,
-        get_redis_client,
-        CacheManager,
-        get_cache_manager,
-        CacheKey,
-        CacheCircuitBreaker,
-    )
+# Systematic Feature Availability - 系统化特征可用性
+from infrastructure.feature_availability import (
+    FeatureRule,
+    AvailabilityStatus,
+    SystematicAvailabilityGuard,
+    enforce_availability,
+    get_systematic_guard,
+    register_feature_rule
+)
 
+# Strict Label Isolation - 严格 Label 隔离
+from infrastructure.label_isolation import (
+    LabelType,
+    LabelRecord,
+    StrictLabelStore,
+    get_label_store,
+    set_label_store_mode,
+    safe_dataframe,
+    assert_safe_dataframe
+)
 
-_LAZY_SUBMODULES = {
-    "logging": [
-        "LoggerFactory",
-        "LoggerAdapter",
-        "get_logger",
-        "JSONFormatter",
-        "TextFormatter",
-        "LogContext",
-    ],
-    "monitoring": [
-        "HealthChecker",
-        "MetricsCollector",
-        "metrics_collector",
-        "AlertManager",
-        "AlertSender",
-        "DashboardProvider",
-    ],
-    "database": [
-        "PostgresManager",
-        "get_postgres_manager",
-        "ClickHouseManager",
-        "get_clickhouse_manager",
-    ],
-    "cache": [
-        "RedisClient",
-        "get_redis_client",
-        "CacheManager",
-        "get_cache_manager",
-        "CacheKey",
-        "CacheCircuitBreaker",
-    ],
-    "api_gateway": [
-        "Router",
-        "AuthMiddleware",
-        "RateLimitMiddleware",
-        "Response",
-        "APIResponse",
-        "APIKeyAuth",
-        "JWTAuth",
-        "PermissionChecker",
-    ],
-    "alerting": [
-        "AlertSender",
-        "AlertRule",
-        "AlertRuleEngine",
-        "TelegramChannel",
-        "EmailChannel",
-        "SMSChannel",
-    ],
-    "messaging": [
-        "KafkaBroker",
-        "SchemaRegistry",
-        "get_schema_registry",
-    ],
-    "websocket": [
-        "WebSocketManager",
-        "ConnectionManager",
-    ],
-    "scheduler": [
-        "CeleryScheduler",
-    ],
-    "webhook": [
-        "WebhookReceiver",
-    ],
-}
+# Point-in-Time Store - 时点特征存储
+from infrastructure.storage.point_in_time_store import (
+    PointInTimeFeatureStore,
+    PointInTimeFeatureRecord,
+    PointInTimeSnapshot,
+    FeatureSourceType,
+    get_point_in_time_store,
+    clear_all_stores
+)
 
-_LOADED_MODULES = {}
-_FAILED_MODULES = {}
+# Immutable Snapshots - 不可变特征快照
+from infrastructure.storage.immutable_snapshot import (
+    ImmutableFeatureSnapshot,
+    ImmutableSnapshotStore,
+    get_immutable_snapshot_store,
+    create_immutable_snapshot
+)
 
+# Partial Candle Handler - 未完成 K 线处理
+from infrastructure.feature.partial_candle_handler import (
+    CandleState,
+    CandlePeriod,
+    PartialCandleData,
+    PartialCandleHandler,
+    get_partial_candle_handler
+)
 
-def __getattr__(name: str):
-    if name in _LOADED_MODULES:
-        return _LOADED_MODULES[name]
+# Warmup Determinism - 预热确定性
+from infrastructure.feature.warmup_determinism import (
+    WarmupState,
+    WarmupConfig,
+    WarmupDeterminismManager,
+    get_warmup_manager
+)
 
-    for submodule, exports in _LAZY_SUBMODULES.items():
-        if name in exports:
-            try:
-                module = __import__(f"infrastructure.{submodule}", fromlist=[name])
-                obj = getattr(module, name)
-                _LOADED_MODULES[name] = obj
-                return obj
-            except ImportError as e:
-                _FAILED_MODULES[name] = str(e)
-                raise AttributeError(
-                    f"Module '{name}' is not available. "
-                    f"Failed to import infrastructure.{submodule}: {e}"
-                )
+# Feature Lineage - 特征血缘
+from infrastructure.feature.feature_lineage import (
+    FeatureType,
+    FeatureNode,
+    FeatureLineageSystem,
+    get_feature_lineage,
+    register_feature_lineage
+)
 
-    raise AttributeError(f"module 'infrastructure' has no attribute '{name}'")
+# Event Time - 事件时间语义
+from infrastructure.event.event_time import (
+    EventSource,
+    EventTimeRecord,
+    EventTimeConfig,
+    EventTimeManager,
+    get_event_time_manager,
+    record_event_time
+)
 
+# Unified Event Schema - 统一事件格式
+from infrastructure.event.unified_schema import (
+    EventType,
+    UnifiedEvent,
+    UnifiedEventConverter,
+    EventSchemaValidator,
+    get_event_converter,
+    validate_event
+)
 
-def __dir__():
-    public_attrs = ["__version__"]
-    for exports in _LAZY_SUBMODULES.values():
-        public_attrs.extend(exports)
-    return public_attrs
+# Unified Event Processor - 统一事件处理
+from infrastructure.event.unified_event_processor import (
+    EventContext,
+    ProcessingResult,
+    EventProcessor,
+    UnifiedEventProcessor,
+    CandleEventProcessor,
+    TradeEventProcessor,
+    get_unified_event_processor
+)
 
+# Cross-Symbol Semantics - 跨品种语义
+from infrastructure.event.cross_symbol_semantics import (
+    SymbolAvailability,
+    CrossSymbolAvailability,
+    CrossSymbolEventSemantics,
+    get_cross_symbol_semantics
+)
 
-__all__ = list(__dir__())
+# Event Ordering - 事件排序
+from infrastructure.event.event_ordering import (
+    EventPriority,
+    OrderedEvent,
+    EventOrderingDeterminism,
+    get_event_ordering,
+    create_deterministic_event
+)
+
+# Replay-Live Consistency - Replay 与 Live 一致性验证
+from infrastructure.verification.replay_live_verifier import (
+    ConsistencyLevel,
+    FeatureComparison,
+    TimePointComparison,
+    ConsistencyReport,
+    ReplayLiveConsistencyVerifier,
+    create_consistency_verifier,
+    verify_replay_live_consistency
+)
+
+__all__ = [
+    # === GPU 加速 ===
+    "torch",
+    "device",
+    "is_gpu",
+    "to_gpu",
+    "to_cpu",
+    "zeros",
+    "ones",
+    "tensor",
+    "from_numpy",
+    "get_device_info",
+    "get_backend_info",
+    "get_accelerator_info",
+    "clear_cache",
+    "synchronize",
+    
+    # === Runtime Clock ===
+    "RuntimeClock",
+    "ClockMode",
+    "TimeSnapshot",
+    "get_clock",
+    "set_clock_mode",
+    "now_ms",
+    "exchange_now_ms",
+    
+    # === Feature Availability ===
+    "FeatureRule",
+    "AvailabilityStatus",
+    "SystematicAvailabilityGuard",
+    "enforce_availability",
+    "get_systematic_guard",
+    "register_feature_rule",
+    
+    # === Label Isolation ===
+    "LabelType",
+    "LabelRecord",
+    "StrictLabelStore",
+    "get_label_store",
+    "set_label_store_mode",
+    "safe_dataframe",
+    "assert_safe_dataframe",
+    
+    # === Point-in-Time Store ===
+    "PointInTimeFeatureStore",
+    "PointInTimeFeatureRecord",
+    "PointInTimeSnapshot",
+    "FeatureSourceType",
+    "get_point_in_time_store",
+    "clear_all_stores",
+    
+    # === Immutable Snapshots ===
+    "ImmutableFeatureSnapshot",
+    "ImmutableSnapshotStore",
+    "get_immutable_snapshot_store",
+    "create_immutable_snapshot",
+    
+    # === Partial Candle Handler ===
+    "CandleState",
+    "CandlePeriod",
+    "PartialCandleData",
+    "PartialCandleHandler",
+    "get_partial_candle_handler",
+    
+    # === Warmup Determinism ===
+    "WarmupState",
+    "WarmupConfig",
+    "WarmupDeterminismManager",
+    "get_warmup_manager",
+    
+    # === Feature Lineage ===
+    "FeatureType",
+    "FeatureNode",
+    "FeatureLineageSystem",
+    "get_feature_lineage",
+    "register_feature_lineage",
+    
+    # === Event Time ===
+    "EventSource",
+    "EventTimeRecord",
+    "EventTimeConfig",
+    "EventTimeManager",
+    "get_event_time_manager",
+    "record_event_time",
+    
+    # === Unified Event Schema ===
+    "EventType",
+    "UnifiedEvent",
+    "UnifiedEventConverter",
+    "EventSchemaValidator",
+    "get_event_converter",
+    "validate_event",
+    
+    # === Unified Event Processor ===
+    "EventContext",
+    "ProcessingResult",
+    "EventProcessor",
+    "UnifiedEventProcessor",
+    "CandleEventProcessor",
+    "TradeEventProcessor",
+    "get_unified_event_processor",
+    
+    # === Cross-Symbol Semantics ===
+    "SymbolAvailability",
+    "CrossSymbolAvailability",
+    "CrossSymbolEventSemantics",
+    "get_cross_symbol_semantics",
+    
+    # === Event Ordering ===
+    "EventPriority",
+    "OrderedEvent",
+    "EventOrderingDeterminism",
+    "get_event_ordering",
+    "create_deterministic_event",
+    
+    # === Replay-Live Consistency ===
+    "ConsistencyLevel",
+    "FeatureComparison",
+    "TimePointComparison",
+    "ConsistencyReport",
+    "ReplayLiveConsistencyVerifier",
+    "create_consistency_verifier",
+    "verify_replay_live_consistency"
+]

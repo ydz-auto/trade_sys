@@ -268,7 +268,8 @@ class CryptoBehavioralPlaybooks:
         df["regime"] = "ranging"
         df.loc[trend > 0.01, "regime"] = "trending_up"
         df.loc[trend < -0.01, "regime"] = "trending_down"
-        df.loc[volatility > volatility.quantile(0.9), "regime"] = "volatile"
+        volatility_threshold = volatility.rolling(window=288, min_periods=20).quantile(0.9)
+        df.loc[volatility > volatility_threshold, "regime"] = "volatile"
         
         return df
     

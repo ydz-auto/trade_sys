@@ -130,7 +130,8 @@ class OnChainFactors:
         - 净流出增加 → 积累信号
         """
         net_flow = exchange_inflow - exchange_outflow
-        flow_signal = -net_flow / exchange_inflow.mean()
+        inflow_mean = exchange_inflow.rolling(window=24, min_periods=1).mean()
+        flow_signal = -net_flow / (inflow_mean + 1e-10)
         return flow_signal
     
     @staticmethod
@@ -153,8 +154,13 @@ class OnChainFactors:
         
         - 高Gas + 高使用 → 网络繁忙 → 价格支撑
         """
-        gas_normalized = (gas_price - gas_price.mean()) / (gas_price.std() + 1e-10)
-        usage_normalized = (gas_used - gas_used.mean()) / (gas_used.std() + 1e-10)
+        gas_mean = gas_price.rolling(window=24, min_periods=1).mean()
+        gas_std = gas_price.rolling(window=24, min_periods=1).std()
+        usage_mean = gas_used.rolling(window=24, min_periods=1).mean()
+        usage_std = gas_used.rolling(window=24, min_periods=1).std()
+        
+        gas_normalized = (gas_price - gas_mean) / (gas_std + 1e-10)
+        usage_normalized = (gas_used - usage_mean) / (usage_std + 1e-10)
         return (gas_normalized + usage_normalized) / 2
     
     @staticmethod
@@ -247,19 +253,25 @@ class CompositeFactors:
     def sentiment_momentum_combo(
         fear_greed: pd.Series,
         funding_rate: pd.Series,
-        whale_flow: pd.Series
+        whale_flow: pd.Series,
+        window: int = 24
     ) -> pd.Series:
         """
         情绪-动量组合
         
         综合市场情绪 + 资金费率 + 巨鲸流向
         """
-        # 标准化
-        fg_norm = (fear_greed - fear_greed.mean()) / (fear_greed.std() + 1e-10)
-        fr_norm = (funding_rate - funding_rate.mean()) / (funding_rate.std() + 1e-10)
-        wf_norm = (whale_flow - whale_flow.mean()) / (whale_flow.std() + 1e-10)
+        fg_mean = fear_greed.rolling(window=window, min_periods=1).mean()
+        fg_std = fear_greed.rolling(window=window, min_periods=1).std()
+        fr_mean = funding_rate.rolling(window=window, min_periods=1).mean()
+        fr_std = funding_rate.rolling(window=window, min_periods=1).std()
+        wf_mean = whale_flow.rolling(window=window, min_periods=1).mean()
+        wf_std = whale_flow.rolling(window=window, min_periods=1).std()
         
-        # 加权组合
+        fg_norm = (fear_greed - fg_mean) / (fg_std + 1e-10)
+        fr_norm = (funding_rate - fr_mean) / (fr_std + 1e-10)
+        wf_norm = (whale_flow - wf_mean) / (wf_std + 1e-10)
+        
         return 0.4 * fg_norm + 0.3 * fr_norm + 0.3 * wf_norm
     
     @staticmethod

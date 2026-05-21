@@ -5,6 +5,7 @@ Runtime State Store - 运行态状态存储
 1. 统一所有系统状态
 2. 作为 Frontend 的唯一状态来源
 3. 支持按 namespace 隔离
+4. 时间因果一致性保障
 
 状态结构:
     RuntimeStateStore
@@ -23,6 +24,8 @@ import json
 
 from domain.trading_mode import TradingMode, get_trading_mode_manager
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import get_clock, ClockMode
+from infrastructure.storage.immutable_snapshot import get_immutable_snapshot_store
 
 logger = get_logger("runtime.state_store")
 
@@ -49,6 +52,10 @@ class RuntimeStateStore:
         
         self._initialized = True
         self._mode_manager = get_trading_mode_manager()
+        
+        # 时间因果基础设施集成
+        self._clock = get_clock()
+        self._immutable_snapshot_store = get_immutable_snapshot_store("state")
         
         self._state: Dict[str, Dict[str, Any]] = {
             "market": {},
@@ -81,7 +88,7 @@ class RuntimeStateStore:
             "subscriber_calls": 0,
         }
         
-        logger.info("RuntimeStateStore initialized")
+        logger.info("RuntimeStateStore initialized with time-causal infrastructure")
 
     def _get_state_dict(self, use_namespace: bool = True) -> Dict[str, Dict[str, Any]]:
         if use_namespace:
@@ -123,9 +130,20 @@ class RuntimeStateStore:
         
         state_dict[state_type].update(data)
         
+        current_time = self._clock.now()
         self._version += 1
-        self._last_update = datetime.now()
+        self._last_update = current_time
         self._stats["updates"] += 1
+        
+        # 保存不可变快照到基础设施
+        if self._immutable_snapshot_store:
+            snapshot_data = {
+                "state_type": state_type,
+                "data": data.copy(),
+                "clock_mode": self._clock.mode.value,
+                "version": self._version
+            }
+            self._immutable_snapshot_store.save(snapshot_data, timestamp=current_time)
         
         for key, value in data.items():
             self._notify_subscribers(state_type, key, value)

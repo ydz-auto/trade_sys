@@ -14,6 +14,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from runtime.base import BaseRuntime, RuntimeConfig, RuntimeState
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import get_clock
+from infrastructure.feature_availability import get_systematic_guard
+from infrastructure.label_isolation import get_label_store
+from infrastructure.storage.immutable_snapshot import get_immutable_snapshot_store
 
 
 class SchedulerConfig(RuntimeConfig):
@@ -40,11 +44,20 @@ class SchedulerRuntime(BaseRuntime):
         super().__init__(config)
         self.config: SchedulerConfig = config
         
+        # 时间因果基础设施集成
+        self._clock = get_clock()
+        self._availability_guard = get_systematic_guard()
+        self._label_store = get_label_store()
+        self._snapshot_store = None
+        
         self.scheduler = None
     
     async def initialize(self) -> None:
         """初始化"""
-        self.logger.info("Initializing Scheduler Runtime...")
+        self.logger.info("Initializing Scheduler Runtime with time-causal infrastructure...")
+        
+        # 初始化时间因果基础设施
+        self._snapshot_store = get_immutable_snapshot_store("scheduler")
         
         from services.data_service.pipeline.scheduler import get_scheduler
         self.scheduler = get_scheduler()
@@ -61,7 +74,7 @@ class SchedulerRuntime(BaseRuntime):
         self.logger.info(f"Scheduler Runtime stopped. Stats: {self.context.stats}")
     
     async def run(self) -> None:
-        """主运行循环"""
+        """主运行循环 - 支持时间因果一致性"""
         self.logger.info("Starting Scheduler Runtime...")
         
         if self.scheduler:
@@ -71,8 +84,19 @@ class SchedulerRuntime(BaseRuntime):
             await asyncio.sleep(10)
             
             if self.scheduler:
+                current_time = self._clock.now()
                 stats = self.scheduler.get_all_stats()
                 self.context.record_stat("active_tasks", len(stats))
+                
+                # 保存调度器状态快照
+                if self._snapshot_store:
+                    snapshot_data = {
+                        "type": "scheduler_stats",
+                        "stats": stats,
+                        "timestamp": current_time.isoformat(),
+                        "clock_mode": self._clock.mode.value
+                    }
+                    self._snapshot_store.save(snapshot_data, timestamp=current_time)
     
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""

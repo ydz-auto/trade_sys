@@ -258,31 +258,72 @@ class DataPreparation:
     def normalize_features(
         self,
         feature_matrix: FeatureMatrix,
-        method: str = "zscore"
+        method: str = "zscore",
+        window: int = 288,
+        min_periods: int = 20
     ) -> FeatureMatrix:
         """
-        特征归一化
+        特征归一化（防泄漏版本）
         
         Args:
             feature_matrix: 特征矩阵
-            method: 归一化方法 (zscore, minmax, robust)
+            method: 归一化方法 (zscore, minmax, robust, rolling_zscore, expanding_zscore)
+            window: 滚动窗口大小（默认288=24小时5分钟K线）
+            min_periods: 最小计算周期数
         
         Returns:
             FeatureMatrix: 归一化后的特征矩阵
+        
+        WARNING: zscore, minmax, robust 方法使用全局统计，会泄漏未来信息！
+        推荐使用 rolling_zscore 或 expanding_zscore
         """
         df = feature_matrix.data.copy()
         feature_cols = feature_matrix.feature_cols
         
-        if method == "zscore":
+        if method == "rolling_zscore":
+            rolling_mean = df[feature_cols].rolling(window=window, min_periods=min_periods).mean()
+            rolling_std = df[feature_cols].rolling(window=window, min_periods=min_periods).std()
+            df[feature_cols] = (df[feature_cols] - rolling_mean) / (rolling_std + 1e-8)
+        
+        elif method == "expanding_zscore":
+            expanding_mean = df[feature_cols].expanding(min_periods=min_periods).mean()
+            expanding_std = df[feature_cols].expanding(min_periods=min_periods).std()
+            df[feature_cols] = (df[feature_cols] - expanding_mean) / (expanding_std + 1e-8)
+        
+        elif method == "rolling_minmax":
+            rolling_min = df[feature_cols].rolling(window=window, min_periods=min_periods).min()
+            rolling_max = df[feature_cols].rolling(window=window, min_periods=min_periods).max()
+            df[feature_cols] = (df[feature_cols] - rolling_min) / (rolling_max - rolling_min + 1e-8)
+        
+        elif method == "zscore":
+            import warnings
+            warnings.warn(
+                "zscore method uses global statistics which causes future data leakage! "
+                "Consider using rolling_zscore instead.",
+                UserWarning
+            )
             df[feature_cols] = (df[feature_cols] - df[feature_cols].mean()) / df[feature_cols].std()
+        
         elif method == "minmax":
+            import warnings
+            warnings.warn(
+                "minmax method uses global statistics which causes future data leakage! "
+                "Consider using rolling_minmax instead.",
+                UserWarning
+            )
             df[feature_cols] = (df[feature_cols] - df[feature_cols].min()) / (df[feature_cols].max() - df[feature_cols].min())
+        
         elif method == "robust":
+            import warnings
+            warnings.warn(
+                "robust method uses global statistics which causes future data leakage! "
+                "Consider using rolling_zscore instead.",
+                UserWarning
+            )
             median = df[feature_cols].median()
             iqr = df[feature_cols].quantile(0.75) - df[feature_cols].quantile(0.25)
             df[feature_cols] = (df[feature_cols] - median) / iqr
         
-        # 处理无穷值和NaN
         df[feature_cols] = df[feature_cols].replace([np.inf, -np.inf], np.nan)
         df[feature_cols] = df[feature_cols].fillna(0)
         

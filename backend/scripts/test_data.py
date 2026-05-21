@@ -1,5 +1,8 @@
 """测试数据读取"""
-import pandas as pd
+import sys
+sys.path.insert(0, r"e:\00_crypto\00_code\backend")
+
+from shared.utils.parquet_reader import read_parquet_safe
 from pathlib import Path
 
 paths = [
@@ -13,10 +16,11 @@ for data_path in paths:
     print(f"Exists: {data_path.exists()}")
     
     if data_path.exists():
-        try:
-            df = pd.read_parquet(data_path, engine='pyarrow')
+        df = read_parquet_safe(data_path)
+        if df is not None:
             print(f"Rows: {len(df)}")
             print(f"Columns: {list(df.columns)}")
-            print(f"Date range: {df.iloc[0].get('timestamp', 'N/A')} to {df.iloc[-1].get('timestamp', 'N/A')}")
-        except Exception as e:
-            print(f"Error: {e}")
+            if 'timestamp' in df.columns:
+                print(f"Date range: {df.iloc[0].get('timestamp', 'N/A')} to {df.iloc[-1].get('timestamp', 'N/A')}")
+        else:
+            print("Failed to read file")

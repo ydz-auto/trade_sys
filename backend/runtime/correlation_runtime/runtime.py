@@ -19,6 +19,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from runtime.base import BaseRuntime, RuntimeConfig, RuntimeState
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import get_clock, ClockMode
+from infrastructure.feature_availability import get_systematic_guard
+from infrastructure.label_isolation import get_label_store
+from infrastructure.storage.immutable_snapshot import get_immutable_snapshot_store
 
 
 class CorrelationConfig(RuntimeConfig):
@@ -60,6 +64,12 @@ class CorrelationRuntime(BaseRuntime):
         super().__init__(config)
         self.config: CorrelationConfig = config
         
+        # 时间因果基础设施集成
+        self._clock = get_clock()
+        self._availability_guard = get_systematic_guard()
+        self._label_store = get_label_store()
+        self._snapshot_store = None
+        
         self.scheduler = None
         self.results_cache: Dict[str, Dict] = {}
         
@@ -70,6 +80,9 @@ class CorrelationRuntime(BaseRuntime):
         """初始化"""
         self.logger.info("Initializing Correlation Runtime...")
         
+        # 初始化时间因果基础设施
+        self._snapshot_store = get_immutable_snapshot_store("correlation")
+        
         from services.data_service.pipeline.scheduler import get_scheduler, TaskPriority
         self.scheduler = get_scheduler()
         
@@ -78,7 +91,7 @@ class CorrelationRuntime(BaseRuntime):
         
         self._register_tasks()
         
-        self.logger.info("Correlation Runtime initialized successfully")
+        self.logger.info("Correlation Runtime initialized successfully with time-causal infrastructure")
     
     async def _init_gpu(self):
         """初始化 GPU 加速"""
@@ -200,11 +213,24 @@ class CorrelationRuntime(BaseRuntime):
         timeframe: str,
         news_data: Optional[List[Dict]] = None,
     ) -> Dict[str, Any]:
-        """执行单次分析 - 支持 GPU 加速"""
+        """执行单次分析 - 支持 GPU 加速和时间因果一致性"""
         start_time = datetime.now()
-        self.logger.info(f"Starting analysis: {symbol} {timeframe} (GPU={self._gpu_available})")
+        current_time = self._clock.now()
+        self.logger.info(f"Starting analysis: {symbol} {timeframe} (GPU={self._gpu_available}) @ {current_time}")
         
         try:
+            # 时间因果检查：确保不访问未来数据
+            if self._availability_guard:
+                self._availability_guard.check_data_availability(
+                    symbol=symbol,
+                    query_time=current_time,
+                    data_type="correlation"
+                )
+            
+            # 标签隔离检查：确保不访问标签数据
+            if self._label_store:
+                self._label_store.ensure_isolation("correlation_analysis")
+            
             if self._gpu_available and self._gpu_correlation_engine:
                 result = await self._run_analysis_gpu(symbol, timeframe, news_data)
             else:
@@ -217,6 +243,12 @@ class CorrelationRuntime(BaseRuntime):
                     generate_visualization=True,
                 )
                 result = result.to_dict()
+            
+            # 保存不可变快照
+            if self._snapshot_store:
+                result["snapshot_timestamp"] = current_time.isoformat()
+                result["clock_mode"] = self._clock.mode.value
+                self._snapshot_store.save(result, timestamp=current_time)
             
             cache_key = f"{symbol}:{timeframe}"
             self.results_cache[cache_key] = result

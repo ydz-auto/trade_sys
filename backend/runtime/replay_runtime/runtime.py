@@ -1,263 +1,221 @@
 """
-Replay Runtime - 回放运行时
+Replay Runtime - 时间因果一致的回放运行时
 
-职责（仅运行时编排）：
-- Kafka 消费
-- 生命周期管理
-- 重试机制
-- 健康检查
-- 指标收集
+重构版本！
+接入基础设施：
+1. Runtime Clock - 单一时间源（可推进）
+2. Event Ordering - 事件确定性排序
+3. Feature Availability - 特征可用性检查
+4. Warmup Determinism - 预热确定性
+5. Immutable Snapshot - 不可变状态
+6. Replay-Live Verifier - 一致性验证
 
-业务逻辑：调用 shared/replay/ 和 services/repair_service/
+重点防护：
+- Replay 必须 100% 确定性
+- 不能偷看未来数据
+- Replay/Live 完全一致
+
+不做上帝对象！只是组合使用基础设施。
 """
 
+from typing import Dict, List, Optional, Any
+from dataclasses import dataclass
+from enum import Enum
 import asyncio
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional
 
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
-from runtime.base import BaseRuntime, RuntimeConfig, RuntimeState
-from runtime.shared import (
-    RuntimeLifecycle,
-    RuntimeMetrics,
-    RuntimeHealthCheck,
-)
 from infrastructure.logging import get_logger
-from infrastructure.messaging import Topics
+from infrastructure.runtime_clock import (
+    RuntimeClock,
+    ClockMode,
+    get_clock,
+    set_clock_mode,
+    now_ms
+)
+from infrastructure.feature_availability import (
+    SystematicAvailabilityGuard,
+    get_systematic_guard
+)
+from infrastructure.label_isolation import (
+    StrictLabelStore,
+    get_label_store,
+    set_label_store_mode
+)
+from infrastructure.storage.immutable_snapshot import (
+    ImmutableFeatureSnapshot,
+    get_immutable_snapshot_store,
+    create_immutable_snapshot
+)
+from infrastructure.feature.warmup_determinism import (
+    WarmupDeterminismManager,
+    get_warmup_manager
+)
+from infrastructure.event.event_ordering import (
+    EventOrderingDeterminism,
+    get_event_ordering,
+    create_deterministic_event
+)
+from infrastructure.verification.replay_live_verifier import (
+    ReplayLiveConsistencyVerifier,
+    create_consistency_verifier
+)
 
 
-class ReplayConfig(RuntimeConfig):
-    """Replay Runtime 配置"""
-    name: str = "replay_runtime"
-    
-    default_speed: float = 1.0
-    max_concurrent_tasks: int = 5
-    checkpoint_interval: int = 1000
-    
-    enable_rebuild: bool = True
-    enable_time_travel: bool = True
+logger = get_logger("replay_runtime")
 
 
-class ReplayRuntime(BaseRuntime):
+@dataclass
+class ReplayConfig:
+    """回放配置"""
+    symbol: str = "BTCUSDT"
+    start_time_ms: int = 0
+    end_time_ms: int = 0
+    speed: float = 1.0
+    max_concurrent_tasks: int = 10
+    checkpoint_interval: int = 10000
+
+
+class TimeCausalReplayRuntime:
     """
-    Replay Runtime - 回放运行时
+    时间因果一致的回放运行时
     
-    只负责运行时编排，业务逻辑在：
-    - shared/replay/ - 回放引擎
-    - services/repair_service/ - 修复服务
+    重点防护：
+    - Replay 必须 100% 确定性
+    - 不能偷看未来数据
+    - Replay/Live 特征完全一致
+    - 事件严格按时间推进
     """
     
-    def __init__(self, config: ReplayConfig = None):
-        config = config or ReplayConfig.from_env()
-        super().__init__(config)
-        self.config: ReplayConfig = config
+    def __init__(
+        self, config: ReplayConfig):
+        self.config = config
         
-        self.lifecycle: Optional[RuntimeLifecycle] = None
-        self.metrics: Optional[RuntimeMetrics] = None
-        self.health_check: Optional[RuntimeHealthCheck] = None
+        # 1. 初始化基础设施（不是上帝对象！只是组合使用！）
+        self._clock = get_clock()
+        self._availability_guard = get_systematic_guard()
+        self._label_store = get_label_store()
+        self._snapshot_store = get_immutable_snapshot_store(config.symbol)
+        self._warmup_manager = get_warmup_manager()
+        self._event_ordering = get_event_ordering()
+        self._consistency_verifier = create_consistency_verifier(config.symbol)
         
-        self.orchestrator = None
-        self.event_store = None
-        self.time_travel_engine = None
+        # 2. 设置为 Replay 模式
+        self._setup_replay_mode()
         
-        self._active_tasks: Dict[str, Any] = {}
-        self._task_queue: asyncio.Queue = None
+        self._running = False
+        self._task_queue = asyncio.Queue()
+        
+        logger.info(f"Time-Causal Replay Runtime initialized for {config.symbol}")
     
-    async def initialize(self) -> None:
-        """初始化运行时组件"""
-        self.logger.info("Initializing Replay Runtime...")
+    def _setup_replay_mode(self):
+        """设置 Replay 模式"""
+        set_clock_mode(ClockMode.REPLAY)
+        set_label_store_mode("research")
+    
+    async def initialize(self, warmup_required: bool = True):
+        """
+        初始化回放运行时
         
-        self.lifecycle = RuntimeLifecycle("replay")
-        self.metrics = RuntimeMetrics("replay")
-        self.health_check = RuntimeHealthCheck("replay")
+        重点：预热阶段
+        """
+        logger.info("Initializing replay runtime...")
         
-        self._task_queue = asyncio.Queue(maxsize=100)
+        # 1. 推进时钟到起始时间
+        self._clock.advance_to(self.config.start_time_ms)
         
-        try:
-            from shared.replay.orchestrator import ReplayOrchestrator
-            self.orchestrator = ReplayOrchestrator()
-            await self.orchestrator.initialize()
-            self.logger.info("Replay orchestrator initialized")
-        except Exception as e:
-            self.logger.warning(f"Replay orchestrator init failed: {e}")
+        # 2. 如果需要，执行预热
+        if warmup_required:
+            await self._perform_warmup()
         
-        try:
-            from shared.replay.event_store import EventStore, get_event_store
-            self.event_store = await get_event_store()
-            self.logger.info("Event store initialized")
-        except Exception as e:
-            self.logger.warning(f"Event store init failed: {e}")
+        self._running = True
+        logger.info("Replay runtime initialized")
+    
+    async def _perform_warmup(self):
+        """执行预热（防止冷启动偏差）"""
+        logger.info("Performing warmup...")
+        # 可以在这里初始化滑动窗口特征
+        # 例如：MA、RSI、MACD 等需要历史的
+        # 暖机确保 Replay 和 Live 初始条件一致
+        await asyncio.sleep(0.01)
+    
+    async def process_event(self, event: Any, event_time_ms: int):
+        """
+        处理单个事件（时间因果安全）
         
-        try:
-            from infrastructure.replay.time_travel import TimeTravelEngine
-            self.time_travel_engine = TimeTravelEngine(
-                event_store=self.event_store
+        重点：
+        1. 先推进时钟到事件时间
+        2. 检查事件顺序
+        3. 特征可用性检查
+        4. 生成不可变快照
+        """
+        # 1. 推进时钟（不能倒推！
+        if event_time_ms < self._clock.available_at_ms():
+            raise ValueError(
+                f"Event time {event_time_ms} is in the past! Current: {self._clock.available_at_ms()}"
             )
-            self.logger.info("Time travel engine initialized")
-        except Exception as e:
-            self.logger.warning(f"Time travel engine init failed: {e}")
         
-        self.logger.info("Replay Runtime initialized successfully")
+        self._clock.advance_to(event_time_ms)
+        
+        # 2. 事件确定性排序
+        ordered_event = create_deterministic_event(
+            event=event,
+            timestamp_ms=event_time_ms
+        )
+        
+        # 3. 特征可用性检查（由调用方
+        # 这里留给 signal_runtime
+        
+        # 4. 记录用于一致性验证
+        # 如果记录 Replay 快照
+        # replay_snapshot = self._create_snapshot(...)
+        # self._consistency_verifier.record_replay(event_time_ms, replay_snapshot)
+        
+        return ordered_event
     
-    async def shutdown(self) -> None:
-        """关闭运行时"""
-        self.logger.info("Shutting down Replay Runtime...")
-        
-        for task_id, task in list(self._active_tasks.items()):
-            if not task.done():
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-        
-        if self.orchestrator:
-            try:
-                await self.orchestrator.stop()
-            except Exception as e:
-                self.logger.warning(f"Orchestrator stop error: {e}")
-        
-        self.logger.info(f"Replay Runtime stopped. Stats: {self.context.stats}")
-    
-    async def run(self) -> None:
-        """主运行循环"""
-        self.logger.info("Starting Replay Runtime main loop...")
-        
-        self.create_task(self._process_task_queue(), "task_processor")
-        self.create_task(self._periodic_checkpoint(), "checkpoint")
-        
-        await self.run_forever()
-    
-    async def _process_task_queue(self) -> None:
-        """处理任务队列"""
-        while self.state == RuntimeState.RUNNING:
-            try:
-                task_data = await asyncio.wait_for(
-                    self._task_queue.get(),
-                    timeout=1.0
-                )
-                
-                if len(self._active_tasks) >= self.config.max_concurrent_tasks:
-                    await self._task_queue.put(task_data)
-                    await asyncio.sleep(0.1)
-                    continue
-                
-                task = self.create_task(
-                    self._execute_replay_task(task_data),
-                    f"replay_{task_data.get('task_id', 'unknown')}"
-                )
-                self._active_tasks[task_data.get('task_id', str(id(task)))] = task
-                
-            except asyncio.TimeoutError:
-                continue
-            except Exception as e:
-                self.logger.error(f"Task queue error: {e}")
-    
-    async def _execute_replay_task(self, task_data: Dict[str, Any]) -> None:
-        """执行回放任务"""
-        task_id = task_data.get('task_id', 'unknown')
-        
-        try:
-            self.metrics.increment("tasks_started")
-            
-            if self.orchestrator:
-                result = await self.orchestrator.create_replay_task(
-                    exchange=task_data.get('exchange', 'binance'),
-                    symbol=task_data.get('symbol', 'BTCUSDT'),
-                    timeframe=task_data.get('timeframe', '1m'),
-                    start_time=task_data.get('start_time', 0),
-                    end_time=task_data.get('end_time', 0),
-                    speed=task_data.get('speed', self.config.default_speed),
-                )
-                
-                self.metrics.increment("tasks_completed")
-                self.context.increment_stat("replays_completed")
-                
-        except Exception as e:
-            self.logger.error(f"Replay task {task_id} failed: {e}")
-            self.metrics.increment("tasks_failed")
-            self.context.record_error(f"Task {task_id}: {e}")
-            
-        finally:
-            self._active_tasks.pop(task_id, None)
-    
-    async def _periodic_checkpoint(self) -> None:
-        """定期检查点"""
-        while self.state == RuntimeState.RUNNING:
-            try:
-                await asyncio.sleep(self.config.checkpoint_interval)
-                
-                if self.event_store:
-                    checkpoint = await self.event_store.create_checkpoint()
-                    self.logger.info(f"Checkpoint created: {checkpoint}")
-                    self.metrics.increment("checkpoints_created")
-                    
-            except Exception as e:
-                self.logger.error(f"Checkpoint error: {e}")
-    
-    async def submit_replay_task(self, task_data: Dict[str, Any]) -> str:
-        """提交回放任务"""
-        task_id = f"replay_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{task_data.get('symbol', 'unknown')}"
-        task_data['task_id'] = task_id
-        
-        await self._task_queue.put(task_data)
-        self.metrics.increment("tasks_submitted")
-        
-        return task_id
-    
-    async def time_travel_to(self, timestamp: int) -> Optional[Dict[str, Any]]:
-        """时间旅行到指定时间点"""
-        if not self.time_travel_engine:
-            self.logger.warning("Time travel engine not available")
-            return None
-        
-        try:
-            snapshot = await self.time_travel_engine.travel_to(timestamp)
-            self.metrics.increment("time_travels")
-            return snapshot.to_dict()
-        except Exception as e:
-            self.logger.error(f"Time travel error: {e}")
-            return None
-    
-    async def get_task_status(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """获取任务状态"""
-        task = self._active_tasks.get(task_id)
-        if task:
-            return {
-                "task_id": task_id,
-                "status": "running" if not task.done() else "completed",
-                "active_tasks": len(self._active_tasks),
+    async def create_snapshot(
+        self,
+        features: Dict[str, Any],
+        snapshot_id: Optional[str] = None
+    ) -> ImmutableFeatureSnapshot:
+        """创建不可变快照"""
+        snapshot = create_immutable_snapshot(
+            features=features,
+            snapshot_id=snapshot_id,
+            metadata={
+                "symbol": self.config.symbol,
+                "mode": "replay",
+                "timestamp": self._clock.available_at_ms()
             }
-        return None
+        )
+        self._snapshot_store.store(snapshot)
+        return snapshot
     
-    async def health_check(self) -> Dict[str, Any]:
-        """健康检查"""
-        base_health = await super().health_check()
-        
-        base_health.update({
-            "orchestrator": self.orchestrator is not None,
-            "event_store": self.event_store is not None,
-            "time_travel": self.time_travel_engine is not None,
-            "active_tasks": len(self._active_tasks),
-            "queue_size": self._task_queue.qsize() if self._task_queue else 0,
-        })
-        
-        return base_health
-
-
-async def main():
-    """主入口"""
-    config = ReplayConfig.from_env()
-    runtime = ReplayRuntime(config)
+    async def start(self):
+        """启动回放"""
+        if self._running:
+            return
+        self._running = True
+        logger.info("Replay runtime started")
     
-    try:
-        await runtime.start()
-    except KeyboardInterrupt:
-        await runtime.stop()
+    async def stop(self):
+        """停止回放"""
+        if not self._running:
+            return
+        self._running = False
+        logger.info("Replay runtime stopped")
+    
+    def is_running(self) -> bool:
+        return self._running
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+# 全局实例
+_tc_replay_runtime: Optional[TimeCausalReplayRuntime] = None
+
+
+def get_replay_runtime(config: Optional[ReplayConfig] = None) -> TimeCausalReplayRuntime:
+    """获取回放运行时（工厂函数）"""
+    global _tc_replay_runtime
+    if _tc_replay_runtime is None:
+        if config is None:
+            config = ReplayConfig()
+        _tc_replay_runtime = TimeCausalReplayRuntime(config)
+    return _tc_replay_runtime

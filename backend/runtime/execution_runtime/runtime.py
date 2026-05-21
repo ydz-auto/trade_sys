@@ -31,6 +31,10 @@ from runtime.shared import (
 )
 from infrastructure.messaging import Topics
 from infrastructure.messaging.kafka_config import ConsumerGroup
+from infrastructure.runtime_clock import get_clock
+from infrastructure.feature_availability import get_systematic_guard
+from infrastructure.label_isolation import get_label_store
+from infrastructure.storage.immutable_snapshot import get_immutable_snapshot_store
 
 
 class ExecutionConfig(RuntimeConfig):
@@ -55,6 +59,12 @@ class ExecutionRuntime(BaseRuntime):
         super().__init__(config)
         self.config: ExecutionConfig = config
         
+        # 时间因果基础设施集成
+        self._clock = get_clock()
+        self._availability_guard = get_systematic_guard()
+        self._label_store = get_label_store()
+        self._snapshot_store = None
+        
         self.lifecycle: Optional[RuntimeLifecycle] = None
         self.metrics: Optional[RuntimeMetrics] = None
         self.health_check: Optional[RuntimeHealthCheck] = None
@@ -68,7 +78,10 @@ class ExecutionRuntime(BaseRuntime):
     
     async def initialize(self) -> None:
         """初始化运行时组件"""
-        self.logger.info("Initializing Execution Runtime...")
+        self.logger.info("Initializing Execution Runtime with time-causal infrastructure...")
+        
+        # 初始化时间因果基础设施
+        self._snapshot_store = get_immutable_snapshot_store("execution")
         
         self.lifecycle = RuntimeLifecycle("execution")
         self.metrics = RuntimeMetrics("execution")
@@ -150,8 +163,13 @@ class ExecutionRuntime(BaseRuntime):
                 await self.lifecycle.handle_error(e)
     
     async def _process_decision(self, decision: Dict[str, Any]) -> None:
-        """处理决策（运行时编排）"""
+        """处理决策（运行时编排）- 支持时间因果一致性"""
         trace_id = decision.get("trace_id", "unknown")
+        current_time = self._clock.now()
+        
+        # 时间因果检查：标签隔离 - 确保执行阶段不会访问未来标签
+        if self._label_store:
+            self._label_store.ensure_isolation("execution")
         
         self.metrics.increment("decisions_received")
         
@@ -166,6 +184,12 @@ class ExecutionRuntime(BaseRuntime):
             order = await self._execute_decision(decision)
             
             if order:
+                # 保存不可变快照
+                if self._snapshot_store:
+                    order["snapshot_timestamp"] = current_time.isoformat()
+                    order["clock_mode"] = self._clock.mode.value
+                    self._snapshot_store.save(order, timestamp=current_time)
+                
                 self.metrics.increment("orders_executed")
                 self.logger.info(f"[{trace_id}] Order executed: {order}")
                 

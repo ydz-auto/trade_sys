@@ -15,6 +15,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from runtime.base import BaseRuntime, RuntimeConfig, RuntimeState
 from infrastructure.logging import get_logger
 from infrastructure.observability import get_observability_manager
+from infrastructure.runtime_clock import get_clock
+from infrastructure.feature_availability import get_systematic_guard
+from infrastructure.label_isolation import get_label_store
+from infrastructure.storage.immutable_snapshot import get_immutable_snapshot_store
 
 
 class MonitoringConfig(RuntimeConfig):
@@ -40,12 +44,21 @@ class MonitoringRuntime(BaseRuntime):
         super().__init__(config)
         self.config: MonitoringConfig = config
         
+        # 时间因果基础设施集成
+        self._clock = get_clock()
+        self._availability_guard = get_systematic_guard()
+        self._label_store = get_label_store()
+        self._snapshot_store = None
+        
         self.observability = None
         self.runtimes_status: Dict[str, Any] = {}
     
     async def initialize(self) -> None:
         """初始化"""
-        self.logger.info("Initializing Monitoring Runtime...")
+        self.logger.info("Initializing Monitoring Runtime with time-causal infrastructure...")
+        
+        # 初始化时间因果基础设施
+        self._snapshot_store = get_immutable_snapshot_store("monitoring")
         
         self.observability = get_observability_manager("monitoring_runtime")
         
@@ -70,14 +83,26 @@ class MonitoringRuntime(BaseRuntime):
                 self.context.record_error(str(e))
     
     async def _collect_metrics(self) -> None:
-        """收集指标"""
+        """收集指标 - 支持时间因果一致性"""
+        current_time = self._clock.now()
         self.context.increment_stat("metrics_collected")
         
         if self.observability:
             self.observability.record_request("/health", "GET", 200, 0.1)
+        
+        # 保存不可变快照
+        if self._snapshot_store:
+            snapshot_data = {
+                "type": "metrics_collection",
+                "timestamp": current_time.isoformat(),
+                "clock_mode": self._clock.mode.value,
+                "stats": self.context.stats
+            }
+            self._snapshot_store.save(snapshot_data, timestamp=current_time)
     
     async def _check_health(self) -> None:
-        """健康检查"""
+        """健康检查 - 支持时间因果一致性"""
+        current_time = self._clock.now()
         self.context.increment_stat("health_checks")
         
         health = await self.health_check()
@@ -85,6 +110,16 @@ class MonitoringRuntime(BaseRuntime):
         if not health.get("healthy", False):
             self.logger.warning(f"Health check failed: {health}")
             self.context.increment_stat("health_failures")
+            
+            # 保存健康检查失败快照
+            if self._snapshot_store:
+                snapshot_data = {
+                    "type": "health_check_failure",
+                    "health": health,
+                    "timestamp": current_time.isoformat(),
+                    "clock_mode": self._clock.mode.value
+                }
+                self._snapshot_store.save(snapshot_data, timestamp=current_time)
     
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""

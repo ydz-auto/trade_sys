@@ -35,6 +35,11 @@ from runtime.state import get_runtime_state_store
 from infrastructure.messaging import Topics
 from infrastructure.messaging.kafka_config import ConsumerGroup
 from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+from infrastructure.runtime_clock import get_clock, ClockMode
+from infrastructure.feature_availability import get_systematic_guard
+from infrastructure.label_isolation import get_label_store
+from infrastructure.event.event_ordering import EventOrdering
+from infrastructure.event.unified_schema import UnifiedEvent
 
 
 class ProjectionConfig(RuntimeConfig):
@@ -69,6 +74,12 @@ class ProjectionRuntime(BaseRuntime):
         super().__init__(config)
         self.config: ProjectionConfig = config
         
+        # 时间因果基础设施集成
+        self._clock = get_clock()
+        self._availability_guard = get_systematic_guard()
+        self._label_store = get_label_store()
+        self._event_ordering = EventOrdering()
+        
         self.lifecycle: Optional[RuntimeLifecycle] = None
         self.metrics: Optional[RuntimeMetrics] = None
         self.health_check: Optional[RuntimeHealthCheck] = None
@@ -84,7 +95,7 @@ class ProjectionRuntime(BaseRuntime):
     
     async def initialize(self) -> None:
         """初始化运行时组件"""
-        self.logger.info("Initializing Projection Runtime...")
+        self.logger.info("Initializing Projection Runtime with time-causal infrastructure...")
         
         self.lifecycle = RuntimeLifecycle("projection")
         self.metrics = RuntimeMetrics("projection")
@@ -199,11 +210,24 @@ class ProjectionRuntime(BaseRuntime):
         return None
     
     async def _dispatch_event(self, message: Dict[str, Any]) -> None:
-        """分发事件到投影器（运行时编排）"""
+        """分发事件到投影器（运行时编排） - 支持时间因果一致性"""
         self.metrics.increment("events_received")
         
         event = message.get("value", message)
         event_type = event.get("event_type", "unknown")
+        
+        # 时间因果检查：事件确定性排序
+        try:
+            unified_event = UnifiedEvent.from_dict(event)
+            if self._event_ordering:
+                if not self._event_ordering.validate_event_order(unified_event):
+                    self.logger.warning(f"Event out of order: {unified_event.event_id}")
+        except Exception as e:
+            self.logger.debug(f"Event schema validation skipped: {e}")
+        
+        # 时间因果检查：标签隔离
+        if self._label_store:
+            self._label_store.ensure_isolation("projection")
         
         with self.metrics.timing("event_processing"):
             for projection in self.projections:
