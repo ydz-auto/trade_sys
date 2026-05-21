@@ -488,25 +488,51 @@ class FeatureMatrix:
         """获取事件特征列表"""
         return self.get_features_by_category(FeatureCategory.EVENT)
 
-    def normalize_feature(self, feature_name: str, method: str = "zscore") -> pd.Series:
+    def normalize_feature(
+        self, 
+        feature_name: str, 
+        method: str = "zscore",
+        window: int = 288,
+        min_periods: int = 20
+    ) -> pd.Series:
         """
-        标准化特征
+        标准化特征（防止数据泄漏版本）
 
         方法:
-            zscore: Z分数标准化
-            minmax: 最小最大标准化
+            zscore: Rolling Z分数标准化（默认288周期=24小时5分钟K线）
+            minmax: Rolling 最小最大标准化
+            expanding: 扩展窗口标准化（仅使用历史数据）
+
+        重要：所有方法都只使用历史数据，不会泄漏未来信息
+        
+        Args:
+            feature_name: 特征名称
+            method: 标准化方法
+            window: 滚动窗口大小（默认288=24小时）
+            min_periods: 最小计算周期数
         """
         if feature_name not in self.df.columns:
             return pd.Series()
-            
+        
+        series = self.df[feature_name]
+        
         if method == "zscore":
-            return (self.df[feature_name] - self.df[feature_name].mean()) / self.df[feature_name].std()
+            rolling_mean = series.rolling(window=window, min_periods=min_periods).mean()
+            rolling_std = series.rolling(window=window, min_periods=min_periods).std()
+            return (series - rolling_mean) / (rolling_std + 1e-8)
+        
         elif method == "minmax":
-            min_val = self.df[feature_name].min()
-            max_val = self.df[feature_name].max()
-            return (self.df[feature_name] - min_val) / (max_val - min_val)
+            rolling_min = series.rolling(window=window, min_periods=min_periods).min()
+            rolling_max = series.rolling(window=window, min_periods=min_periods).max()
+            return (series - rolling_min) / (rolling_max - rolling_min + 1e-8)
+        
+        elif method == "expanding":
+            expanding_mean = series.expanding(min_periods=min_periods).mean()
+            expanding_std = series.expanding(min_periods=min_periods).std()
+            return (series - expanding_mean) / (expanding_std + 1e-8)
+        
         else:
-            return self.df[feature_name]
+            return series
 
     def get_feature_matrix(self, feature_names: Optional[List[str]] = None) -> pd.DataFrame:
         """

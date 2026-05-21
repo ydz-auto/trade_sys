@@ -7,6 +7,13 @@ from .orchestrator import ReplayOrchestrator, get_replay_orchestrator
 from .event_store import EventStore, get_event_store
 from .replay_manager import ReplayManager, ReplayConfig, ReplayStatus, get_replay_manager
 from .rebuild_manager import RebuildManager, RebuildConfig, RebuildStatus, get_rebuild_manager
+from .feature_availability_guard import (
+    FeatureAvailabilityGuard,
+    FeatureAvailabilityRule,
+    FeatureAvailabilityCheck,
+    FeatureAvailabilityStatus,
+    get_feature_availability_guard,
+)
 from .models import (
     ReplayTask,
     RebuildTask,
@@ -28,6 +35,11 @@ __all__ = [
     "RebuildConfig",
     "RebuildStatus",
     "get_rebuild_manager",
+    "FeatureAvailabilityGuard",
+    "FeatureAvailabilityRule",
+    "FeatureAvailabilityCheck",
+    "FeatureAvailabilityStatus",
+    "get_feature_availability_guard",
     "ReplayTask",
     "RebuildTask",
     "ReplayCheckpoint",

@@ -35,16 +35,20 @@ def load_data():
 
 
 def prepare_training_data(df, sequence_length=24, target_shift=12):
-    """准备训练数据
+    """准备训练数据（防止数据泄漏版本）
     
     Args:
         df: 特征DataFrame
         sequence_length: 序列长度（24根K线 = 2小时）
         target_shift: 预测未来多少根K线（12根 = 1小时）
-    """
-    print("\n🔧 准备训练数据...")
     
-    # 选择特征
+    重要改进：
+    1. Scaler 只在训练集上 fit，防止验证集泄漏
+    2. Future return 不会被加入特征
+    3. 时间序列分割，不打乱数据
+    """
+    print("\n🔧 准备训练数据（防泄漏版本）...")
+    
     features = [
         'rsi_14', 'macd', 'macd_signal', 'volume_ratio',
         'funding_rate', 'funding_zscore', 'oi_delta',
@@ -52,12 +56,9 @@ def prepare_training_data(df, sequence_length=24, target_shift=12):
         'return_1h', 'trend_strength_12h'
     ]
     
-    # 处理 regime_code 为数值
-    df['regime_code_num'] = df['regime_code'].fillna(0)
-    
+    df['regime_code_num'] = df['regime_code'].fillna(0) if 'regime_code' in df.columns else 0
     features = features + ['regime_code_num']
     
-    # 移除有问题的列
     available_features = []
     for f in features:
         if f in df.columns:
@@ -65,42 +66,54 @@ def prepare_training_data(df, sequence_length=24, target_shift=12):
     
     print(f"📈 使用特征: {available_features}")
     
-    # 归一化
+    target_col = 'return_5m'
+    if target_col in df.columns:
+        target = df[target_col].shift(-target_shift)
+        y_raw = (target > 0).astype(int).values
+    else:
+        target = df['close'].pct_change().shift(-target_shift)
+        y_raw = (target > 0).astype(int).values
+    
+    feature_data = df[available_features].fillna(0).values
+    
+    valid_start = sequence_length
+    valid_end = len(df) - target_shift
+    
+    X_all = []
+    y_all = []
+    for i in range(valid_start, valid_end):
+        X_all.append(feature_data[i-sequence_length:i])
+        y_all.append(y_raw[i])
+    
+    X_all = np.array(X_all)
+    y_all = np.array(y_all)
+    
+    train_size = int(0.8 * len(X_all))
+    X_train_raw = X_all[:train_size]
+    X_val_raw = X_all[train_size:]
+    y_train = y_all[:train_size]
+    y_val = y_all[train_size:]
+    
+    print(f"📊 训练集: {len(X_train_raw)}, 验证集: {len(X_val_raw)}")
+    
     from sklearn.preprocessing import MinMaxScaler
     
     scaler = MinMaxScaler()
-    scaled_data = scaler.fit_transform(df[available_features].fillna(0))
     
-    # 创建目标变量：预测未来的涨跌幅
-    target_col = 'return_5m'
-    if target_col in df.columns:
-        df['future_return'] = df[target_col].shift(-target_shift)
-        # 二分类目标：涨=1，跌=0
-        df['target'] = (df['future_return'] > 0).astype(int)
-    else:
-        # 如果没有目标列，用简单的方式
-        df['target'] = (df['close'].pct_change().shift(-target_shift) > 0).astype(int)
+    n_train_samples, seq_len, n_features = X_train_raw.shape
+    X_train_reshaped = X_train_raw.reshape(-1, n_features)
+    scaler.fit(X_train_reshaped)
     
-    # 构建序列
-    X, y = [], []
+    X_train_scaled = scaler.transform(X_train_reshaped).reshape(n_train_samples, seq_len, n_features)
     
-    for i in range(sequence_length, len(df) - target_shift):
-        X.append(scaled_data[i-sequence_length:i])
-        y.append(df['target'].iloc[i])
+    n_val_samples = X_val_raw.shape[0]
+    X_val_reshaped = X_val_raw.reshape(-1, n_features)
+    X_val_scaled = scaler.transform(X_val_reshaped).reshape(n_val_samples, seq_len, n_features)
     
-    X = np.array(X)
-    y = np.array(y)
+    print(f"✅ 训练数据准备完成: X_train shape={X_train_scaled.shape}, X_val shape={X_val_scaled.shape}")
+    print(f"🔒 Scaler 仅在训练集上 fit，防止数据泄漏")
     
-    print(f"✅ 训练数据准备完成: X shape={X.shape}, y shape={y.shape}")
-    
-    # 划分训练集和验证集
-    train_size = int(0.8 * len(X))
-    X_train, X_val = X[:train_size], X[train_size:]
-    y_train, y_val = y[:train_size], y[train_size:]
-    
-    print(f"📊 训练集: {len(X_train)}, 验证集: {len(X_val)}")
-    
-    return X_train, X_val, y_train, y_val, scaler, available_features
+    return X_train_scaled, X_val_scaled, y_train, y_val, scaler, available_features
 
 
 def build_lstm_model(input_shape):

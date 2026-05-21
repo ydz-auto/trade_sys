@@ -180,11 +180,19 @@ class ContextEngine:
         return np.select(conditions, choices, default=OIContext.STABLE.value)
     
     def _get_volatility_context(self, df: pd.DataFrame) -> pd.Series:
-        """根据波动率获取Context"""
+        """根据波动率获取Context（防止数据泄漏版本）
+        
+        使用 rolling quantile 而不是全局 quantile，防止未来数据泄漏
+        """
         vol = df.get("volatility_1h", pd.Series([0]*len(df)))
         
-        q_high = vol.quantile(self.thresholds.volatility_quantile_high)
-        q_low = vol.quantile(self.thresholds.volatility_quantile_low)
+        if len(vol) < 100:
+            return pd.Series([VolatilityContext.NORMAL.value] * len(df), index=df.index)
+        
+        rolling_window = min(288, len(vol))
+        
+        q_high = vol.rolling(window=rolling_window, min_periods=20).quantile(self.thresholds.volatility_quantile_high)
+        q_low = vol.rolling(window=rolling_window, min_periods=20).quantile(self.thresholds.volatility_quantile_low)
         
         conditions = [
             vol > q_high,
@@ -198,11 +206,19 @@ class ContextEngine:
         return np.select(conditions, choices, default=VolatilityContext.NORMAL.value)
     
     def _get_regime(self, df: pd.DataFrame) -> pd.Series:
-        """根据趋势获取市场状态"""
+        """根据趋势获取市场状态（防止数据泄漏版本）
+        
+        使用 rolling quantile 而不是全局 quantile，防止未来数据泄漏
+        """
         returns_1h = df.get("returns_1h", pd.Series([0]*len(df)))
         volatility = df.get("volatility_1h", pd.Series([0]*len(df)))
         
-        q_vol = volatility.quantile(0.8) if len(volatility) > 10 else 0
+        if len(volatility) < 100:
+            return pd.Series([RegimeContext.RANGING.value] * len(df), index=df.index)
+        
+        rolling_window = min(288, len(volatility))
+        
+        q_vol = volatility.rolling(window=rolling_window, min_periods=20).quantile(0.8)
         
         conditions = [
             returns_1h > self.thresholds.trend_threshold,
