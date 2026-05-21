@@ -31,9 +31,11 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Runtime Layer                             │
 │                                                                  │
-│  signal_runtime ──► services/strategy_service/                  │
-│  execution_runtime ──► services/execution_service/              │
-│  ...                                                             │
+│  signal_runtime ──► GPU 特征计算 + LSTM 策略                     │
+│  correlation_runtime ──► GPU 相关性矩阵计算                      │
+│  execution_runtime ──► 无 GPU 需求                               │
+│  projection_runtime ──► 无 GPU 需求                              │
+│  narrative_runtime ──► 无 GPU 需求                               │
 │                                                                  │
 │  Runtime 只做编排，业务逻辑在 services/                           │
 └─────────────────────────────────────────────────────────────────┘
@@ -57,6 +59,37 @@
 │                                                                  │
 │  这些是基础设施，不改变任何架构                                    │
 └─────────────────────────────────────────────────────────────────┘
+```
+
+### 各 Runtime GPU 加速状态
+
+| Runtime | GPU 加速 | 功能 | 自动降级 |
+|---------|---------|------|---------|
+| `signal_runtime` | ✅ 支持 | 特征计算 + LSTM 策略 | ✅ CPU fallback |
+| `correlation_runtime` | ✅ 支持 | 相关性矩阵计算 | ✅ CPU fallback |
+| `execution_runtime` | ❌ 不需要 | 订单执行逻辑 | - |
+| `projection_runtime` | ❌ 不需要 | 数据存储 | - |
+| `narrative_runtime` | ❌ 不需要 | AI 叙事生成 | - |
+| `ingestion_runtime` | ❌ 不需要 | 数据采集 | - |
+| `monitoring_runtime` | ❌ 不需要 | 监控 | - |
+| `scheduler_runtime` | ❌ 不需要 | 调度 | - |
+
+### GPU 加速配置
+
+**signal_runtime 配置：**
+
+```python
+class SignalConfig(RuntimeConfig):
+    enable_gpu: bool = True          # 启用 GPU 加速
+    lstm_enabled: bool = False       # 启用 LSTM 策略
+    lstm_sequence_length: int = 60   # LSTM 序列长度
+```
+
+**correlation_runtime 配置：**
+
+```python
+class CorrelationConfig(RuntimeConfig):
+    enable_gpu: bool = True          # 启用 GPU 加速
 ```
 
 ### 兼容性矩阵

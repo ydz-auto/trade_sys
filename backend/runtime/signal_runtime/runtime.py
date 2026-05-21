@@ -10,6 +10,11 @@ Signal Runtime - 信号生成运行时
 - 因子计算与发布
 
 业务逻辑：调用 services/fusion_service/ 和 services/strategy_service/
+
+GPU 加速：
+- 特征计算：TorchFeatureCalculator
+- LSTM 策略：LSTMStrategy
+- 自动检测 GPU 可用性，无 GPU 时降级到 CPU
 """
 
 import asyncio
@@ -50,6 +55,10 @@ class SignalConfig(RuntimeConfig):
     min_sample_size: int = 50
     min_avg_return: float = 0.005
     
+    enable_gpu: bool = True
+    lstm_enabled: bool = False
+    lstm_sequence_length: int = 60
+    
     symbols: List[str] = None
     
     def __init__(self, **data):
@@ -66,6 +75,10 @@ class SignalRuntime(BaseRuntime):
     - services/fusion_service/ - 信号融合
     - services/strategy_service/ - 策略决策
     - services/factor_service/ - 因子计算
+    
+    GPU 加速（可选）：
+    - TorchFeatureCalculator - GPU 特征计算
+    - LSTMStrategy - LSTM 深度学习策略
     """
     
     def __init__(self, config: SignalConfig = None):
@@ -87,10 +100,14 @@ class SignalRuntime(BaseRuntime):
         self._factor_task: Optional[asyncio.Task] = None
         self._price_cache: Dict[str, Dict[str, float]] = {}
         
-        # 策略发现引擎相关
         self.strategy_discovery_engine = None
         self._strategy_discovery_task: Optional[asyncio.Task] = None
         self._auto_discovered_strategies: List = []
+        
+        self.gpu_feature_calculator = None
+        self.lstm_strategy = None
+        self._gpu_available = False
+        self._kline_buffer: Dict[str, List[Dict]] = {}
     
     async def initialize(self) -> None:
         """初始化运行时组件"""
@@ -150,6 +167,9 @@ class SignalRuntime(BaseRuntime):
         except Exception as e:
             self.logger.warning(f"Factor calculator init failed: {e}")
         
+        if self.config.enable_gpu:
+            await self._init_gpu_components()
+        
         if self.config.enable_strategy_discovery:
             try:
                 from services.strategy_service.strategy_discovery import StrategyDiscoveryEngine
@@ -170,8 +190,50 @@ class SignalRuntime(BaseRuntime):
         self.health_check.register_check("consumer", self.consumer.is_healthy)
         self.health_check.register_check("publisher", self.publisher.is_healthy)
         self.health_check.register_check("factor_calculator", self._check_factor_calculator)
+        self.health_check.register_check("gpu_acceleration", self._check_gpu)
         
         self.logger.info("Signal Runtime initialized successfully")
+    
+    async def _init_gpu_components(self):
+        """初始化 GPU 加速组件"""
+        try:
+            from shared.acceleration import is_gpu_available, get_accelerator_info
+            from domain.feature.torch_calculator import TorchFeatureCalculator
+            
+            info = get_accelerator_info()
+            self._gpu_available = info['is_gpu']
+            
+            self.logger.info(f"GPU acceleration: {info['device_type']}, is_gpu={self._gpu_available}")
+            
+            self.gpu_feature_calculator = TorchFeatureCalculator()
+            self.logger.info("GPU feature calculator initialized")
+            
+            if self.config.lstm_enabled:
+                await self._init_lstm_strategy()
+            
+        except ImportError as e:
+            self.logger.warning(f"GPU acceleration not available: {e}")
+            self._gpu_available = False
+        except Exception as e:
+            self.logger.warning(f"GPU initialization failed: {e}")
+            self._gpu_available = False
+    
+    async def _init_lstm_strategy(self):
+        """初始化 LSTM 策略"""
+        try:
+            from domain.strategy.lstm_strategy import LSTMStrategyBuilder
+            
+            self.lstm_strategy = LSTMStrategyBuilder.create_fast(input_size=21)
+            self.logger.info("LSTM strategy initialized")
+            
+            model_path = Path(__file__).parent.parent.parent / "models" / "lstm" / "lstm_model.pt"
+            if model_path.exists():
+                self.lstm_strategy.load(str(model_path))
+                self.logger.info(f"LSTM model loaded from {model_path}")
+            
+        except Exception as e:
+            self.logger.warning(f"LSTM strategy init failed: {e}")
+            self.lstm_strategy = None
     
     async def _check_fusion_engine(self) -> bool:
         return self.fusion_engine is not None
@@ -181,6 +243,9 @@ class SignalRuntime(BaseRuntime):
     
     async def _check_factor_calculator(self) -> bool:
         return self.factor_calculator is not None
+    
+    async def _check_gpu(self) -> bool:
+        return self._gpu_available
     
     async def shutdown(self) -> None:
         """关闭运行时组件"""
@@ -219,7 +284,6 @@ class SignalRuntime(BaseRuntime):
             self._factor_task = asyncio.create_task(self._factor_calculation_loop())
             self.logger.info("Factor calculation task started")
         
-        # 启动策略发现任务
         if self.config.enable_strategy_discovery and self.strategy_discovery_engine:
             self._strategy_discovery_task = asyncio.create_task(self._strategy_discovery_loop())
             self.logger.info("Strategy discovery task started")
@@ -235,19 +299,23 @@ class SignalRuntime(BaseRuntime):
                 await self.lifecycle.handle_error(e)
     
     async def _factor_calculation_loop(self) -> None:
-        """因子计算循环（多币种）"""
+        """因子计算循环（多币种）- GPU 加速"""
         symbols = self.config.symbols
         
         while not self.context.is_shutdown_requested():
             try:
                 for symbol in symbols:
-                    factors = await self.factor_calculator.calculate_all_factors(symbol)
+                    if self._gpu_available and self.gpu_feature_calculator:
+                        factors = await self._compute_factors_gpu(symbol)
+                    else:
+                        factors = await self.factor_calculator.calculate_all_factors(symbol)
                     
                     if factors and self.factor_publisher:
                         factor_event = {
                             "event_type": "factors",
                             "symbol": symbol,
                             "timestamp": datetime.utcnow().isoformat(),
+                            "gpu_accelerated": self._gpu_available,
                             "factors": [
                                 {
                                     "type": f.type,
@@ -264,7 +332,7 @@ class SignalRuntime(BaseRuntime):
                         
                         await self.factor_publisher.publish(factor_event)
                         self.metrics.increment("factors_published")
-                        self.logger.debug(f"Published factors for {symbol}")
+                        self.logger.debug(f"Published factors for {symbol} (GPU={self._gpu_available})")
                 
                 await asyncio.sleep(self.config.factor_calc_interval)
                 
@@ -273,6 +341,72 @@ class SignalRuntime(BaseRuntime):
             except Exception as e:
                 self.logger.error(f"Error in factor calculation loop: {e}")
                 await asyncio.sleep(10)
+    
+    async def _compute_factors_gpu(self, symbol: str) -> Optional[List]:
+        """使用 GPU 计算因子"""
+        try:
+            if symbol not in self._kline_buffer or len(self._kline_buffer[symbol]) < 100:
+                return await self.factor_calculator.calculate_all_factors(symbol)
+            
+            import pandas as pd
+            from shared.acceleration import to_gpu
+            
+            klines = self._kline_buffer[symbol][-500:]
+            df = pd.DataFrame(klines)
+            
+            features_df = self.gpu_feature_calculator.compute_batch(df, symbol=f"{symbol}USDT", use_gpu=True)
+            
+            factors = self._convert_features_to_factors(features_df, symbol)
+            
+            self.metrics.increment("gpu_factor_computations")
+            
+            return factors
+            
+        except Exception as e:
+            self.logger.error(f"GPU factor computation failed: {e}")
+            return await self.factor_calculator.calculate_all_factors(symbol)
+    
+    def _convert_features_to_factors(self, features_df, symbol: str) -> List:
+        """将特征 DataFrame 转换为因子列表"""
+        from services.factor_service import Factor
+        
+        factors = []
+        last_row = features_df.iloc[-1]
+        
+        feature_factor_map = {
+            "rsi_14": ("technical", "RSI", "RSI", 0.15),
+            "macd": ("technical", "MACD", "MACD", 0.12),
+            "bb_width": ("technical", "BB Width", "Bollinger Width", 0.08),
+            "volume_ratio": ("volume", "Volume Ratio", "Volume Ratio", 0.10),
+            "atr_14": ("volatility", "ATR", "Average True Range", 0.08),
+            "momentum_10": ("momentum", "Momentum", "Momentum", 0.10),
+        }
+        
+        for feature_name, (factor_type, name, name_en, weight) in feature_factor_map.items():
+            if feature_name in last_row:
+                value = last_row[feature_name]
+                
+                if feature_name == "rsi_14":
+                    confidence = 1 - abs(value - 50) / 50
+                    color = "green" if value < 30 else "red" if value > 70 else "gray"
+                elif feature_name == "macd":
+                    confidence = min(abs(value) / 100, 1.0)
+                    color = "green" if value > 0 else "red"
+                else:
+                    confidence = min(abs(value) if value else 0.5, 1.0)
+                    color = "gray"
+                
+                factors.append(Factor(
+                    type=factor_type,
+                    name=name,
+                    name_en=name_en,
+                    weight=weight,
+                    value=float(value) if value else 0.0,
+                    confidence=float(confidence),
+                    color=color,
+                ))
+        
+        return factors
     
     async def _strategy_discovery_loop(self) -> None:
         """策略发现循环（多币种）"""
@@ -315,7 +449,16 @@ class SignalRuntime(BaseRuntime):
         
         event_type = message.get("event_type", "")
         
-        if event_type == "price_update" and self.factor_calculator:
+        if event_type == "kline_update":
+            symbol = message.get("symbol", "BTC")
+            kline = message.get("kline", {})
+            if symbol not in self._kline_buffer:
+                self._kline_buffer[symbol] = []
+            self._kline_buffer[symbol].append(kline)
+            if len(self._kline_buffer[symbol]) > 1000:
+                self._kline_buffer[symbol] = self._kline_buffer[symbol][-500:]
+        
+        elif event_type == "price_update" and self.factor_calculator:
             symbol = message.get("symbol", "BTC")
             price = message.get("price", 0)
             volume = message.get("volume_24h", 0)
@@ -404,8 +547,8 @@ class SignalRuntime(BaseRuntime):
         return final_signals
     
     async def _run_strategies(self, signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """运行策略（币种感知）"""
-        if not self.strategy_orchestrator or not signals:
+        """运行策略（币种感知）- 支持 GPU 加速"""
+        if not signals:
             return []
         
         decisions = []
@@ -415,16 +558,67 @@ class SignalRuntime(BaseRuntime):
                 asset = signal.get("asset", "BTC")
                 symbol = f"{asset}USDT"
                 
-                strategy_signals = self.strategy_orchestrator.process(symbol)
+                if self._gpu_available and self.lstm_strategy and symbol in self._kline_buffer:
+                    decision = await self._run_lstm_strategy(symbol, signal)
+                    if decision:
+                        decisions.append(decision)
+                        continue
                 
-                if strategy_signals:
-                    decision = self._convert_to_decision(strategy_signals, signal)
-                    decisions.append(decision)
+                if self.strategy_orchestrator:
+                    strategy_signals = self.strategy_orchestrator.process(symbol)
+                    
+                    if strategy_signals:
+                        decision = self._convert_to_decision(strategy_signals, signal)
+                        decisions.append(decision)
                     
             except Exception as e:
                 self.logger.error(f"Strategy error: {e}")
         
         return decisions
+    
+    async def _run_lstm_strategy(self, symbol: str, signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """运行 LSTM 策略（GPU 加速）"""
+        if not self.lstm_strategy or symbol not in self._kline_buffer:
+            return None
+        
+        try:
+            import pandas as pd
+            from shared.acceleration import to_gpu
+            
+            klines = self._kline_buffer[symbol][-self.config.lstm_sequence_length:]
+            if len(klines) < self.config.lstm_sequence_length:
+                return None
+            
+            df = pd.DataFrame(klines)
+            features = self.gpu_feature_calculator.compute_batch(df, symbol=symbol, use_gpu=True)
+            
+            feature_cols = [c for c in features.columns if c not in ['timestamp', 'open', 'high', 'low', 'close', 'volume']]
+            feature_matrix = to_gpu(features[feature_cols].values.astype('float32'))
+            
+            lstm_signal = await self.lstm_strategy.predict(feature_matrix)
+            
+            if lstm_signal != 0:
+                action = "BUY" if lstm_signal == 1 else "SELL"
+                confidence = 0.7
+                
+                self.metrics.increment("lstm_signals")
+                
+                return {
+                    "trace_id": signal.get("trace_id", ""),
+                    "action": action,
+                    "symbol": symbol,
+                    "quantity": min(confidence * 0.08, 0.1),
+                    "confidence": confidence,
+                    "reason": f"LSTM 策略信号，GPU 加速",
+                    "strategy": "lstm",
+                    "gpu_accelerated": True,
+                }
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"LSTM strategy error: {e}")
+            return None
     
     def _convert_to_decision(self, strategy_signals: List[Any], signal: Dict[str, Any]) -> Dict[str, Any]:
         """转换策略信号为决策"""
@@ -464,6 +658,7 @@ class SignalRuntime(BaseRuntime):
             "quantity": min(confidence * 0.08, 0.1),
             "confidence": confidence,
             "reason": f"信号{signal.get('signal', '')}，置信度 {confidence:.3f}",
+            "gpu_accelerated": self._gpu_available,
         }
     
     async def health_check(self) -> Dict[str, Any]:
@@ -473,6 +668,11 @@ class SignalRuntime(BaseRuntime):
             "lifecycle": self.lifecycle.to_dict() if self.lifecycle else {},
             "metrics": self.metrics.to_dict() if self.metrics else {},
             "health_check": await self.health_check.to_dict() if self.health_check else {},
+            "gpu_acceleration": {
+                "available": self._gpu_available,
+                "feature_calculator": self.gpu_feature_calculator is not None,
+                "lstm_strategy": self.lstm_strategy is not None,
+            },
         })
         return health
 
@@ -491,7 +691,7 @@ def get_signal_runtime() -> SignalRuntime:
 async def main():
     """主入口"""
     print("=" * 60)
-    print("Signal Runtime - Event Fusion + Strategy")
+    print("Signal Runtime - Event Fusion + Strategy (GPU Accelerated)")
     print("=" * 60)
     
     runtime = get_signal_runtime()
