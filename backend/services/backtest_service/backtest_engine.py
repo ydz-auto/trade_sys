@@ -6,15 +6,24 @@ Backtest Service - 回测服务
 - 策略回测评估
 - 绩效指标计算
 - 报告生成
+- GPU 加速特征计算
+- 并行参数优化
 
 架构：
 Historical Data → BacktestEngine → Signals → Execution → Performance Report
+
+GPU 加速：
+- 特征计算：TorchFeatureCalculator
+- 并行优化：ParallelBacktestEngine
+- 自动检测 GPU 可用性，无 GPU 时降级到 CPU
 """
 
 from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
+from pathlib import Path
+import asyncio
 import json
 
 from infrastructure.logging import get_logger
@@ -143,9 +152,14 @@ class MockDataGenerator:
 
 
 class BacktestEngine:
-    """回测引擎"""
+    """回测引擎
+    
+    支持 GPU 加速：
+    - 特征计算
+    - 并行参数优化
+    """
 
-    def __init__(self, config: BacktestConfig = None):
+    def __init__(self, config: BacktestConfig = None, enable_gpu: bool = True):
         self.config = config or BacktestConfig()
         self._bars: List[Bar] = []
         self._trades: List[Trade] = []
@@ -153,6 +167,120 @@ class BacktestEngine:
         self._drawdown_curve: List[float] = []
         self._position: Optional[Dict] = None
         self._capital: float = 0.0
+        
+        self._enable_gpu = enable_gpu
+        self._gpu_available = False
+        self._gpu_feature_calculator = None
+    
+    def _init_gpu(self):
+        """初始化 GPU 加速"""
+        if not self._enable_gpu:
+            return
+        
+        try:
+            from shared.acceleration import is_gpu_available, get_accelerator_info
+            from domain.feature.torch_calculator import TorchFeatureCalculator
+            
+            info = get_accelerator_info()
+            self._gpu_available = info['is_gpu']
+            
+            if self._gpu_available:
+                self._gpu_feature_calculator = TorchFeatureCalculator()
+                logger.info(f"BacktestEngine GPU acceleration enabled: {info['device_type']}")
+            else:
+                logger.info("BacktestEngine using CPU (GPU not available)")
+            
+        except ImportError as e:
+            logger.warning(f"GPU acceleration not available: {e}")
+            self._gpu_available = False
+        except Exception as e:
+            logger.warning(f"GPU initialization failed: {e}")
+            self._gpu_available = False
+    
+    def compute_features_gpu(self, bars: List[Bar]) -> List[Dict[str, Any]]:
+        """使用 GPU 计算特征
+        
+        Args:
+            bars: K线数据列表
+        
+        Returns:
+            特征字典列表
+        """
+        if not self._gpu_available or not self._gpu_feature_calculator:
+            self._init_gpu()
+        
+        if not self._gpu_available:
+            return self._compute_features_cpu(bars)
+        
+        try:
+            import pandas as pd
+            
+            df = pd.DataFrame([
+                {
+                    'timestamp': bar.timestamp,
+                    'open': bar.open,
+                    'high': bar.high,
+                    'low': bar.low,
+                    'close': bar.close,
+                    'volume': bar.volume,
+                }
+                for bar in bars
+            ])
+            
+            features_df = self._gpu_feature_calculator.compute_batch(df, use_gpu=True)
+            
+            features_list = []
+            for idx, row in features_df.iterrows():
+                feature_dict = {
+                    'timestamp': row.get('timestamp'),
+                    'close': row.get('close'),
+                }
+                for col in features_df.columns:
+                    if col not in ['timestamp', 'open', 'high', 'low', 'close', 'volume']:
+                        feature_dict[col] = row[col]
+                features_list.append(feature_dict)
+            
+            return features_list
+            
+        except Exception as e:
+            logger.error(f"GPU feature computation failed: {e}")
+            return self._compute_features_cpu(bars)
+    
+    def _compute_features_cpu(self, bars: List[Bar]) -> List[Dict[str, Any]]:
+        """CPU 特征计算（回退方案）"""
+        features_list = []
+        
+        for i, bar in enumerate(bars):
+            feature_dict = {
+                'timestamp': bar.timestamp,
+                'close': bar.close,
+            }
+            
+            if i >= 14:
+                closes = [b.close for b in bars[max(0, i-14):i+1]]
+                deltas = [closes[j+1] - closes[j] for j in range(len(closes)-1)]
+                gains = [d for d in deltas if d > 0]
+                losses = [-d for d in deltas if d < 0]
+                
+                avg_gain = sum(gains) / 14 if gains else 0
+                avg_loss = sum(losses) / 14 if losses else 0
+                
+                if avg_loss == 0:
+                    rsi = 100
+                else:
+                    rs = avg_gain / avg_loss
+                    rsi = 100 - (100 / (1 + rs))
+                
+                feature_dict['rsi_14'] = rsi
+            
+            if i >= 20:
+                closes = [b.close for b in bars[max(0, i-20):i+1]]
+                sma = sum(closes) / len(closes)
+                feature_dict['sma_20'] = sma
+            
+            features_list.append(feature_dict)
+        
+        return features_list
 
     def load_data(self, bars: List[Bar]) -> "BacktestEngine":
         """加载历史数据"""
@@ -416,14 +544,64 @@ def run_backtest(
     start_date: datetime,
     end_date: datetime,
     strategy: Callable[[Bar, Optional[Dict]], SignalType],
-    config: BacktestConfig = None
+    config: BacktestConfig = None,
+    enable_gpu: bool = True,
 ) -> BacktestResult:
     """运行回测的便捷函数"""
-    engine = BacktestEngine(config)
+    engine = BacktestEngine(config, enable_gpu=enable_gpu)
     engine.load_mock_data(symbol, start_date, end_date)
     result = engine.run(strategy)
     engine.print_result(result)
     return result
+
+
+async def run_parallel_optimization(
+    symbol: str,
+    strategy_id: str,
+    param_grid: List[Dict[str, Any]],
+    start_time: int,
+    end_time: int,
+    data_path: Optional[Path] = None,
+    n_workers: Optional[int] = None,
+    enable_gpu: bool = True,
+) -> List[Any]:
+    """
+    并行参数优化
+    
+    使用 GPU 加速特征计算，多进程并行回测。
+    
+    Args:
+        symbol: 交易对
+        strategy_id: 策略 ID
+        param_grid: 参数组合列表
+        start_time: 开始时间戳
+        end_time: 结束时间戳
+        data_path: 数据路径
+        n_workers: 并行进程数
+        enable_gpu: 是否启用 GPU
+    
+    Returns:
+        回测结果列表
+    """
+    from application.optimization_service.parallel_engine import (
+        ParallelBacktestEngine, BacktestConfig, generate_param_grid
+    )
+    
+    config = BacktestConfig()
+    
+    engine = ParallelBacktestEngine(config)
+    
+    results = await engine.optimize_parallel(
+        symbol=symbol,
+        strategy_id=strategy_id,
+        param_grid=param_grid,
+        start_time=start_time,
+        end_time=end_time,
+        data_path=data_path,
+        n_workers=n_workers,
+    )
+    
+    return results
 
 
 # 示例策略
