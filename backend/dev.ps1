@@ -23,6 +23,11 @@ $Runtimes = @{
     "scheduler" = "runtime.scheduler_runtime"
 }
 
+$GpuRuntimes = @{
+    "gpu-signal" = "runtime.signal_runtime"
+    "gpu-optimization" = "application.optimization_service"
+}
+
 $RuntimeNames = @{
     "ingestion" = "Data Ingestion Runtime"
     "signal" = "Signal Generation Runtime"
@@ -31,6 +36,8 @@ $RuntimeNames = @{
     "correlation" = "Correlation Analysis Runtime"
     "narrative" = "AI Narrative Runtime"
     "scheduler" = "Scheduler Runtime"
+    "gpu-signal" = "GPU Signal Runtime"
+    "gpu-optimization" = "GPU Optimization Service"
 }
 
 $LogDir = Join-Path $ScriptDir "logs"
@@ -63,6 +70,11 @@ function Show-Help {
     Write-Host "  infra-down         Stop infrastructure"
     Write-Host "  infra-status       Check infrastructure status"
     Write-Host "  fix-kafka          Reset Kafka (delete all data)"
+    Write-Host ""
+    Write-Host "GPU Acceleration:" -ForegroundColor $Yellow
+    Write-Host "  gpu-start <runtime> Start GPU-accelerated runtime"
+    Write-Host "  gpu-status         Check GPU status"
+    Write-Host "  gpu-test           Run GPU acceleration tests"
     Write-Host ""
     Write-Host "Other:" -ForegroundColor $Yellow
     Write-Host "  api                Start API server"
@@ -369,6 +381,73 @@ function Start-API {
     & $PythonPath api_server.py
 }
 
+function Get-GpuStatus {
+    Write-Host "GPU Acceleration Status:" -ForegroundColor $Cyan
+    Write-Host ""
+    
+    $code = @"
+import sys
+sys.path.insert(0, '$ScriptDir'.Replace('\', '\\'))
+try:
+    from shared.acceleration import get_accelerator_info
+    info = get_accelerator_info()
+    print(f'  Backend: {info["backend"]}')
+    print(f'  Device: {info["device_type"]}')
+    print(f'  Is GPU: {info["is_gpu"]}')
+    print(f'  Device Info: {info["device_info"]}')
+except ImportError as e:
+    print(f'  Error: {e}')
+    print('  PyTorch not installed. Run: pip install torch')
+except Exception as e:
+    print(f'  Error: {e}')
+"@
+    
+    & $PythonPath -c $code
+}
+
+function Start-GpuRuntime {
+    param([string]$Runtime)
+    
+    if ([string]::IsNullOrEmpty($Runtime)) {
+        Write-Host "Error: Please specify a GPU runtime name" -ForegroundColor $Red
+        Write-Host "Available: gpu-signal, gpu-optimization"
+        return 1
+    }
+    
+    if (!$GpuRuntimes.ContainsKey($Runtime)) {
+        Write-Host "Error: Unknown GPU runtime '$Runtime'" -ForegroundColor $Red
+        Write-Host "Available: gpu-signal, gpu-optimization"
+        return 1
+    }
+    
+    $runtimePath = $GpuRuntimes[$Runtime]
+    $runtimeName = $RuntimeNames[$Runtime]
+    $logFile = Join-Path $LogDir "$Runtime.log"
+    
+    Write-Host "Starting $runtimeName (GPU accelerated)..." -ForegroundColor $Green
+    $env:RUNTIME_NAME = $Runtime
+    $env:LOG_DIR = $LogDir
+    $env:TORCH_DEVICE = "cuda"
+    $process = Start-Process $PythonPath -ArgumentList "-m", $runtimePath -RedirectStandardOutput $logFile -NoNewWindow -WorkingDirectory $ScriptDir -PassThru
+    Start-Sleep -Seconds 1
+    
+    $runningProcess = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
+    if ($runningProcess) {
+        Write-Host "OK: $runtimeName started (PID: $($process.Id))" -ForegroundColor $Green
+        Write-Host "  Log file: $logFile"
+    } else {
+        Write-Host "FAILED: $runtimeName could not start" -ForegroundColor $Red
+        Write-Host "  Check log: Get-Content $logFile -Wait -Tail 50"
+        return 1
+    }
+}
+
+function Test-GpuAcceleration {
+    Write-Host "Running GPU acceleration tests..." -ForegroundColor $Green
+    Write-Host ""
+    & $PythonPath tests\test_torch_acceleration.py
+}
+
 function Show-Menu {
     while ($true) {
         Write-Header
@@ -429,6 +508,9 @@ if ($args.Count -eq 0) {
         "infra-status" { Infra-Status }
         "api" { Start-API }
         "list" { List-Runtimes }
+        "gpu-start" { Start-GpuRuntime $args[1] }
+        "gpu-status" { Get-GpuStatus }
+        "gpu-test" { Test-GpuAcceleration }
         "menu" { Show-Menu }
         "help" { Show-Help }
         "--help" { Show-Help }

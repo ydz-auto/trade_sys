@@ -10,6 +10,72 @@
 | Mac M1/M2/M3/M4 | MPS | Apple Silicon |
 | 任何平台 | CPU | NumPy fallback |
 
+## 架构兼容性
+
+### 与现有架构的关系
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Deploy Layer                              │
+│                                                                  │
+│  deploy/docker-compose.yml     docker/docker-compose.gpu.yml    │
+│  (CPU 版本，生产部署)            (GPU 版本，可选)                  │
+│         │                              │                         │
+│         │ 使用                         │ 使用                     │
+│         ▼                              ▼                         │
+│  docker/Dockerfile             docker/Dockerfile.gpu            │
+│  (CPU 镜像)                    (GPU 镜像)                        │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        Runtime Layer                             │
+│                                                                  │
+│  signal_runtime ──► services/strategy_service/                  │
+│  execution_runtime ──► services/execution_service/              │
+│  ...                                                             │
+│                                                                  │
+│  Runtime 只做编排，业务逻辑在 services/                           │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        Domain Layer                              │
+│                                                                  │
+│  domain/feature/torch_calculator.py  (GPU 特征计算)              │
+│  domain/strategy/lstm_strategy.py    (LSTM 策略)                 │
+│                                                                  │
+│  这些是工具，被 services/ 或 runtime/ 调用                        │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        Shared Layer                              │
+│                                                                  │
+│  shared/acceleration/  (GPU 加速层，可选)                        │
+│  shared/progress/      (进度追踪，可选)                          │
+│                                                                  │
+│  这些是基础设施，不改变任何架构                                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 兼容性矩阵
+
+| 层级 | 原有架构 | GPU 加速 | 冲突？ |
+|------|---------|---------|--------|
+| **Deploy** | `deploy/docker-compose.yml` (CPU) | `docker/docker-compose.gpu.yml` (GPU) | ❌ 独立 |
+| **Runtime** | `signal_runtime`, `execution_runtime`... | 无变化 | ❌ 无影响 |
+| **Services** | `strategy_service`, `factor_service`... | 可选择使用 GPU | ❌ 可选 |
+| **Domain** | `domain/feature/unified_calculator.py` | `domain/feature/torch_calculator.py` | ❌ 并存 |
+| **Shared** | 无 | `shared/acceleration/` | ❌ 新增 |
+
+### 关键原则
+
+1. **GPU 加速是可选的**：不使用 GPU 时，系统完全正常工作
+2. **向后兼容**：所有现有代码无需修改
+3. **独立部署**：GPU 版本和 CPU 版本可以独立部署
+4. **零侵入**：GPU 模块不修改任何现有架构
+
 ## 为什么选择 PyTorch？
 
 1. **LSTM 深度学习原生支持** - 必须用 PyTorch/TensorFlow

@@ -24,6 +24,11 @@ declare -A RUNTIMES=(
     ["governor"]="runtime.governor_runtime"
 )
 
+declare -A GPU_RUNTIMES=(
+    ["gpu-signal"]="runtime.signal_runtime"
+    ["gpu-optimization"]="application.optimization_service"
+)
+
 declare -A RUNTIME_NAMES=(
     ["ingestion"]="数据采集运行时"
     ["signal"]="信号生成运行时"
@@ -34,6 +39,8 @@ declare -A RUNTIME_NAMES=(
     ["monitoring"]="监控运行时"
     ["scheduler"]="调度运行时"
     ["governor"]="Runtime Governor"
+    ["gpu-signal"]="GPU信号生成运行时"
+    ["gpu-optimization"]="GPU参数优化服务"
 )
 
 LOG_DIR="$SCRIPT_DIR/logs"
@@ -66,6 +73,11 @@ show_help() {
     echo "  infra-down         停止基础设施"
     echo "  infra-status       查看基础设施状态"
     echo "  fix-kafka          重置 Kafka (删除所有数据)"
+    echo ""
+    echo -e "${YELLOW}GPU 加速:${NC}"
+    echo "  gpu-start <runtime> 启动 GPU 加速 runtime"
+    echo "  gpu-status         查看 GPU 状态"
+    echo "  gpu-test           运行 GPU 加速测试"
     echo ""
     echo -e "${YELLOW}其他:${NC}"
     echo "  api                启动 API 服务器"
@@ -348,6 +360,70 @@ start_api() {
     python api_server.py
 }
 
+gpu_status() {
+    echo -e "${CYAN}GPU 加速状态:${NC}"
+    echo ""
+    
+    python -c "
+import sys
+sys.path.insert(0, '$SCRIPT_DIR')
+try:
+    from shared.acceleration import get_accelerator_info
+    info = get_accelerator_info()
+    print(f'  Backend: {info[\"backend\"]}')
+    print(f'  Device: {info[\"device_type\"]}')
+    print(f'  Is GPU: {info[\"is_gpu\"]}')
+    print(f'  Device Info: {info[\"device_info\"]}')
+except ImportError as e:
+    print(f'  Error: {e}')
+    print('  PyTorch not installed. Run: pip install torch')
+except Exception as e:
+    print(f'  Error: {e}')
+"
+}
+
+gpu_test() {
+    echo -e "${GREEN}运行 GPU 加速测试...${NC}"
+    echo ""
+    python tests/test_torch_acceleration.py
+}
+
+gpu_start() {
+    local runtime=$1
+    if [ -z "$runtime" ]; then
+        echo -e "${RED}错误: 请指定 GPU runtime 名${NC}"
+        echo "可用: gpu-signal, gpu-optimization"
+        return 1
+    fi
+    
+    if [ -z "${GPU_RUNTIMES[$runtime]}" ]; then
+        echo -e "${RED}错误: 未知 GPU runtime '$runtime'${NC}"
+        echo "可用: gpu-signal, gpu-optimization"
+        return 1
+    fi
+    
+    local runtime_path="${GPU_RUNTIMES[$runtime]}"
+    local runtime_name="${RUNTIME_NAMES[$runtime]}"
+    local log_file="$LOG_DIR/${runtime}.log"
+    
+    echo -e "${GREEN}正在启动 $runtime_name (GPU 加速)...${NC}"
+    export RUNTIME_NAME="$runtime"
+    export LOG_DIR="$LOG_DIR"
+    export TORCH_DEVICE="cuda"
+    nohup python -m "$runtime_path" > "$log_file" 2>&1 &
+    local pid=$!
+    sleep 1
+    
+    if ps -p $pid > /dev/null; then
+        echo -e "${GREEN}✓ $runtime_name 启动成功 (PID: $pid)${NC}"
+        echo "  日志文件: $log_file"
+    else
+        echo -e "${RED}✗ $runtime_name 启动失败${NC}"
+        echo "  查看日志: tail -f $log_file"
+        return 1
+    fi
+}
+
 show_menu() {
     while true; do
         print_header
@@ -453,6 +529,15 @@ case "${1:-menu}" in
         ;;
     list)
         list_runtimes
+        ;;
+    gpu-start)
+        gpu_start "$2"
+        ;;
+    gpu-status)
+        gpu_status
+        ;;
+    gpu-test)
+        gpu_test
         ;;
     menu)
         show_menu
