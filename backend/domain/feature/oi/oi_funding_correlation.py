@@ -67,7 +67,7 @@ class OIFundingCorrelation:
             "symbol": self.symbol,
             "exchange": self.exchange,
             "oi_funding_divergence": self.oi_funding_divergence,
-            "oi_squeeze_probability": self.squeeze_probability,
+            "oi_squeeze_probability": self.oi_squeeze_probability,
             "oi_liq_pressure": self.oi_liq_pressure,
             "funding_extreme_reversal": self.funding_extreme_reversal,
             "leverage_crowdedness": self.leverage_crowdedness,
@@ -79,42 +79,59 @@ class OIFundingCorrelation:
 
 
 class OIFundingCorrelator:
-    """OI + Funding 联动分析器"""
+    """OI + Funding 联动分析器
+    重要：使用滚动窗口计算统计量，避免未来数据泄漏
+    """
 
     def __init__(self):
         self.oi_history: List[float] = []
         self.funding_history: List[float] = []
+        self.timestamp_history: List[int] = []
         self.max_history = 1008  # 7 days * 24h * 6 intervals
+        self.lookback_window = 240  # 滚动窗口大小（避免全局统计）
 
-    def add_data(self, oi: float, funding_rate: float):
+    def add_data(self, oi: float, funding_rate: float, timestamp: int):
         """添加数据点"""
         self.oi_history.append(oi)
         self.funding_history.append(funding_rate)
+        self.timestamp_history.append(timestamp)
 
         if len(self.oi_history) > self.max_history:
             self.oi_history.pop(0)
             self.funding_history.pop(0)
+            self.timestamp_history.pop(0)
 
-    def compute_correlation(self, oi: float, funding_rate: float) -> OIFundingCorrelation:
-        """计算联动特征"""
-        self.add_data(oi, funding_rate)
+    def compute_correlation(self, oi: float, funding_rate: float, timestamp: int) -> OIFundingCorrelation:
+        """计算联动特征
+        关键：使用滚动窗口计算统计量，只使用历史数据，不泄漏未来
+        """
+        self.add_data(oi, funding_rate, timestamp)
 
         if len(self.oi_history) < 24:
             return OIFundingCorrelation(
-                timestamp=int(datetime.now().timestamp() * 1000),
+                timestamp=timestamp,
                 symbol="UNKNOWN",
                 oi=oi,
                 funding_rate=funding_rate,
             )
 
-        oi_array = np.array(self.oi_history)
-        funding_array = np.array(self.funding_history)
+        # 使用滚动窗口计算统计量（只使用历史数据，不包含未来）
+        window_size = min(self.lookback_window, len(self.oi_history))
+        oi_window = np.array(self.oi_history[-window_size:])
+        funding_window = np.array(self.funding_history[-window_size:])
 
-        oi_zscore = (oi - np.mean(oi_array)) / np.std(oi_array) if np.std(oi_array) > 0 else 0.0
-        funding_zscore = (funding_rate - np.mean(funding_array)) / np.std(funding_array) if np.std(funding_array) > 0 else 0.0
+        oi_mean = np.mean(oi_window)
+        oi_std = np.std(oi_window)
+        funding_mean = np.mean(funding_window)
+        funding_std = np.std(funding_window)
+
+        oi_zscore = (oi - oi_mean) / oi_std if oi_std > 0 else 0.0
+        funding_zscore = (funding_rate - funding_mean) / funding_std if funding_std > 0 else 0.0
 
         # OI-Funding 背离：OI增加但Funding极端（正向或负向）
-        recent_oi_trend = np.polyfit(range(len(oi_array[-24:])), oi_array[-24:], 1)[0]
+        recent_trend_window = min(24, len(self.oi_history))
+        recent_oi = np.array(self.oi_history[-recent_trend_window:])
+        recent_oi_trend = np.polyfit(range(len(recent_oi)), recent_oi, 1)[0] if len(recent_oi) >= 2 else 0.0
         oi_funding_divergence = recent_oi_trend * abs(funding_zscore)
 
         # 杠杆挤压概率：高OI + 极端Funding
@@ -134,7 +151,7 @@ class OIFundingCorrelator:
         leverage_crowdedness = min(1.0, (abs(oi_zscore) + abs(funding_zscore)) / 4.0)
 
         return OIFundingCorrelation(
-            timestamp=int(datetime.now().timestamp() * 1000),
+            timestamp=timestamp,
             symbol="UNKNOWN",
             oi_funding_divergence=oi_funding_divergence,
             oi_squeeze_probability=squeeze_prob,
@@ -166,12 +183,22 @@ def compute_oi_funding_correlation(
     results = []
     for _, row in merged.iterrows():
         if pd.notna(row["oi"]) and pd.notna(row["funding_rate"]):
+            timestamp_val = int(row["timestamp"])
             corr = correlator.compute_correlation(
                 oi=float(row["oi"]),
-                funding_rate=float(row["funding_rate"])
+                funding_rate=float(row["funding_rate"]),
+                timestamp=timestamp_val
             )
             corr.symbol = symbol
-            corr.timestamp = int(row["timestamp"])
             results.append(corr.to_dict())
 
     return pd.DataFrame(results)
+
+
+def extract_oi_funding_features(
+    oi_df: pd.DataFrame,
+    funding_df: pd.DataFrame,
+    symbol: str
+) -> pd.DataFrame:
+    """提取OI和Funding特征（与compute_oi_funding_correlation相同，为兼容性保留）"""
+    return compute_oi_funding_correlation(oi_df, funding_df, symbol)

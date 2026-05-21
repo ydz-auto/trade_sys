@@ -215,6 +215,11 @@ class BaseRuntime(ABC):
             self.logger.info(f"Received signal {sig}, requesting shutdown...")
             self.context.request_shutdown()
         
+        import sys
+        if sys.platform == "win32":
+            self.logger.info("Windows platform detected, skipping signal handlers")
+            return
+        
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, lambda s=sig: handle_signal(s))
     

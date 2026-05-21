@@ -50,7 +50,9 @@ def get_data_lake_root() -> Path:
     else:
         local_path = data_lake_config.local_path
         if local_path.startswith("./"):
-            project_root = Path(__file__).parent.parent
+            # 找到项目根目录（backend目录）
+            # path_utils.py 在 infrastructure/data_lake 下，所以需要往上走3层
+            project_root = Path(__file__).parent.parent.parent
             return project_root / local_path[2:]
         return Path(local_path)
 

@@ -37,4 +37,4 @@ data_lake:
   smb_share: "00_crypto"
   smb_path: "00_code/backend/data_lake"
   local_path: "./data_lake"
-  use_smb: true
+  use_smb: false

@@ -238,3 +238,8 @@ def extract_liquidation_features_from_df(df: pd.DataFrame, symbol: str) -> pd.Da
         return pd.DataFrame()
 
     return pd.DataFrame([f.to_dict() for f in features])
+
+
+def extract_liquidation_features(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    """提取清算特征（与extract_liquidation_features_from_df相同，为兼容性保留）"""
+    return extract_liquidation_features_from_df(df, symbol)

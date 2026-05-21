@@ -4,6 +4,8 @@
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
+$PythonPath = "E:\02_code_build_envirenment\20251204_anaconda3\envs\tradeagent\python.exe"
+
 $Green = [ConsoleColor]::Green
 $Yellow = [ConsoleColor]::Yellow
 $Red = [ConsoleColor]::Red
@@ -18,9 +20,7 @@ $Runtimes = @{
     "projection" = "runtime.projection_runtime"
     "correlation" = "runtime.correlation_runtime"
     "narrative" = "runtime.narrative_runtime"
-    "monitoring" = "runtime.monitoring_runtime"
     "scheduler" = "runtime.scheduler_runtime"
-    "governor" = "runtime.governor_runtime"
 }
 
 $RuntimeNames = @{
@@ -30,9 +30,7 @@ $RuntimeNames = @{
     "projection" = "CQRS Projection Runtime"
     "correlation" = "Correlation Analysis Runtime"
     "narrative" = "AI Narrative Runtime"
-    "monitoring" = "Monitoring Runtime"
     "scheduler" = "Scheduler Runtime"
-    "governor" = "Runtime Governor"
 }
 
 $LogDir = Join-Path $ScriptDir "logs"
@@ -132,7 +130,7 @@ function Start-Runtime {
     Write-Host "Starting $runtimeName..." -ForegroundColor $Green
     $env:RUNTIME_NAME = $Runtime
     $env:LOG_DIR = $LogDir
-    $process = Start-Process python -ArgumentList "-m", $runtimePath -RedirectStandardOutput $logFile -NoNewWindow -WorkingDirectory $ScriptDir -PassThru
+    $process = Start-Process $PythonPath -ArgumentList "-m", $runtimePath -RedirectStandardOutput $logFile -NoNewWindow -WorkingDirectory $ScriptDir -PassThru
     Start-Sleep -Seconds 1
 
     $runningProcess = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
@@ -368,7 +366,7 @@ function Start-API {
     Write-Host "API URL: http://localhost:8001" -ForegroundColor $Blue
     Write-Host "Press Ctrl+C to stop" -ForegroundColor $Yellow
     Write-Host ""
-    python api_server.py
+    & $PythonPath api_server.py
 }
 
 function Show-Menu {

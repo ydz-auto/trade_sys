@@ -43,6 +43,7 @@ class SignalConfig(RuntimeConfig):
     fusion_min_confidence: float = 0.3
     factor_calc_interval: int = 60
     enable_factor_publish: bool = True
+    enable_strategy_discovery: bool = False
     strategy_discovery_interval: int = 3600
     max_auto_strategies: int = 5
     min_win_rate: float = 0.6
