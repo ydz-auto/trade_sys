@@ -1,13 +1,10 @@
 """
 相关性分析类型定义
+
+注意：核心类型定义已移至 domain/analysis/types.py
+这个文件保留是为了向后兼容。
 """
 
-from enum import Enum
+from domain.analysis.types import SignalDirection
 
-
-class SignalDirection(Enum):
-    """信号方向"""
-    POSITIVE = "positive"      # 正相关
-    NEGATIVE = "negative"      # 负相关
-    NEUTRAL = "neutral"        # 无相关
-    UNKNOWN = "unknown"        # 无法判断
+__all__ = ["SignalDirection"]

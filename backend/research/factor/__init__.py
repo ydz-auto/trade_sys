@@ -1,93 +1,44 @@
 """
-Factor module - 因子模块
+Factor module - 因子模块（已废弃）
 
-包含：
-- registry: 因子注册表
-- evaluator: 因子评估器
-- generator: 自动因子生成器
-- advanced: 高级因子 (情绪/链上/宏观)
-- iteration: 因子迭代优化
+重要：这个模块已经重定位为 research/feature_lab/
+
+因子本质上是 "Feature Discovery Lab"，不是 runtime truth。
+真正的 runtime truth 在 domain/feature/ 和 domain/feature/matrix/。
+
+请使用：
+    from research.feature_lab import *
+
+迁移说明：
+- 所有因子功能现在在 research/feature_lab/
+- domain/feature/ 包含真正的 runtime 特征
+- domain/feature/matrix/ 包含 Feature Matrix（中央真相层）
 """
 
-from research.factor.registry import FactorRegistry, FactorMetadata, FactorType, FactorStatus
-from research.factor.evaluator import FactorEvaluator, EvaluationMetrics, EvaluationResult
-from research.factor.generator import (
-    AutoFactorGenerator, 
-    GeneratedFactor, 
-    auto_generate_factors,
-    generate_mock_data,
-    OperatorLibrary,
-    FactorTemplateLibrary
-)
-from research.factor.advanced import (
-    AdvancedFactorCalculator,
-    SentimentFactors,
-    OnChainFactors,
-    MacroFactors,
-    CompositeFactors,
-    SystemFactor
-)
-from research.factor.iteration import (
-    FactorParamOptimizer,
-    MultiFactorOptimizer,
-    FactorWeight,
-    FactorParams,
-    AutoFactorIteration,
-    IterationResult
-)
-
-
-_registry = None
-_evaluator = None
-
-
-def get_factor_registry() -> FactorRegistry:
-    """获取全局因子注册表实例"""
-    global _registry
-    if _registry is None:
-        _registry = FactorRegistry()
-    return _registry
-
-
-def get_factor_evaluator() -> FactorEvaluator:
-    """获取全局因子评估器实例"""
-    global _evaluator
-    if _evaluator is None:
-        _evaluator = FactorEvaluator()
-    return _evaluator
-
+from research.feature_lab import *
 
 __all__ = [
-    # Registry
     "FactorRegistry",
-    "FactorMetadata", 
+    "FactorMetadata",
     "FactorType",
     "FactorStatus",
     "get_factor_registry",
-    
-    # Evaluator
     "FactorEvaluator",
     "EvaluationMetrics",
     "EvaluationResult",
     "get_factor_evaluator",
-    
-    # Generator
     "AutoFactorGenerator",
     "GeneratedFactor",
     "auto_generate_factors",
     "generate_mock_data",
     "OperatorLibrary",
     "FactorTemplateLibrary",
-    
-    # Advanced
     "AdvancedFactorCalculator",
     "SentimentFactors",
     "OnChainFactors",
     "MacroFactors",
     "CompositeFactors",
     "SystemFactor",
-    
-    # Iteration
     "FactorParamOptimizer",
     "MultiFactorOptimizer",
     "FactorWeight",

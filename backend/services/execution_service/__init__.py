@@ -36,6 +36,15 @@ from services.execution_service.risk.cooldown_checker import CooldownChecker
 from services.execution_service.consumers.signal_consumer import SignalConsumer
 from services.execution_service.publishers.order_publisher import OrderPublisher
 from services.execution_service.fill_sync import FillSyncManager
+from services.execution_service.quality import (
+    SmartExecution,
+    execute_smart,
+    OrderSplitter,
+    split_order,
+    SlippageController,
+    control_slippage,
+    ExecutionAnalytics,
+)
 
 __all__ = [
     "ExecutionEngine",
@@ -58,4 +67,11 @@ __all__ = [
     "SignalConsumer",
     "OrderPublisher",
     "FillSyncManager",
+    "SmartExecution",
+    "execute_smart",
+    "OrderSplitter",
+    "split_order",
+    "SlippageController",
+    "control_slippage",
+    "ExecutionAnalytics",
 ]
