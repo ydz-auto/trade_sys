@@ -193,4 +193,7 @@ export function useRuntimeStream(config: RuntimeStreamConfig = {}) {
 }
 
 
-// 这个文件被重命名为 runtimeStream.tsx - 请使用 runtimeStream.tsx
+export function RuntimeStreamProvider({ children }: { children: React.ReactNode }) {
+  useRuntimeStream()
+  return <>{children}</>
+}

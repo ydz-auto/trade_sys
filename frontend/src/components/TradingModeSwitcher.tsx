@@ -76,7 +76,7 @@ export function TradingModeSwitcher() {
   // 获取当前模式
   const fetchCurrentMode = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/config/trading-mode')
+      const response = await fetch('/api/config/trading-mode')
       const data = await response.json()
       setCurrentMode(data)
     } catch (error) {
@@ -87,7 +87,7 @@ export function TradingModeSwitcher() {
   // 获取可用模式
   const fetchAvailableModes = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/config/trading-mode/options')
+      const response = await fetch('/api/config/trading-mode/options')
       const data = await response.json()
       setAvailableModes(data.options)
     } catch (error) {
@@ -114,7 +114,7 @@ export function TradingModeSwitcher() {
 
   const switchMode = async (mode: string) => {
     try {
-      const response = await fetch('http://localhost:8000/api/config/trading-mode', {
+      const response = await fetch('/api/config/trading-mode', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -139,7 +139,7 @@ export function TradingModeSwitcher() {
     )
   }
 
-  if (!currentMode) {
+  if (!currentMode || !currentMode.mode) {
     return null
   }
 

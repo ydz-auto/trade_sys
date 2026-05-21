@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
-import { useRuntimeStream } from '../streams/runtimeStream'
+import { useRuntimeStream } from '../streams/runtimeStream.tsx'
 import { api } from '../../services/api/client'
 
 export interface ProjectionState {

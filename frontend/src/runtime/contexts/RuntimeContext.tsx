@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
-import { api } from '../services/api/client'
+import { api } from '../../services/api/client'
 
 export type TradingMode = 'backtest' | 'paper' | 'live'
 export type RuntimeState = 'starting' | 'running' | 'paused' | 'degraded' | 'stopped' | 'failed' | 'recovering'

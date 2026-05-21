@@ -27,7 +27,8 @@ import { Sidebar } from './components/layout/Sidebar'
 import { AppHeader } from './components/AppHeader'
 import { EventTimeline } from './components/EventTimeline'
 import { useDataLoader } from './hooks'
-import { RuntimeProvider, ProjectionProvider } from './services/runtime'
+import { RuntimeProvider } from './services/runtime'
+import { ProjectionProvider } from './runtime'
 
 const { Content, Footer } = Layout
 
