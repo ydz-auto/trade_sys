@@ -1,0 +1,117 @@
+# =============================================================================
+# Docker Compose - GPU Services
+# =============================================================================
+#
+# GPU 加速服务配置
+#
+# 启动命令:
+#   docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# 要求:
+#   - NVIDIA GPU
+#   - nvidia-docker2 已安装
+#
+# 验证 GPU:
+#   docker run --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+#
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ===========================================================================
+  # GPU Runtime Services
+  # ===========================================================================
+  
+  gpu-signal-runtime:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.gpu
+      target: gpu-signal-runtime
+    container_name: gpu-signal-runtime
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - tradeagent-network
+    environment:
+      ENVIRONMENT: dev
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_URL: redis://redis:6379/0
+      CONFIG_DIR: /app/config
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+      TORCH_DEVICE: cuda
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    restart: unless-stopped
+
+  gpu-api-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.gpu
+      target: gpu-api-server
+    container_name: gpu-api-server
+    ports:
+      - "8001:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      - kafka
+      - redis
+      - prometheus
+    networks:
+      - tradeagent-network
+    environment:
+      ENVIRONMENT: dev
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_URL: redis://redis:6379/0
+      CONFIG_DIR: /app/config
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+      TORCH_DEVICE: cuda
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    restart: unless-stopped
+
+  gpu-optimization:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.gpu
+      target: gpu-optimization
+    container_name: gpu-optimization
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - tradeagent-network
+    volumes:
+      - ../data_lake:/app/data_lake
+      - ../models:/app/models
+    environment:
+      ENVIRONMENT: dev
+      CLICKHOUSE_HOST: clickhouse
+      CONFIG_DIR: /app/config
+      TORCH_DEVICE: cuda
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    restart: unless-stopped

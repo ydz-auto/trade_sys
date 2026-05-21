@@ -1,0 +1,87 @@
+# =============================================================================
+# Docker GPU 镜像 - 支持 NVIDIA CUDA
+# =============================================================================
+#
+# 构建命令:
+#   docker build -f docker/Dockerfile.gpu -t quant-gpu:latest .
+#
+# 运行命令:
+#   docker run --gpus all quant-gpu:latest
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Layer 1: quant-gpu-base
+# 基础镜像：Python + CUDA + PyTorch
+# -----------------------------------------------------------------------------
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04 AS quant-gpu-base
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-venv \
+    python3.11-dev \
+    python3-pip \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python \
+    && ln -sf /usr/bin/pip3 /usr/bin/pip
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu121
+
+ENV PYTHONPATH=/app
+ENV LOG_LEVEL=INFO
+ENV TORCH_DEVICE=cuda
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+
+# -----------------------------------------------------------------------------
+# Layer 2: gpu-runtime-base
+# 运行时基础镜像：应用代码
+# -----------------------------------------------------------------------------
+FROM quant-gpu-base AS gpu-runtime-base
+
+COPY config/ ./config/
+COPY infrastructure/ ./infrastructure/
+COPY domain/ ./domain/
+COPY runtime/ ./runtime/
+COPY services/ ./services/
+COPY research/ ./research/
+COPY api/ ./api/
+COPY shared/ ./shared/
+COPY application/ ./application/
+
+ENV CONFIG_DIR=/app/config
+
+
+# -----------------------------------------------------------------------------
+# Layer 3: GPU Runtime Entry Points
+# -----------------------------------------------------------------------------
+
+# GPU Signal Runtime (LSTM 策略)
+FROM gpu-runtime-base AS gpu-signal-runtime
+ENV RUNTIME_NAME=gpu_signal_runtime
+CMD ["python", "-m", "runtime.signal_runtime"]
+
+# GPU API Server
+FROM gpu-runtime-base AS gpu-api-server
+COPY api_server.py .
+COPY api_config.py .
+EXPOSE 8000
+CMD ["python", "api_server.py"]
+
+# GPU Optimization Service
+FROM gpu-runtime-base AS gpu-optimization
+ENV RUNTIME_NAME=gpu_optimization
+CMD ["python", "-m", "application.optimization_service"]
