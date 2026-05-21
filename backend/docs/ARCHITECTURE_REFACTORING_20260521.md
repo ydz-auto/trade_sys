@@ -1,257 +1,308 @@
-# Architecture Refactoring Report - 2026-05-21 (Updated)
+# Architecture Refactoring Report - 2026-05-22 (Final Convergence)
 
 ## Executive Summary
 
-成功完成统一架构收敛，消除 Research Pipeline 和 Runtime Pipeline 的分叉问题。
+完成**最终架构收敛**！系统现在是真正的 **Runtime-Oriented Trading OS**！
 
 **核心改进：**
-- 删除了 `scripts/` 目录（100+ 个脚本）
-- 统一了 Feature 计算逻辑（在线/离线一致）
-- 统一了回测引擎（走 Runtime Pipeline）
-- 添加了数据泄漏保护机制
+- 删除了所有绕过 Runtime 的代码
+- 统一了事件总线（Runtime Bus 是唯一总线）
+- 统一了回测入口（Replay Runtime 是唯一入口）
+- 保留了 GPU 基础设施，但所有计算走 Runtime
+- 清理了 100+ 个旧脚本和研究文件
 
 ---
 
-## 1. 统一 Runtime Pipeline
+## 1. 统一 Runtime Pipeline (最终收敛版)
 
-### 1.1 核心架构
+### 1.1 核心架构图
 
 所有路径（Live/Replay/Optimization/Backtest）都走同一条 Pipeline：
 
 ```
-ingestion_runtime / replay_runtime
-        ↓
-feature_runtime / domain/feature/unified_calculator.py
-        ↓
-feature_matrix
-        ↓
-signal_runtime
-        ↓
-execution_runtime
-        ↓
-projection_runtime
+┌───────────────────────────────────────────────────────────────────────┐
+│                      Frontend / UI 层                                │
+└────────────────────────────────────────┬──────────────────────────────┘
+                                         │
+                                         ↓
+                              ┌───────────────────────┐
+                              │ API Gateway / WS     │
+                              │ Gateway              │
+                              └───────────┬───────────┘
+                                          │
+                                          ↓
+                              ┌───────────────────────┐
+                              │ Runtime State Store  │
+                              │ (唯一真实状态源)     │
+                              └───────────┬───────────┘
+                                          │
+                                          ↓
+                              ┌───────────────────────┐
+                              │ Projection Runtime   │
+                              └───────────┬───────────┘
+                                          │
+                                          ↓
+                              ┌───────────────────────┐
+                              │ Portfolio Runtime    │
+                              └───────────┬───────────┘
+                                          │
+                                          ↓
+                              ┌───────────────────────┐
+                              │ Execution Runtime    │
+                              └───────────┬───────────┘
+                                          │
+                                          ↓
+                              ┌───────────────────────┐
+                              │ Signal Runtime       │
+                              └───────────┬───────────┘
+                                          │
+                                          ↓
+                              ┌───────────────────────┐
+                              │ Feature Matrix      │
+                              │ Runtime (核心真理)   │
+                              └───────────┬───────────┘
+                                          │
+                                          ↓
+                              ┌───────────────────────┐
+                              │ Runtime Bus         │
+                              │ (唯一事件总线)       │
+                              └───────────┬───────────┘
+                                          │
+                                          ↓
+                              ┌───────────────────────┐
+                              │ Ingestion Runtime    │
+                              └───────────┬───────────┘
+                                          │
+┌─────────────────────────────────────────┼───────────────────────────────────────┐
+│           Data Service (事实层)          │                                       │
+│  ┌──────────────┐  ┌──────────────┐  │                                       │
+│  │ Collectors   │  │ WebSocket    │  │                                       │
+│  │ Pipeline     │  │ Kafka        │  │                                       │
+│  └──────────────┘  └──────────────┘  │                                       │
+└─────────────────────────────────────────┘
+                                          │
+                                          ↓
+                        ┌───────────────────────────────┐
+                        │ Exchange / Replay             │
+                        │ (真实或回放数据)             │
+                        └───────────────────────────────┘
 ```
 
 ### 1.2 关键原则
 
 | 原则 | 说明 |
 |------|------|
-| **事件驱动** | 所有数据流都是事件流 |
-| **Feature Matrix 是中央真相** | 所有特征都通过 Feature Matrix |
+| **唯一事件总线** | `runtime/bus/runtime_bus.py` 是唯一总线 |
+| **唯一回测入口** | `runtime/replay_runtime/` 是唯一回测入口 |
+| **Feature Matrix 是中央真相** | 所有特征都通过 Feature Matrix Runtime |
+| **GPU 是基础设施** | `shared/acceleration/` 保留，但所有计算走 Runtime |
+| **单一真实状态** | `runtime/state/` 是唯一的真实状态 |
 | **防止数据泄漏** | FeatureAvailabilityGuard 检查特征可用性 |
-| **在线/离线一致** | UnifiedFeatureCalculator 确保计算逻辑相同 |
 
 ---
 
-## 2. 删除的模块
+## 2. 清理完成 - 已删除的遗留模块 (2026-05-22)
 
-### 2.1 scripts/ 目录（已删除）
+### 2.1 绕过 Runtime 的独立脚本（已删除）
+| 已删除的文件 | 原因 | 替代方案 |
+|-------------|------|----------|
+| `scripts/gpu_feature_backtest.py` | 绕过 Runtime，独立 GPU 回测 | `runtime/replay_runtime/` |
+| `scripts/gpu_optimize_backtest.py` | 绕过 Runtime，独立 GPU 优化 | `application/optimization_service/engine.py` (走 Runtime) |
+| `application/optimization_service/parallel_engine.py` | 绕过 Runtime，pandas 回测 | `application/optimization_service/engine.py` (走 Runtime) |
+| `api/services/replay_service.py` | 独立回放服务 | `runtime/replay_runtime/` |
 
-所有脚本已迁移到对应模块：
+### 2.2 遗留 Runtime 模块（已删除）
+| 已删除的目录 | 原因 |
+|-------------|------|
+| `runtime/monitoring_runtime/` | 独立监控 Runtime，与 observability 重叠 |
+| `runtime/scheduler_runtime/` | 纯 wrapper，无核心功能 |
+| `research/backtest/` | 旧 pandas 回测 |
+| `research/correlation/` | 绕过 Runtime 的研究 |
+| `research/factor/` | 绕过 Runtime 的因子 |
 
-| 已删除的脚本 | 替代方案 |
-|-------------|----------|
-| scripts/generate_features.py | domain/feature/generation_service.py |
-| scripts/generate_orderbook_features.py | domain/feature/generation_service.py |
-| scripts/run_backtest.py | application/backtest_service.py |
-| scripts/backtest_all_strategies.py | application/backtest_service.py |
-| scripts/strategy_optimization_backtest.py | application/backtest_service.py |
-| scripts/download_binance_*.py | runtime/ingestion_runtime/download_service.py |
-| scripts/train_lstm_strategy.py | domain/ml/lstm_dataset_builder.py |
+### 2.3 其他清理（已删除）
+- 所有旧的研究脚本（100+ 个）
+- `services/data_service/twitter_push_server.py` - 已集成到 ingestion_runtime
 
----
-
-## 3. 新建的核心模块
-
-### 3.1 统一特征计算
-
-```
-domain/feature/
-├── unified_calculator.py   # 统一特征计算器（在线/离线一致）
-├── generation_service.py   # 特征生成服务
-└── materializer/           # 特征材料化器
-    ├── schema_registry.py  # 特征 Schema（含 available_after_periods）
-    └── matrix_builder.py   # 特征矩阵（含时间纪律）
-```
-
-**关键特性：**
-- `UnifiedFeatureCalculator` - 所有特征计算的统一入口
-- `FeatureSchema` - 每个特征有 `available_after_periods` 定义
-- `get_available_time()` - 计算特征可用时间
-
-### 3.2 统一回测引擎
-
-```
-application/
-├── optimization_service/
-│   ├── engine.py           # 回测引擎（走 Runtime Pipeline）
-│   ├── service.py          # 优化服务
-│   └── models.py           # 数据模型
-└── backtest_service.py     # 回测服务
-```
-
-**关键特性：**
-- 使用 `shared/replay/market_event_emitter.py` 发出事件流
-- 使用 `FeatureAvailabilityGuard` 防止数据泄漏
-- 支持滑点、延迟、部分成交等真实模拟
-
-### 3.3 数据泄漏保护
-
-```
-shared/replay/
-├── market_event_emitter.py       # 事件发射器
-├── feature_availability_guard.py # 防泄漏守卫
-└── orchestrator.py               # 回放协调器
-```
-
-**关键特性：**
-- `filter_available_features()` - 过滤不可用特征
-- 基于时间戳检查特征可用性
-- 记录泄漏统计信息
+### 2.4 保留的核心模块（必须保留！）
+| 保留的模块 | 原因 |
+|-----------|------|
+| `shared/acceleration/` | GPU 基础设施，CUDA/MPS/CPU fallback |
+| `shared/replay/` | 统一回放层，所有回测走这里 |
+| `services/data_service/` | 事实层，所有数据采集 |
+| `infrastructure/` | 事件、特征、回放基础设施 |
+| 所有 Runtime 模块 | Runtime 架构核心 |
 
 ---
 
-## 4. 测试验证
+## 3. 核心架构模块详解
 
-### 4.1 测试结果
-
+### 3.1 Runtime Bus (唯一总线)
 ```
-============================================================
-测试结果汇总
-============================================================
-  模块导入: ✅ 通过
-  特征计算器: ✅ 通过
-  特征 Schema: ✅ 通过
-  数据泄漏保护: ✅ 通过
-  回测配置: ✅ 通过
-  策略注册表: ✅ 通过
-
-总计: 6/6 测试通过
+runtime/bus/
+└── runtime_bus.py       # 唯一事件总线
 ```
 
-### 4.2 验证的功能
-
-| 功能 | 验证结果 |
-|------|----------|
-| 特征计算 | 21 个特征正确计算，RSI 范围 0-100 |
-| 特征 Schema | RSI_14 有 14 周期延迟定义 |
-| 数据泄漏保护 | FeatureAvailabilityGuard 正常工作 |
-| 回测配置 | 所有参数正确配置 |
-| 策略注册 | 6 个策略已注册 |
-
----
-
-## 5. 架构边界
-
-### 5.1 层级职责
-
-| 层级 | 职责 | 包含 |
-|------|------|------|
-| **domain/** | 核心领域模型 | 模型、配置、纯逻辑 |
-| **application/** | 应用服务 | 业务编排、优化服务 |
-| **runtime/** | 运行时编排 | Kafka 消费者、生命周期 |
-| **services/** | 业务逻辑 | 服务实现、适配器 |
-| **shared/** | 跨层关注点 | 回放编排、合约 |
-| **infrastructure/** | 技术基础设施 | 数据库、消息、缓存 |
-
-### 5.2 关键决策
-
-1. **Feature Matrix 是中央真相**：所有特征都通过 Feature Matrix
-2. **Domain 模型是纯的**：无基础设施依赖
-3. **Runtime 只做编排**：不实现业务逻辑
-4. **防止数据泄漏**：所有特征有时间纪律
-
----
-
-## 6. 文件变更总结
-
-### 6.1 新建文件
-
+### 3.2 Runtime Orchestrator (Kernel)
 ```
-domain/feature/unified_calculator.py    # 统一特征计算器
-domain/feature/generation_service.py    # 特征生成服务
-domain/ml/lstm_dataset_builder.py       # LSTM 数据集构建器
-
-application/backtest_service.py         # 回测服务
-application/optimization_service/engine.py  # 优化回测引擎
-
-runtime/ingestion_runtime/download_service.py  # 数据下载服务
-
-shared/replay/market_event_emitter.py   # 事件发射器
-
-DEPRECATED.py                           # 废弃模块记录
+runtime/orchestrator/
+├── manager.py
+├── supervisor.py
+├── lifecycle.py
+├── timeline.py
+├── inspector.py
+└── registry.py
 ```
 
-### 6.2 删除文件
-
+### 3.3 Feature Matrix Runtime (核心真理)
 ```
-scripts/  # 整个目录已删除
+runtime/
+└── feature_matrix_runtime.py
 ```
 
-### 6.3 修改文件
-
+### 3.4 Replay Runtime (唯一回测入口)
 ```
-application/services/__init__.py        # 修复导入
-application/optimization_service/service.py  # 更新类名
+runtime/replay_runtime/
+└── runtime.py
 ```
 
 ---
 
-## 7. 统一架构图
+## 4. 架构收敛时间线
+
+### 4.1 2026-05-15 - 初始架构建立
+- 建立了 Runtime 架构雏形
+- 添加了基础的 Runtime 模块
+
+### 4.2 2026-05-16 - 第一波清理
+- 修复了各种 Runtime API 问题
+- 集成了多个基础设施
+
+### 4.3 2026-05-17 - 事件总线整合
+- 统一了多个事件总线
+- 清理了不一致的时间线
+
+### 4.4 2026-05-21 - 初步收敛
+- 开始清理 bypass Runtime 的代码
+- 统一了回放路径
+
+### 4.5 2026-05-22 - **最终收敛！**
+- 删除了所有 bypass Runtime 的代码
+- 统一了事件总线
+- 统一了回测入口
+- 保留了 GPU 基础设施
+- 完成架构收敛！
+
+---
+
+## 5. 最终系统结构
 
 ```
-                    ┌─────────────────────────────────────┐
-                    │         Exchange / News             │
-                    └─────────────────┬───────────────────┘
-                                      │
-                    ┌─────────────────▼───────────────────┐
-                    │      ingestion_runtime              │
-                    │   (download_service.py)             │
-                    └─────────────────┬───────────────────┘
-                                      │
-                    ┌─────────────────▼───────────────────┐
-                    │      domain/feature/                │
-                    │   (unified_calculator.py)           │
-                    │   (generation_service.py)           │
-                    └─────────────────┬───────────────────┘
-                                      │
-                    ┌─────────────────▼───────────────────┐
-                    │      Feature Matrix                 │
-                    │      (Central Truth)                │
-                    └─────────────────┬───────────────────┘
-                                      │
-          ┌───────────────────────────┼───────────────────────────┐
-          │                           │                           │
-┌─────────▼─────────┐     ┌──────────▼──────────┐     ┌─────────▼─────────┐
-│   signal_runtime  │     │   replay_runtime    │     │  optimization     │
-│                   │     │                     │     │     service       │
-└─────────┬─────────┘     └──────────┬──────────┘     └─────────┬─────────┘
-          │                           │                           │
-          └───────────────────────────┼───────────────────────────┘
-                                      │
-                    ┌─────────────────▼───────────────────┐
-                    │      execution_runtime              │
-                    └─────────────────┬───────────────────┘
-                                      │
-                    ┌─────────────────▼───────────────────┐
-                    │      projection_runtime             │
-                    └─────────────────┬───────────────────┘
-                                      │
-                    ┌─────────────────▼───────────────────┐
-                    │           Frontend                  │
-                    └─────────────────────────────────────┘
+backend/
+├── api/                    # API 层
+├── application/            # 应用层
+│   └── optimization_service/  # 参数优化 (走 Runtime!)
+├── domain/                 # 领域层
+│   ├── feature/            # 特征领域 (含 GPU 计算器)
+│   ├── signal/             # 信号领域
+│   ├── execution/          # 执行领域
+│   ├── replay/             # 回放领域
+│   ├── portfolio/          # 组合领域
+│   └── analysis/           # 分析领域
+├── runtime/                # 运行时层 (收敛完成！)
+│   ├── orchestrator/       # Runtime Kernel
+│   ├── bus/               # 唯一总线
+│   ├── context/           # Runtime 上下文
+│   ├── state/             # 状态存储
+│   ├── ingestion_runtime/
+│   ├── feature_matrix_runtime.py
+│   ├── signal_runtime/
+│   ├── execution_runtime/
+│   ├── portfolio_runtime/
+│   ├── projection_runtime/
+│   └── replay_runtime/    # 唯一回测入口
+├── services/               # 服务层
+│   ├── data_service/       # 数据服务 (事实层)
+│   ├── backtest_service/   # 回测服务 (facade)
+│   ├── event_service/
+│   ├── execution_service/
+│   └── risk_service/
+├── infrastructure/         # 基础设施层 (成熟！)
+│   ├── event/
+│   ├── feature/
+│   ├── replay/
+│   ├── observability/
+│   └── runtime/
+├── shared/                 # 跨层共享 (核心！)
+│   ├── acceleration/       # GPU 基础设施 (保留！)
+│   └── replay/            # 统一回放层 (保留！)
+├── research/               # 研究层 (已清理)
+├── scripts/                # 脚本 (已清理)
+└── config/
 ```
 
 ---
 
-## 8. 下一步
+## 6. 最终提交记录
 
-1. **运行参数优化** - 使用 2024 年数据优化策略参数
-2. **运行回测** - 使用 2025-2026 年数据验证策略
-3. **监控数据泄漏** - 确保优化结果与实盘一致
+```
+142105a - delete parallel_engine.py (bypasses Runtime)
+1789b63 - delete optimize_with_parallel_engine (bypasses Runtime)
+151b09c - cleanup legacy runtime and research
+1daff87 - merge event_bus to runtime_bus
+```
 
 ---
 
-**状态:** ✅ 重构完成  
-**日期:** 2026-05-21  
-**测试:** 6/6 通过
+## 7. 最终架构收敛总结
+
+### 7.1 完成的工作
+- ✅ 统一事件总线 - `runtime/bus/runtime_bus.py` 是唯一总线
+- ✅ 统一回测入口 - `runtime/replay_runtime/` 是唯一入口
+- ✅ 删除所有 bypass Runtime 的代码
+- ✅ 保留 GPU 基础设施 - `shared/acceleration/`
+- ✅ 清理 100+ 个旧脚本和研究文件
+
+### 7.2 核心架构优势
+- ✅ 唯一事件总线
+- ✅ 唯一回测入口
+- ✅ 单一真实状态
+- ✅ 清晰架构边界
+- ✅ 防止数据泄漏
+
+### 7.3 系统当前定位
+从：**量化回测系统**
+到：**Runtime-Oriented Trading OS**
+
+---
+
+## 8. 下一阶段建议
+
+### 8.1 Runtime 深化
+- [ ] Runtime Dependency Graph - Runtime 依赖图
+- [ ] Runtime DAG Scheduler - Runtime 有向无环图调度
+- [ ] Runtime Metrics - Runtime 指标
+- [ ] Runtime Tracing - Runtime 追踪
+- [ ] Runtime Health Check - Runtime 健康检查
+- [ ] Runtime Recovery - Runtime 恢复
+
+### 8.2 Runtime 完善
+- [ ] Runtime Snapshot Recovery - 快照恢复
+- [ ] Runtime Persistence - 持久化
+- [ ] Runtime Resource Isolation - 资源隔离
+
+---
+
+## 总结
+
+系统现在已经**完全收敛**！
+
+**最终状态：**
+- ✅ 架构收敛完成
+- ✅ 所有代码走 Runtime 主链
+- ✅ GPU 基础设施保留
+- ✅ 清理完成
+- ✅ 准备进入下一阶段
+
+**状态:** ✅ 架构收敛完成  
+**日期:** 2026-05-22
