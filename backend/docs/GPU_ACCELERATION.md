@@ -74,6 +74,17 @@
 | `monitoring_runtime` | ❌ 不需要 | 监控 | - |
 | `scheduler_runtime` | ❌ 不需要 | 调度 | - |
 
+### 各 Service GPU 加速状态
+
+| Service | GPU 加速 | 功能 | 自动降级 |
+|---------|---------|------|---------|
+| `backtest_service` | ✅ 支持 | 特征计算 + 并行优化 | ✅ CPU fallback |
+| `factor_service` | ✅ 支持 | 因子计算 | ✅ CPU fallback |
+| `strategy_service` | ✅ 支持 | LSTM 策略 | ✅ CPU fallback |
+| `execution_service` | ❌ 不需要 | 订单执行 | - |
+| `fusion_service` | ❌ 不需要 | 信号融合 | - |
+| `data_service` | ❌ 不需要 | 数据采集 | - |
+
 ### GPU 加速配置
 
 **signal_runtime 配置：**
