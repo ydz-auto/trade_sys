@@ -22,6 +22,7 @@ from .feature import router as feature_router
 from .strategy import router as strategy_router
 from .execution import router as execution_router
 from .trading_mode import router as trading_mode_router
+from .optimization import router as optimization_router
 
 
 api_router = APIRouter()
@@ -45,5 +46,6 @@ api_router.include_router(replay_router, tags=["Replay"])
 api_router.include_router(correlation_router, prefix="/correlation", tags=["Correlation"])
 api_router.include_router(refresh_router, tags=["Refresh"])
 api_router.include_router(trading_mode_router, tags=["Trading Mode"])
+api_router.include_router(optimization_router, prefix="/optimization-api", tags=["Optimization"])
 
 __all__ = ["api_router"]

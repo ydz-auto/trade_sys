@@ -11,6 +11,11 @@ from infrastructure.database.models.execution_models import (
     ExecutionPosition,
     ExecutionEvent,
 )
+from infrastructure.database.models.strategy_params import (
+    StrategyParam,
+    StrategyParamHistory,
+    StrategyConfig,
+)
 
 __all__ = [
     "User",
@@ -23,4 +28,7 @@ __all__ = [
     "ExecutionFill",
     "ExecutionPosition",
     "ExecutionEvent",
+    "StrategyParam",
+    "StrategyParamHistory",
+    "StrategyConfig",
 ]

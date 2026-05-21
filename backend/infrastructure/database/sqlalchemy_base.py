@@ -56,7 +56,7 @@ class SQLAlchemyManager:
             autoflush=False,
         )
 
-        from infrastructure.database.models import user, api_key, trading
+        from infrastructure.database.models import user, api_key, trading, strategy_params
 
         async with self._engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)

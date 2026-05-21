@@ -8,12 +8,16 @@ from application.services.signal_service import SignalService
 from application.services.execution_service import ExecutionService
 from application.services.projection_service import ProjectionService
 from application.services.risk_service import RiskService
-from application.services.correlation_service import CorrelationService
+
+try:
+    from services.correlation_service import CorrelationWorker
+    CorrelationService = CorrelationWorker
+except ImportError:
+    CorrelationService = None
 
 __all__ = [
     "SignalService",
     "ExecutionService",
     "ProjectionService",
     "RiskService",
-    "CorrelationService",
 ]

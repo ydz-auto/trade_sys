@@ -98,7 +98,7 @@ function Start-Mixed {
         npm install
     }
     $frontendLog = Join-Path $logDir "frontend.log"
-    Start-Process npm -ArgumentList "run dev" -RedirectStandardOutput $frontendLog -NoNewWindow -WorkingDirectory "$ScriptDir\frontend"
+    Start-Process cmd -ArgumentList "/c npm run dev > `"$frontendLog`" 2>&1" -NoNewWindow -WorkingDirectory "$ScriptDir\frontend"
     Start-Sleep -Seconds 3
     Write-Host "Frontend started" -ForegroundColor $Green
     Pop-Location
