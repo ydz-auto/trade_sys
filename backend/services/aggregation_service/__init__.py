@@ -13,12 +13,18 @@ raw.kline.1m.closed → aggregation → kline.5m/15m/1h/4h/1d
 - 时间对齐
 - 缺失检测
 - replay rebuild
+- 历史特征提取
 """
 
 from .models.candle_model import Candle, Timeframe, CandleWindow
 from .models.trade_model import Trade, TradeBatch
 from .models.orderbook_model import OrderBookSnapshot, OrderBookFeature
 from .service import AggregationService, get_aggregation_service
+from .replay.historical_feature_extractor import (
+    HistoricalFeatureExtractor,
+    extract_historical_features,
+    get_feature_status
+)
 
 __all__ = [
     "Candle",
@@ -30,4 +36,7 @@ __all__ = [
     "OrderBookFeature",
     "AggregationService",
     "get_aggregation_service",
+    "HistoricalFeatureExtractor",
+    "extract_historical_features",
+    "get_feature_status",
 ]

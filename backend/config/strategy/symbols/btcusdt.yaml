@@ -1,0 +1,57 @@
+symbol: BTCUSDT
+base_currency: BTC
+quote_currency: USDT
+enabled: true
+description: Bitcoin - 高流动性、中等波动率币种
+volatility_profile: medium
+liquidity_profile: high
+primary_timeframe: 1h
+confirmation_timeframe: 4h
+factor_weights:
+  momentum: 0.35
+  trend: 0.3
+  flow: 0.2
+  sentiment: 0.15
+enabled_strategies:
+  - rsi_strategy
+  - macd_strategy
+  - panic_reversal
+  - long_liquidation_bounce
+risk:
+  position_size: 0.025
+  max_leverage: 25
+  min_leverage: 10
+  stop_loss_pct: 10.0
+  take_profit_pct: 20.0
+  max_position_value: 20000.0
+rsi_strategy:
+  period: 14
+  oversold: 28.0
+  overbought: 72.0
+  default_quantity: 0.01
+macd_strategy:
+  fast_period: 12
+  slow_period: 26
+  signal_period: 9
+  default_quantity: 0.01
+panic_reversal:
+  drop_threshold: -0.018
+  volume_ratio_threshold: 1.6
+  default_quantity: 0.012
+long_liquidation_bounce:
+  drop_threshold: -0.022
+  rsi_threshold: 24.0
+  volume_ratio_threshold: 2.0
+  default_quantity: 0.012
+volume_climax_fade:
+  volume_ratio_threshold: 2.2
+  upper_shadow_threshold: 0.32
+  price_threshold: 0.0035
+  default_quantity: 0.008
+weak_bounce_short:
+  drop_threshold_4h: -0.022
+  bounce_min: 0.0035
+  bounce_max: 0.016
+  volume_ratio_threshold: 1.6
+  default_quantity: 0.008
+metadata: {}

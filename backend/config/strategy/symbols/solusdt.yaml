@@ -1,0 +1,57 @@
+symbol: SOLUSDT
+base_currency: SOL
+quote_currency: USDT
+enabled: true
+description: Solana - 高波动率、中等流动性币种
+volatility_profile: high
+liquidity_profile: medium
+primary_timeframe: 30m
+confirmation_timeframe: 2h
+factor_weights:
+  momentum: 0.38
+  trend: 0.25
+  flow: 0.25
+  sentiment: 0.12
+enabled_strategies:
+  - rsi_strategy
+  - macd_strategy
+  - panic_reversal
+  - long_liquidation_bounce
+risk:
+  position_size: 0.015
+  max_leverage: 15
+  min_leverage: 8
+  stop_loss_pct: 8.0
+  take_profit_pct: 18.0
+  max_position_value: 8000.0
+rsi_strategy:
+  period: 12
+  oversold: 22.0
+  overbought: 78.0
+  default_quantity: 1.5
+macd_strategy:
+  fast_period: 10
+  slow_period: 24
+  signal_period: 8
+  default_quantity: 1.5
+panic_reversal:
+  drop_threshold: -0.028
+  volume_ratio_threshold: 1.8
+  default_quantity: 1.8
+long_liquidation_bounce:
+  drop_threshold: -0.035
+  rsi_threshold: 20.0
+  volume_ratio_threshold: 2.2
+  default_quantity: 1.8
+volume_climax_fade:
+  volume_ratio_threshold: 2.5
+  upper_shadow_threshold: 0.4
+  price_threshold: 0.005
+  default_quantity: 1.0
+weak_bounce_short:
+  drop_threshold_4h: -0.035
+  bounce_min: 0.005
+  bounce_max: 0.022
+  volume_ratio_threshold: 1.7
+  default_quantity: 1.0
+metadata: {}

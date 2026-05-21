@@ -1,0 +1,96 @@
+# Data Lake Configuration
+# 数据湖配置 - 本地存储路径
+
+# 基础路径
+data_lake:
+  base_path: "e:/00_crypto/00_code/backend/data_lake"
+  
+  # 原始数据
+  raw:
+    trades: "e:/00_crypto/00_code/backend/data_lake/crypto/binance/trades"
+    klines: "e:/00_crypto/00_code/backend/data_lake/crypto/binance/klines"
+    funding: "e:/00_crypto/00_code/backend/data_lake/crypto/binance/funding"
+    oi: "e:/00_crypto/00_code/backend/data_lake/crypto/binance/oi"
+    liquidation: "e:/00_crypto/00_code/backend/data_lake/crypto/binance/liquidation"
+  
+  # 特征数据（多周期）
+  features:
+    # 1分钟特征（热数据）
+    minute_1m: "e:/00_crypto/00_code/backend/data_lake/features/1m"
+    # 5分钟特征
+    minute_5m: "e:/00_crypto/00_code/backend/data_lake/features/5m"
+    # 15分钟特征
+    minute_15m: "e:/00_crypto/00_code/backend/data_lake/features/15m"
+    # 1小时特征
+    hour_1h: "e:/00_crypto/00_code/backend/data_lake/features/1h"
+    # 4小时特征
+    hour_4h: "e:/00_crypto/00_code/backend/data_lake/features/4h"
+    # 日线特征
+    day_1d: "e:/00_crypto/00_code/backend/data_lake/features/1d"
+  
+  # ClickHouse存储配置
+  clickhouse:
+    enabled: true
+    host: "localhost"
+    port: 9000
+    database: "tradeagent"
+    
+  # SSD热数据配置
+  hot_storage:
+    enabled: true
+    # 最近2周的1m特征存SSD
+    ssd_retention_days: 14
+    ssd_path: "e:/00_crypto/00_code/backend/data_lake/features/1m"
+  
+  # HDD冷数据配置
+  cold_storage:
+    enabled: true
+    # 历史数据存HDD
+    hdd_path: "e:/00_crypto/00_code/backend/data_lake/features_archive"
+
+# 特征提取配置
+feature_extraction:
+  # 交易对配置
+  symbols:
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+    - ZECUSDT
+  
+  # 时间范围
+  years:
+    - 2024
+    - 2025
+    - 2026
+  
+  # 特征周期
+  intervals:
+    - 1m
+    - 5m
+    - 15m
+    - 1h
+    - 4h
+    - 1d
+  
+  # 并行处理
+  parallel:
+    enabled: true
+    workers: 4
+    batch_size: 10000
+
+# 存储策略
+storage:
+  # Parquet压缩
+  parquet:
+    compression: "zstd"
+    row_group_size: 100000
+    
+  # 分区策略
+  partitioning:
+    trades: "symbol/year/month"
+    klines: "symbol/year/month"
+    features_1m: "symbol/year/month/day"
+    features_5m: "symbol/year/month"
+    features_15m: "symbol/year/month"
+    features_1h: "symbol/year/month"
+    features_1d: "symbol/year/month"

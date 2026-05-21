@@ -1,0 +1,57 @@
+symbol: ETHUSDT
+base_currency: ETH
+quote_currency: USDT
+enabled: true
+description: Ethereum - 高流动性、中高波动率币种
+volatility_profile: medium
+liquidity_profile: high
+primary_timeframe: 1h
+confirmation_timeframe: 4h
+factor_weights:
+  momentum: 0.32
+  trend: 0.3
+  flow: 0.23
+  sentiment: 0.15
+enabled_strategies:
+  - rsi_strategy
+  - macd_strategy
+  - panic_reversal
+  - long_liquidation_bounce
+risk:
+  position_size: 0.022
+  max_leverage: 22
+  min_leverage: 10
+  stop_loss_pct: 10.0
+  take_profit_pct: 20.0
+  max_position_value: 15000.0
+rsi_strategy:
+  period: 14
+  oversold: 26.0
+  overbought: 74.0
+  default_quantity: 0.08
+macd_strategy:
+  fast_period: 12
+  slow_period: 26
+  signal_period: 9
+  default_quantity: 0.08
+panic_reversal:
+  drop_threshold: -0.02
+  volume_ratio_threshold: 1.5
+  default_quantity: 0.1
+long_liquidation_bounce:
+  drop_threshold: -0.025
+  rsi_threshold: 22.0
+  volume_ratio_threshold: 1.9
+  default_quantity: 0.1
+volume_climax_fade:
+  volume_ratio_threshold: 2.0
+  upper_shadow_threshold: 0.35
+  price_threshold: 0.004
+  default_quantity: 0.06
+weak_bounce_short:
+  drop_threshold_4h: -0.025
+  bounce_min: 0.004
+  bounce_max: 0.018
+  volume_ratio_threshold: 1.5
+  default_quantity: 0.06
+metadata: {}
