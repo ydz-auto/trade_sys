@@ -17,6 +17,8 @@ from .replay import router as replay_router
 from .correlation import router as correlation_router
 from .refresh import router as refresh_router
 from .feature_matrix import router as feature_matrix_router
+from .feature_generation import router as feature_generation_router
+from .feature import router as feature_router
 from .strategy import router as strategy_router
 from .execution import router as execution_router
 from .trading_mode import router as trading_mode_router
@@ -31,7 +33,9 @@ api_router.include_router(execution_router, tags=["Execution"])
 api_router.include_router(prices_router, tags=["Prices"])
 api_router.include_router(data_router, tags=["Data"])
 api_router.include_router(factors_router, tags=["Factors"])
+api_router.include_router(feature_router, tags=["Feature Service"])
 api_router.include_router(feature_matrix_router, tags=["Feature Matrix"])
+api_router.include_router(feature_generation_router, tags=["Feature Generation"])
 api_router.include_router(alpha_router, tags=["Alpha"])
 api_router.include_router(projection_router, tags=["Projection"])
 api_router.include_router(websocket_router, tags=["WebSocket"])
