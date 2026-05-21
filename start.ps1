@@ -38,6 +38,8 @@ function Show-Help {
     Write-Host "  -a, --all          Start all services"
     Write-Host "  -r, --replay       Start replay engine"
     Write-Host "  -g, --governor     Start Runtime Governor"
+    Write-Host "  --gpu              Start GPU acceleration services"
+    Write-Host "  --gpu-status       Check GPU status"
     Write-Host "  -s, --stop         Stop all services"
     Write-Host "  -t, --status       Check service status"
     Write-Host "  -l, --logs         View backend logs"
@@ -162,6 +164,47 @@ function Start-Governor {
     Pop-Location
 }
 
+function Start-GpuServices {
+    Write-Host "Starting GPU acceleration services..." -ForegroundColor $Blue
+    Write-Host ""
+    
+    Push-Location "$ScriptDir\backend"
+    
+    Write-Host "GPU Acceleration Services:" -ForegroundColor $Cyan
+    Write-Host "  - GPU Signal Runtime (LSTM strategies)"
+    Write-Host "  - GPU Optimization Service (parameter optimization)"
+    Write-Host ""
+    
+    if (Test-Path "dev.ps1") {
+        Write-Host "Checking GPU status..." -ForegroundColor $Yellow
+        & ".\dev.ps1" gpu-status
+        Write-Host ""
+        
+        Write-Host "Starting GPU Signal Runtime..." -ForegroundColor $Yellow
+        & ".\dev.ps1" gpu-start gpu-signal
+        
+        Write-Host ""
+        Write-Host "Starting GPU Optimization Service..." -ForegroundColor $Yellow
+        & ".\dev.ps1" gpu-start gpu-optimization
+    }
+    
+    Write-Host ""
+    Write-Host "GPU services started" -ForegroundColor $Green
+    Write-Host "  Log directory: $ScriptDir\backend\logs\"
+    Pop-Location
+}
+
+function Show-GpuStatus {
+    Write-Host "GPU Acceleration Status:" -ForegroundColor $Blue
+    Write-Host ""
+    
+    Push-Location "$ScriptDir\backend"
+    if (Test-Path "dev.ps1") {
+        & ".\dev.ps1" gpu-status
+    }
+    Pop-Location
+}
+
 function Stop-All {
     Write-Host "Stopping all services..." -ForegroundColor $Yellow
     
@@ -275,6 +318,8 @@ if ($args.Count -eq 0) {
         "--all" { Start-Backend-Docker; Start-Frontend }
         "-g" { Start-Governor }
         "--governor" { Start-Governor }
+        "--gpu" { Start-GpuServices }
+        "--gpu-status" { Show-GpuStatus }
         "-s" { Stop-All }
         "--stop" { Stop-All }
         "-t" { Show-Status }

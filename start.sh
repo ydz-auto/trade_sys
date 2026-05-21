@@ -28,6 +28,8 @@ show_help() {
     echo "  -a, --all          启动所有服务 (后端Docker + 前端)"
     echo "  -r, --replay       启动回放引擎 (需要指定时间范围)"
     echo "  -g, --governor     启动 Runtime Governor (独立进程)"
+    echo "  --gpu              启动 GPU 加速服务"
+    echo "  --gpu-status       查看 GPU 状态"
     echo "  -s, --stop         停止所有服务"
     echo "  -t, --status       查看服务状态"
     echo "  -l, --logs         查看后端日志"
@@ -229,6 +231,40 @@ start_governor() {
     fi
 }
 
+start_gpu() {
+    echo -e "${BLUE}正在启动 GPU 加速服务...${NC}"
+    echo ""
+    
+    cd "$SCRIPT_DIR/backend"
+    
+    echo -e "${CYAN}GPU 加速服务:${NC}"
+    echo "  - GPU Signal Runtime (LSTM 策略)"
+    echo "  - GPU Optimization Service (参数优化)"
+    echo ""
+    
+    ./dev.sh gpu-status
+    echo ""
+    
+    echo -e "${YELLOW}启动 GPU Signal Runtime...${NC}"
+    ./dev.sh gpu-start gpu-signal
+    
+    echo ""
+    echo -e "${YELLOW}启动 GPU Optimization Service...${NC}"
+    ./dev.sh gpu-start gpu-optimization
+    
+    echo ""
+    echo -e "${GREEN}GPU 服务已启动${NC}"
+    echo "  日志目录: $SCRIPT_DIR/backend/logs/"
+}
+
+show_gpu_status() {
+    echo -e "${BLUE}GPU 加速状态:${NC}"
+    echo ""
+    
+    cd "$SCRIPT_DIR/backend"
+    ./dev.sh gpu-status
+}
+
 stop_all() {
     echo -e "${YELLOW}正在停止所有服务...${NC}"
 
@@ -325,6 +361,12 @@ case "${1:-help}" in
         ;;
     -g|--governor)
         start_governor
+        ;;
+    --gpu)
+        start_gpu
+        ;;
+    --gpu-status)
+        show_gpu_status
         ;;
     -s|--stop)
         stop_all
