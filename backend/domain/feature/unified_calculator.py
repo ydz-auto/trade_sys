@@ -1,26 +1,41 @@
 """
-Unified Feature Calculator - 统一特征计算器
+Unified Feature Calculator - 统一特征计算器（内部使用）
+
+⚠️ WARNING: 禁止外部直接调用！⚠️
+所有特征计算必须通过 FeatureRuntime！
 
 核心原则：
 1. 在线/离线使用完全相同的特征计算逻辑
-2. 所有特征计算都通过这个入口
+2. 所有特征计算都通过 FeatureRuntime 入口
 3. 防止数据泄漏
 
-用法：
-    # 在线
-    calculator = UnifiedFeatureCalculator()
-    features = calculator.compute(candle)
+GPU 加速（走 Runtime 主链）：
+- compute() 单条计算：CPU（在线实时场景，延迟敏感）
+- compute_batch() 批量计算：委托 TorchFeatureCalculator（GPU 向量化）
+- compute_from_parquet() 离线计算：委托 TorchFeatureCalculator（GPU 向量化）
+- 数据量 > 1000 且 GPU 可用时自动启用 GPU，否则 CPU fallback
+
+用法（通过 FeatureRuntime）：
+    from runtime.feature_runtime import get_feature_runtime
     
-    # 离线
-    calculator = UnifiedFeatureCalculator()
-    df = calculator.compute_batch(parquet_path)
+    feature_runtime = get_feature_runtime()
+    await feature_runtime.emit_event("kline", kline_data)
+    features = feature_runtime.get_features_at(timestamp_ms)
+
+⚠️ 禁止直接使用！⚠️
+直接使用会导致：
+- 时间因果不一致
+- 在线/离线实现不同步
+- 特征可用性检查缺失
+- Future Leakage 风险
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable
 from pathlib import Path
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import numpy as np
 
@@ -61,17 +76,50 @@ class UnifiedFeatureCalculator:
     
     确保在线/离线使用完全相同的特征计算逻辑。
     
-    这是消除 feature 在线/离线双实现的核心组件。
+    GPU 加速策略（走 Runtime 主链）：
+    - compute() 单条计算：CPU（在线实时场景，延迟敏感）
+    - compute_batch() 批量计算：委托 TorchFeatureCalculator（GPU 向量化）
+    - 数据量 > 1000 且 GPU 可用时自动启用 GPU，否则 CPU fallback
     """
     
-    def __init__(self, max_lookback: int = 500):
+    def __init__(self, max_lookback: int = 500, use_gpu: bool = True):
         self.max_lookback = max_lookback
         self.schemas = DEFAULT_SCHEMAS
+        self.use_gpu = use_gpu
         
         self._price_buffer: Dict[str, deque] = {}
         self._volume_buffer: Dict[str, deque] = {}
         self._high_buffer: Dict[str, deque] = {}
         self._low_buffer: Dict[str, deque] = {}
+        
+        self._torch_calculator = None
+        self._gpu_available = False
+        if self.use_gpu:
+            self._init_gpu()
+    
+    def _init_gpu(self):
+        try:
+            from shared.acceleration import is_gpu_available, get_accelerator_info
+            from domain.feature.torch_calculator import TorchFeatureCalculator
+            
+            info = get_accelerator_info()
+            self._gpu_available = info['is_gpu']
+            
+            if self._gpu_available:
+                self._torch_calculator = TorchFeatureCalculator(
+                    max_lookback=self.max_lookback
+                )
+                logger.info(
+                    f"UnifiedFeatureCalculator GPU enabled: {info['device_type']}"
+                )
+            else:
+                logger.info("UnifiedFeatureCalculator using CPU (GPU not available)")
+        except ImportError as e:
+            logger.warning(f"GPU acceleration not available: {e}")
+            self._gpu_available = False
+        except Exception as e:
+            logger.warning(f"GPU initialization failed: {e}")
+            self._gpu_available = False
     
     def compute(
         self,
@@ -106,12 +154,27 @@ class UnifiedFeatureCalculator:
         self,
         df: pd.DataFrame,
         symbol: str = "BTCUSDT",
+        use_gpu: bool = True,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
     ) -> pd.DataFrame:
         """
         批量计算特征
         
-        用于离线特征生成，确保与在线计算逻辑一致。
+        GPU 加速：委托给 TorchFeatureCalculator，走 shared/acceleration 主链。
+        数据量 > 1000 且 GPU 可用时自动启用 GPU，否则 CPU fallback。
         """
+        n = len(df)
+        
+        if use_gpu and self._gpu_available and self._torch_calculator and n > 1000:
+            logger.info(
+                f"compute_batch: delegating to TorchFeatureCalculator "
+                f"(GPU, {n} rows)"
+            )
+            return self._torch_calculator.compute_batch(
+                df, symbol, use_gpu=True, progress_callback=progress_callback
+            )
+        
+        logger.info(f"compute_batch: CPU path ({n} rows)")
         self._reset_buffer(symbol)
         
         results = []
@@ -144,11 +207,12 @@ class UnifiedFeatureCalculator:
         parquet_path: Path,
         symbol: str = "BTCUSDT",
         output_path: Optional[Path] = None,
+        use_gpu: bool = True,
     ) -> pd.DataFrame:
         """
         从 Parquet 计算特征
         
-        用于离线特征生成。
+        GPU 加速：委托给 TorchFeatureCalculator，走 shared/acceleration 主链。
         """
         df = pd.read_parquet(parquet_path)
         
@@ -159,12 +223,17 @@ class UnifiedFeatureCalculator:
         
         df = df.sort_values('timestamp').reset_index(drop=True)
         
-        result_df = self.compute_batch(df, symbol)
-        
-        if output_path:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            result_df.to_parquet(output_path, index=False)
-            logger.info(f"Features saved to {output_path}")
+        if use_gpu and self._gpu_available and self._torch_calculator:
+            result_df = self._torch_calculator.compute_from_parquet(
+                parquet_path, symbol, output_path, use_gpu=True
+            )
+        else:
+            result_df = self.compute_batch(df, symbol, use_gpu=False)
+            
+            if output_path:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                result_df.to_parquet(output_path, index=False)
+                logger.info(f"Features saved to {output_path}")
         
         return result_df
     
