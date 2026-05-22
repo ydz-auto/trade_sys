@@ -6,14 +6,8 @@
 
 ## 🚀 快速开始
 
-### 1️⃣ 使用现有完整脚本（推荐）
 
-系统已包含完整的回测脚本在 `scripts/backtest_full_all_strategies.py`：
 
-```bash
-cd backend
-python scripts/backtest_full_all_strategies.py
-```
 
 这个脚本：
 - 使用真实数据（需从数据湖加载
@@ -24,7 +18,6 @@ python scripts/backtest_full_all_strategies.py
 
 ### 2️⃣ 使用多个交易对回测
 
-我还创建了一个完整的脚本 `scripts/run_complete_backtest.py`，包含4个交易对的测试。
 
 ## 📊 策略列表
 
@@ -114,26 +107,6 @@ python scripts/backtest_full_all_strategies.py
 
 ## 💾 结果保存
 
-结果保存到：
-- `data_lake/research/full_all_strategies_backtest.json`
-- 包含所有交易详情
-- 策略排名和统计
 
-## 🎯 推荐工作流
-
-1. 确保数据湖有数据：
-```bash
-python scripts/data_lake_download.py --binance-klines --symbols BTCUSDT ETHUSDT SOLUSDT ZECUSDT --years 2025
-```
-
-2. 生成特征：
-```bash
-python scripts/generate_features.py
-```
-
-3. 运行回测：
-```bash
-python scripts/backtest_full_all_strategies.py
-```
 
 4. 分析结果，选择表现最好的策略

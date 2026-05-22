@@ -97,15 +97,24 @@
 
 ### 各 Service GPU 加速状态
 
-| Service | GPU 加速 | 功能 | 自动降级 |
-|---------|---------|------|---------|
-| `backtest_service` | ✅ 通过 replay_runtime | 回测 | ✅ CPU fallback |
-| `factor_service` | ✅ 通过 feature_runtime | 因子计算 | ✅ CPU fallback |
-| `strategy_service` | ✅ 通过 signal_runtime | LSTM 策略 | ✅ CPU fallback |
-| `optimization_service` | ✅ 通过 OptimizationBacktestEngine (走 Runtime) | 优化 | ✅ CPU fallback |
-| `execution_service` | ❌ 不需要 | 订单执行 | - |
-| `fusion_service` | ❌ 不需要 | 信号融合 | - |
-| `data_service` | ❌ 不需要 | 数据采集 | - |
+| Service | GPU 加速 | 多线程/并行 | 功能 | 自动降级 |
+|---------|---------|------------|------|---------|
+| `backtest_service` | ✅ 通过 replay_runtime | ✅ asyncio.gather | 回测 | ✅ CPU fallback |
+| `factor_service` | ✅ 通过 feature_runtime | - | 因子计算 | ✅ CPU fallback |
+| `strategy_service` | ✅ 通过 signal_runtime | - | LSTM 策略 | ✅ CPU fallback |
+| `optimization_service` | ✅ 通过 OptimizationBacktestEngine | ✅ asyncio.gather + Semaphore | 优化 | ✅ CPU fallback |
+| `execution_service` | ❌ 不需要 | - | 订单执行 | - |
+| `fusion_service` | ❌ 不需要 | - | 信号融合 | - |
+| `data_service` | ❌ 不需要 | - | 数据采集 | - |
+
+### 各 Domain GPU 加速状态
+
+| Domain 模块 | GPU 加速 | 多线程 | 功能 | 自动降级 |
+|-------------|---------|--------|------|---------|
+| `torch_calculator` | ✅ 原生 GPU | - | GPU 向量化特征计算 | ✅ CPU fallback |
+| `unified_calculator` | ✅ 委托 TorchFeatureCalculator | - | 统一特征计算入口 | ✅ CPU fallback |
+| `matrix_builder` | ✅ GPU 批量前向填充 | ✅ ThreadPoolExecutor | 特征矩阵构建 | ✅ CPU fallback |
+| `lstm_strategy` | ✅ 原生 GPU | - | LSTM 训练/推理 | ✅ CPU fallback |
 
 ---
 
@@ -417,7 +426,22 @@ os.environ["TORCH_DEVICE"] = "cuda"
 
 ---
 
-## 重要更新记录（2026-05-22）
+## 重要更新记录
+
+### 2026-05-22 加速改造
+
+#### 新增
+- ✅ `UnifiedFeatureCalculator` 委托 `TorchFeatureCalculator` 实现 GPU 加速
+- ✅ `UnifiedMatrixBuilder` 多线程并行对齐填充（ThreadPoolExecutor）
+- ✅ `UnifiedMatrixBuilder` GPU 批量前向填充（大数据量 > 10000 行）
+- ✅ `OptimizationService` asyncio.gather 并行参数优化（走 Runtime 主链）
+- ✅ `OptimizationBacktestEngine` GPU 特征计算加速
+- ✅ `backtest_service.run_parallel_optimization` 改用 asyncio.gather（走 Runtime 主链）
+
+#### 修复
+- ✅ 清理 `backtest_engine.py` 对已删除 `parallel_engine.py` 的幽灵引用
+
+### 2026-05-22 架构收敛
 
 ### 已删除
 - ❌ `scripts/gpu_feature_backtest.py` - 绕过 Runtime
