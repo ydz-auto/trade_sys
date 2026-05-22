@@ -4,7 +4,7 @@ Strategy Registry - 策略注册中心
 提供统一的策略加载接口，供 ReplayRuntime 使用。
 """
 
-from typing import Dict, Any, Optional, Type
+from typing import Dict, Any, Optional, Type, List
 from dataclasses import dataclass, field
 from infrastructure.logging import get_logger
 
@@ -256,6 +256,3 @@ def register_strategy(strategy_id: str, strategy_class: Type[BaseStrategy], info
     _STRATEGY_REGISTRY[strategy_id] = strategy_class
     _STRATEGY_INFO[strategy_id] = info
     logger.info(f"Strategy registered: {strategy_id}")
-
-
-from typing import List

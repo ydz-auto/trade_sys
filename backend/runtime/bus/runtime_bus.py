@@ -69,6 +69,8 @@ class RuntimeBus:
             "by_topic": {},
         }
         
+        self._backtest_states: Dict[str, Any] = {}
+        
         logger.info("RuntimeBus initialized")
 
     def _generate_message_id(self) -> str:
@@ -233,6 +235,12 @@ class RuntimeBus:
             "queues": len(self._queues),
             "stats": self._stats.copy(),
         }
+
+    def get_state(self, key: str) -> Optional[Any]:
+        return self._backtest_states.get(key)
+
+    def set_state(self, key: str, value: Any) -> None:
+        self._backtest_states[key] = value
 
 
 def get_runtime_bus() -> RuntimeBus:
