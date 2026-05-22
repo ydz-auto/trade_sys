@@ -1,18 +1,18 @@
 """
 Correlation Router - 相关性分析 API 端点
 
-架构：
-    API Router (转发)
+架构（去 Facade 化）：
+    API Router
       ↓
     RuntimeBus.publish_command()
       ↓
     CorrelationRuntime (唯一 state source)
-      ↓
-    runtime_bus (state store)
+
+不再使用已废弃的 application.services.correlation_service。
 """
+
 from fastapi import APIRouter, Query
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
 
 router = APIRouter()
 
@@ -21,10 +21,15 @@ router = APIRouter()
 async def get_correlation_summary(
     symbol: str = Query(default="BTCUSDT", description="币种"),
 ) -> Dict[str, Any]:
-    from application.services.correlation_service import get_correlation_service
-    service = get_correlation_service()
-    summary = await service.get_summary(symbol=symbol)
-    return {"symbol": symbol, "summary": summary, "source": "correlation_runtime"}
+    from runtime.bus.runtime_bus import get_runtime_bus
+
+    bus = get_runtime_bus()
+    state = bus.get_state("correlation")
+
+    if state and state.get("summary"):
+        return {"symbol": symbol, "summary": state["summary"], "source": "correlation_runtime"}
+
+    return {"symbol": symbol, "summary": {}, "source": "correlation_runtime"}
 
 
 @router.get("/correlation/matrix")
@@ -32,19 +37,28 @@ async def get_correlation_matrix(
     symbol: str = Query(default="BTCUSDT", description="币种"),
     window: int = Query(default=30, description="分析窗口（天）"),
 ) -> Dict[str, Any]:
-    from application.services.correlation_service import get_correlation_service
-    service = get_correlation_service()
-    matrix = await service.get_matrix(symbol=symbol, window=window)
-    return {"symbol": symbol, "window": window, "matrix": matrix, "source": "correlation_runtime"}
+    from runtime.bus.runtime_bus import get_runtime_bus
+
+    bus = get_runtime_bus()
+    state = bus.get_state("correlation")
+
+    matrix_key = f"matrix_{symbol}_{window}"
+    if state and state.get(matrix_key):
+        return {"symbol": symbol, "window": window, "matrix": state[matrix_key], "source": "correlation_runtime"}
+
+    return {"symbol": symbol, "window": window, "matrix": {}, "source": "correlation_runtime"}
 
 
 @router.get("/correlation/signals/weights")
 async def get_signal_weights(
     symbol: str = Query(default="BTCUSDT", description="币种"),
 ) -> Dict[str, Any]:
-    from application.services.correlation_service import get_correlation_service
-    service = get_correlation_service()
-    weights = await service.get_signal_weights(symbol=symbol)
+    from runtime.bus.runtime_bus import get_runtime_bus
+
+    bus = get_runtime_bus()
+    state = bus.get_state("correlation")
+
+    weights = state.get("signal_weights", {}) if state else {}
     return {"symbol": symbol, "weights": weights, "source": "correlation_runtime"}
 
 
@@ -55,7 +69,6 @@ async def update_signal_weight(
     reason: Optional[str] = Query(None),
 ) -> Dict[str, Any]:
     from runtime.bus.runtime_bus import get_runtime_bus
-    from application.services.correlation_service import get_correlation_service
 
     bus = get_runtime_bus()
     await bus.publish_command(
@@ -65,10 +78,13 @@ async def update_signal_weight(
         source="api.correlation",
     )
 
-    service = get_correlation_service()
-    await service.update_signal_weight(signal_id=signal_id, weight=weight, reason=reason)
-
-    return {"success": True, "signal_id": signal_id, "weight": weight, "dispatch_via": "runtime_bus"}
+    return {
+        "success": True,
+        "signal_id": signal_id,
+        "weight": weight,
+        "dispatch_via": "runtime_bus",
+        "target": "correlation_runtime"
+    }
 
 
 @router.get("/correlation/analysis")
@@ -76,10 +92,21 @@ async def get_full_analysis(
     symbol: str = Query(default="BTCUSDT", description="币种"),
     window: int = Query(default=30, description="分析窗口（天）"),
 ) -> Dict[str, Any]:
-    from application.services.correlation_service import get_correlation_service
-    service = get_correlation_service()
-    analysis = await service.get_full_analysis(symbol=symbol, window=window)
-    return {"symbol": symbol, "window": window, "analysis": analysis, "source": "correlation_runtime"}
+    from runtime.bus.runtime_bus import get_runtime_bus
+
+    bus = get_runtime_bus()
+    state = bus.get_state("correlation")
+
+    analysis_key = f"analysis_{symbol}_{window}"
+    if state and state.get(analysis_key):
+        return {
+            "symbol": symbol,
+            "window": window,
+            "analysis": state[analysis_key],
+            "source": "correlation_runtime"
+        }
+
+    return {"symbol": symbol, "window": window, "analysis": {}, "source": "correlation_runtime"}
 
 
 @router.post("/correlation/trigger")
@@ -89,7 +116,6 @@ async def trigger_analysis(
     method: str = Query(default="pearson", description="相关性方法"),
 ) -> Dict[str, Any]:
     from runtime.bus.runtime_bus import get_runtime_bus
-    from application.services.correlation_service import get_correlation_service
 
     bus = get_runtime_bus()
     await bus.publish_command(
@@ -99,13 +125,11 @@ async def trigger_analysis(
         source="api.correlation",
     )
 
-    service = get_correlation_service()
-    result = await service.run_analysis(symbol=symbol, window=window, method=method)
-
     return {
         "success": True,
         "symbol": symbol,
-        "result": result,
+        "window": window,
+        "method": method,
         "dispatch_via": "runtime_bus",
         "target": "correlation_runtime",
     }
@@ -116,7 +140,12 @@ async def get_analysis_history(
     symbol: str = Query(default="BTCUSDT", description="币种"),
     limit: int = Query(default=10, description="返回数量"),
 ) -> Dict[str, Any]:
-    from application.services.correlation_service import get_correlation_service
-    service = get_correlation_service()
-    history = await service.get_history(symbol=symbol, limit=limit)
+    from runtime.bus.runtime_bus import get_runtime_bus
+
+    bus = get_runtime_bus()
+    state = bus.get_state("correlation")
+
+    history_key = f"history_{symbol}"
+    history = state.get(history_key, [])[-limit:] if state and state.get(history_key) else []
+
     return {"symbol": symbol, "history": history}

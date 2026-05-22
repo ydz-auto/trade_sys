@@ -8,20 +8,19 @@ Application Layer - 业务用例层
 - 不包含任何基础设施代码
 
 注意：这一层是纯业务逻辑，不依赖任何外部框架。
+
+已删除的 Facade：
+- BacktestService (移到 api层，直接用 RuntimeBus)
+- ProjectionService (已被 runtime/projection_runtime 取代)
+- CorrelationService (重定向到 services/correlation_service)
 """
 
-from application.services import (
-    SignalService,
-    ExecutionService,
-    ProjectionService,
-    RiskService,
-    CorrelationService,
-)
+from application.services.signal_service import SignalService
+from application.services.execution_service import ExecutionService
+from application.services.risk_service import RiskService
 
 __all__ = [
     "SignalService",
     "ExecutionService",
-    "ProjectionService",
     "RiskService",
-    "CorrelationService",
 ]
