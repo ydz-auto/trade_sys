@@ -1,30 +1,23 @@
 """
 Optimization Backtest Engine - 基于 Runtime 的回测引擎
 
-核心原则：
-1. 走现有的 shared/replay/ 架构
-2. 调用 ReplayOrchestrator 进行回放
-3. 走 SignalRuntime 和 ExecutionRuntime 的业务逻辑
+核心原则（必须遵守）：
+1. 只能使用 shared/replay/market_event_emitter.py 发出事件流
+2. 不能直接 pd.read_parquet 绕 Runtime
+3. 不能有任何 pandas 回测 fallback
 
 架构：
     OptimizationService
         ↓
-    shared/replay/orchestrator.py
-        ↓
     shared/replay/market_event_emitter.py (发出真实事件)
         ↓
-    services/strategy_service/ (信号生成)
-        ↓
-    services/execution_service/ (订单执行)
+    处理事件（走 Runtime 路径）
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Callable
 from pathlib import Path
-import asyncio
-import pandas as pd
-import numpy as np
 
 from infrastructure.logging import get_logger
 
@@ -48,9 +41,6 @@ class BacktestConfig:
     enable_latency: bool = True
     enable_partial_fill: bool = True
     enable_feature_guard: bool = True
-    
-    # 数据重采样配置
-    resample_freq: Optional[str] = None  # 例如 "10min", "1h", "1d" 等，None 表示不重采样
 
 
 @dataclass
@@ -123,9 +113,7 @@ class BacktestResult:
 
 class OptimizationBacktestEngine:
     """
-    优化回测引擎
-    
-    使用现有的 shared/replay/ 架构进行回测。
+    优化回测引擎（只走 Runtime 路径）
     
     用法：
     ```python
@@ -184,7 +172,7 @@ class OptimizationBacktestEngine:
         data_path: Optional[Path] = None,
     ) -> BacktestResult:
         """
-        运行回测
+        运行回测（只走 Runtime 路径，无 fallback）
         
         使用 shared/replay/market_event_emitter.py 发出事件流。
         """
@@ -216,9 +204,9 @@ class OptimizationBacktestEngine:
             ):
                 await self._process_event(event)
         
-        except ImportError:
-            logger.warning("MarketEventEmitter not available, using fallback")
-            await self._run_fallback(data_path, symbol, start_time, end_time)
+        except ImportError as e:
+            logger.error(f"MarketEventEmitter not available, no fallback allowed (must use Runtime): {e}")
+            raise RuntimeError("Must use Runtime-based backtest, no pandas fallback allowed")
         
         if self._position:
             await self._close_position(
@@ -231,119 +219,6 @@ class OptimizationBacktestEngine:
         result.leakage_stats = self._leakage_stats
         
         return result
-    
-    async def _run_fallback(
-        self,
-        data_path: Path,
-        symbol: str,
-        start_time: int,
-        end_time: int,
-    ):
-        """备用回测方法 - 直接读取 Parquet"""
-        df = pd.read_parquet(data_path)
-        
-        if 'timestamp' in df.columns:
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
-        
-        df = df.sort_values('timestamp').reset_index(drop=True)
-        
-        start_dt = pd.Timestamp(start_time, unit='ms') if isinstance(start_time, int) else pd.Timestamp(start_time)
-        end_dt = pd.Timestamp(end_time, unit='ms') if isinstance(end_time, int) else pd.Timestamp(end_time)
-        
-        df = df[(df['timestamp'] >= start_dt) & (df['timestamp'] <= end_dt)]
-        
-        # 数据重采样
-        if self.config.resample_freq and not df.empty:
-            df = self._resample_data(df, self.config.resample_freq)
-        
-        for idx, row in df.iterrows():
-            ts = int(row['timestamp'].timestamp() * 1000) if isinstance(row['timestamp'], pd.Timestamp) else int(row['timestamp'])
-            
-            self._current_price = float(row.get('close', 0))
-            self._current_time = datetime.fromtimestamp(ts / 1000)
-            self._current_timestamp = ts
-            
-            if self._position:
-                await self._check_position_exit()
-            
-            if self._signal_handler:
-                features = self._extract_features(row)
-                
-                if self._feature_guard:
-                    features = self._feature_guard.filter_available_features(
-                        features=features,
-                        feature_timestamps={k: ts for k in features},
-                        replay_clock=ts,
-                    )
-                    self._leakage_stats["blocked"] += len(self._extract_features(row)) - len(features)
-                    self._leakage_stats["allowed"] += len(features)
-                
-                signal = self._signal_handler(features, self._current_price)
-                
-                if signal != 0 and self._position is None:
-                    await self._open_position(signal)
-            
-            equity = self._calculate_equity()
-            self._equity_curve.append(equity)
-    
-    def _resample_data(self, df: pd.DataFrame, freq: str) -> pd.DataFrame:
-        """重采样数据到指定频率"""
-        if len(df) < 2:
-            return df
-        
-        df = df.set_index('timestamp')
-        
-        # OHLCV 字段的重采样规则
-        agg_rules = {
-            'open': 'first',
-            'high': 'max',
-            'low': 'min',
-            'close': 'last',
-            'volume': 'sum',
-            'quote_volume': 'sum',
-            'trades': 'sum',
-        }
-        
-        # 技术指标字段用最后一个值
-        tech_indicators = [
-            'rsi_7', 'rsi_14', 'rsi_21',
-            'sma_10', 'sma_20', 'sma_50', 'sma_100',
-            'ema_10', 'ema_20', 'ema_50', 'ema_100',
-            'macd', 'macd_signal', 'macd_hist',
-            'bb_upper', 'bb_lower', 'bb_width',
-            'volume_ratio', 'oi_delta', 'funding_zscore',
-        ]
-        
-        for col in tech_indicators:
-            if col in df.columns:
-                agg_rules[col] = 'last'
-        
-        # 应用重采样
-        resampled = df.resample(freq).agg(
-            {col: agg_rules.get(col, 'last') for col in df.columns}
-        )
-        
-        resampled = resampled.reset_index()
-        resampled = resampled.dropna(subset=['close'])
-        
-        return resampled
-
-    def _extract_features(self, row: pd.Series) -> Dict[str, float]:
-        """提取特征"""
-        feature_fields = [
-            'rsi_14', 'rsi_7', 'rsi_21',
-            'macd', 'macd_signal', 'macd_hist',
-            'bb_upper', 'bb_lower', 'bb_width',
-            'sma_20', 'sma_50', 'ema_20', 'ema_50',
-            'volume_ratio', 'oi_delta', 'funding_zscore',
-        ]
-        
-        features = {}
-        for field in feature_fields:
-            if field in row and not pd.isna(row[field]):
-                features[field] = float(row[field])
-        
-        return features
     
     async def _process_event(self, event):
         """处理事件"""
@@ -459,6 +334,7 @@ class OptimizationBacktestEngine:
         if not self.config.enable_slippage:
             return price
         
+        import numpy as np
         slippage = self.config.slippage * (1 + np.random.uniform(-0.5, 0.5))
         if direction > 0:
             return price * (1 + slippage)
@@ -557,6 +433,7 @@ class OptimizationBacktestEngine:
     
     def _calculate_result(self, symbol: str, strategy_id: str, params: Dict[str, Any]) -> BacktestResult:
         """计算回测结果"""
+        import numpy as np
         if not self._trades:
             return BacktestResult(symbol=symbol, strategy_id=strategy_id, params=params)
         

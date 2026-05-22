@@ -13,7 +13,7 @@ from .websocket import router as websocket_router
 from .config import router as config_router
 from .backtest import router as backtest_router
 from .trading import router as trading_router
-from .replay import router as replay_router
+# from .replay import router as replay_router
 from .correlation import router as correlation_router
 from .refresh import router as refresh_router
 from .feature_matrix import router as feature_matrix_router
@@ -42,7 +42,7 @@ api_router.include_router(projection_router, tags=["Projection"])
 api_router.include_router(websocket_router, tags=["WebSocket"])
 api_router.include_router(config_router, prefix="/config", tags=["Config"])
 api_router.include_router(backtest_router, prefix="/backtest-api", tags=["Backtest"])
-api_router.include_router(replay_router, tags=["Replay"])
+# api_router.include_router(replay_router, tags=["Replay"])
 api_router.include_router(correlation_router, prefix="/correlation", tags=["Correlation"])
 api_router.include_router(refresh_router, tags=["Refresh"])
 api_router.include_router(trading_mode_router, tags=["Trading Mode"])
