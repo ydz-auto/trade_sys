@@ -1,185 +1,176 @@
 """
 Correlation Router - 相关性分析 API 端点
+
+架构：
+    API Router
+      ↓
+    RuntimeBus (publish_command → CorrelationRuntime)
+      ↓
+    CorrelationRuntime
+      ↓
+    runtime_bus
 """
-from typing import Optional, List
-
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from typing import Optional, Dict, Any, List
+from pydantic import BaseModel, Field
 
-from infrastructure.logging import get_logger
-
-logger = get_logger("correlation_service.api")
+from ..schemas.common import SuccessResponse
 
 router = APIRouter()
 
 
-class SignalInfo(BaseModel):
-    feature: str
-    direction: str
-    confidence: float
-    strength: float
-    scores: dict
+class CorrelationAnalysisRequest(BaseModel):
+    symbol: str = Field(default="BTCUSDT", description="币种")
+    window: int = Field(default=30, description="分析窗口（天）")
+    method: str = Field(default="pearson", description="相关性方法: pearson, spearman, kendall")
 
 
-class CorrelationSummary(BaseModel):
-    symbol: str
-    timeframe: str
-    available: bool
-    timestamp: Optional[str]
-    positive_count: int
-    negative_count: int
-    neutral_count: int
-    strong_positive: int
-    strong_negative: int
+class SignalWeightUpdate(BaseModel):
+    signal_id: str = Field(..., description="信号ID")
+    weight: float = Field(..., description="权重 0.0-1.0", ge=0.0, le=1.0)
+    reason: Optional[str] = Field(None, description="修改原因")
 
 
-class SignalWeightInfo(BaseModel):
-    feature: str
-    weight: float
-    direction: str
-    confidence: float
-    strength: float
+def _get_correlation_service():
+    from application.services.correlation_service import get_correlation_service
+    return get_correlation_service()
 
 
-class CorrelationDetail(BaseModel):
-    symbol: str
-    timeframe: str
-    timestamp: str
-    positive_signals: List[str]
-    negative_signals: List[str]
-    neutral_signals: List[str]
-    signal_assessments: dict
-    summary: dict
+@router.get("/correlation/summary")
+async def get_correlation_summary(
+    symbol: str = Query(default="BTCUSDT", description="币种"),
+) -> Dict[str, Any]:
+    """获取相关性摘要"""
+    service = _get_correlation_service()
+    summary = await service.get_summary(symbol=symbol)
+    return {
+        "symbol": symbol,
+        "summary": summary,
+        "source": "correlation_runtime",
+    }
 
 
-class TriggerResponse(BaseModel):
-    success: bool
-    message: str
-    symbol: str
-    timeframe: str
+@router.get("/correlation/matrix")
+async def get_correlation_matrix(
+    symbol: str = Query(default="BTCUSDT", description="币种"),
+    window: int = Query(default=30, description="分析窗口（天）"),
+) -> Dict[str, Any]:
+    """获取相关性矩阵"""
+    service = _get_correlation_service()
+    matrix = await service.get_matrix(symbol=symbol, window=window)
+    return {
+        "symbol": symbol,
+        "window": window,
+        "matrix": matrix,
+        "source": "correlation_runtime",
+    }
 
 
-@router.get("/summary", response_model=CorrelationSummary)
-async def get_summary(
-    symbol: str = Query("BTC"),
-    timeframe: str = Query("1h"),
-):
-    """获取相关性分析摘要"""
-    from services.correlation_service.strategy_adapter import get_correlation_adapter
+@router.get("/correlation/signals/weights")
+async def get_signal_weights(
+    symbol: str = Query(default="BTCUSDT", description="币种"),
+) -> Dict[str, Any]:
+    """获取信号权重"""
+    service = _get_correlation_service()
+    weights = await service.get_signal_weights(symbol=symbol)
+    return {
+        "symbol": symbol,
+        "weights": weights,
+        "source": "correlation_runtime",
+    }
 
-    adapter = get_correlation_adapter()
-    summary = adapter.get_summary(symbol, timeframe)
 
-    return CorrelationSummary(**summary)
+@router.put("/correlation/signals/weights")
+async def update_signal_weight(update: SignalWeightUpdate) -> Dict[str, Any]:
+    """更新信号权重"""
+    from runtime.bus.runtime_bus import get_runtime_bus
 
-
-@router.get("/signals", response_model=List[SignalWeightInfo])
-async def get_signals(
-    symbol: str = Query("BTC"),
-    timeframe: str = Query("1h"),
-    min_confidence: float = Query(0.0),
-    direction: Optional[str] = Query(None),
-):
-    """获取信号权重列表"""
-    from services.correlation_service.strategy_adapter import get_correlation_adapter
-
-    adapter = get_correlation_adapter()
-    signals = adapter.get_strong_signals(
-        symbol, timeframe,
-        min_confidence=min_confidence,
-        direction=direction,
+    bus = get_runtime_bus()
+    await bus.publish_command(
+        command="update_signal_weight",
+        target="correlation_runtime",
+        params={
+            "signal_id": update.signal_id,
+            "weight": update.weight,
+            "reason": update.reason,
+        },
+        source="api.correlation",
     )
 
-    return [
-        SignalWeightInfo(
-            feature=s.feature,
-            weight=s.weight,
-            direction=s.direction,
-            confidence=s.confidence,
-            strength=s.strength,
-        )
-        for s in signals
-    ]
+    service = _get_correlation_service()
+    result = await service.update_signal_weight(
+        signal_id=update.signal_id,
+        weight=update.weight,
+        reason=update.reason,
+    )
+    return {
+        "success": True,
+        "signal_id": update.signal_id,
+        "weight": update.weight,
+        "dispatch_via": "runtime_bus",
+    }
 
 
-@router.get("/detail", response_model=CorrelationDetail)
-async def get_detail(
-    symbol: str = Query("BTC"),
-    timeframe: str = Query("1h"),
-):
+@router.get("/correlation/analysis")
+async def get_full_analysis(
+    symbol: str = Query(default="BTCUSDT", description="币种"),
+    window: int = Query(default=30, description="分析窗口（天）"),
+) -> Dict[str, Any]:
     """获取完整分析结果"""
-    from services.correlation_service.strategy_adapter import get_correlation_adapter
-
-    adapter = get_correlation_adapter()
-    adapter.refresh()
-
-    cache_key = f"{symbol}:{timeframe}"
-    result = adapter._cache.get(cache_key)
-
-    if not result:
-        raise HTTPException(status_code=404, detail=f"No correlation data for {symbol} {timeframe}")
-
-    return CorrelationDetail(**result)
+    service = _get_correlation_service()
+    analysis = await service.get_full_analysis(symbol=symbol, window=window)
+    return {
+        "symbol": symbol,
+        "window": window,
+        "analysis": analysis,
+        "source": "correlation_runtime",
+    }
 
 
-@router.get("/weight/{feature}", response_model=SignalWeightInfo)
-async def get_signal_weight(
-    feature: str,
-    symbol: str = Query("BTC"),
-    timeframe: str = Query("1h"),
-):
-    """获取单个信号的权重"""
-    from services.correlation_service.strategy_adapter import get_correlation_adapter
+@router.post("/correlation/trigger")
+async def trigger_analysis(
+    request: CorrelationAnalysisRequest,
+) -> Dict[str, Any]:
+    """手动触发相关性分析 - 通过 RuntimeBus 调度到 CorrelationRuntime"""
+    from runtime.bus.runtime_bus import get_runtime_bus
 
-    adapter = get_correlation_adapter()
-    sw = adapter.get_signal_weight(feature, symbol, timeframe)
-
-    return SignalWeightInfo(
-        feature=sw.feature,
-        weight=sw.weight,
-        direction=sw.direction,
-        confidence=sw.confidence,
-        strength=sw.strength,
+    bus = get_runtime_bus()
+    await bus.publish_command(
+        command="run_correlation_analysis",
+        target="correlation_runtime",
+        params={
+            "symbol": request.symbol,
+            "window": request.window,
+            "method": request.method,
+        },
+        source="api.correlation",
     )
 
+    service = _get_correlation_service()
+    result = await service.run_analysis(
+        symbol=request.symbol,
+        window=request.window,
+        method=request.method,
+    )
 
-@router.post("/trigger", response_model=TriggerResponse)
-async def trigger_analysis(
-    symbol: str = Query("BTC"),
-    timeframe: str = Query("1h"),
-):
-    """手动触发一次分析"""
-    try:
-        from services.correlation_service import get_correlation_service
-
-        worker = await get_correlation_service()
-        result = await worker.run_analysis(symbol, timeframe)
-
-        if "error" in result:
-            return TriggerResponse(
-                success=False,
-                message=result["error"],
-                symbol=symbol,
-                timeframe=timeframe,
-            )
-
-        return TriggerResponse(
-            success=True,
-            message=f"Analysis completed: +{len(result.get('positive_signals', []))} -{len(result.get('negative_signals', []))}",
-            symbol=symbol,
-            timeframe=timeframe,
-        )
-
-    except Exception as e:
-        return TriggerResponse(
-            success=False,
-            message=str(e),
-            symbol=symbol,
-            timeframe=timeframe,
-        )
+    return {
+        "success": True,
+        "symbol": request.symbol,
+        "result": result,
+        "dispatch_via": "runtime_bus",
+        "target": "correlation_runtime",
+    }
 
 
-@router.get("/health")
-async def health_check():
-    """健康检查"""
-    return {"status": "ok", "service": "correlation_service"}
+@router.get("/correlation/history")
+async def get_analysis_history(
+    symbol: str = Query(default="BTCUSDT", description="币种"),
+    limit: int = Query(default=10, description="返回数量"),
+) -> Dict[str, Any]:
+    """获取分析历史"""
+    service = _get_correlation_service()
+    history = await service.get_history(symbol=symbol, limit=limit)
+    return {
+        "symbol": symbol,
+        "history": history,
+    }

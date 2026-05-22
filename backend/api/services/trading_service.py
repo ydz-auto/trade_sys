@@ -4,7 +4,6 @@ Trading Service - 完整交易服务
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import asyncio
-import random
 
 from infrastructure.cache.redis_client import RedisClient, init_redis
 from infrastructure.logging import get_logger
@@ -34,7 +33,6 @@ class TradingService:
         return self._redis
 
     async def _init_default_account(self):
-        """初始化默认账户"""
         accounts = await self.redis.get_json(self.ACCOUNTS_KEY)
         if not accounts:
             accounts = {
@@ -69,18 +67,15 @@ class TradingService:
             await self.redis.set_json(self.ACCOUNTS_KEY, accounts)
 
     async def get_accounts(self) -> Dict:
-        """获取所有账户"""
         await self._init_default_account()
         return await self.redis.get_json(self.ACCOUNTS_KEY) or {}
 
     async def get_positions(self) -> List[Dict]:
-        """获取当前持仓"""
         positions = await self.redis.get_json(self.POSITIONS_KEY) or []
         await self._update_positions_pnl(positions)
         return positions
 
     async def _update_positions_pnl(self, positions: List[Dict]):
-        """更新持仓盈亏（带杠杆计算）"""
         for pos in positions:
             if not pos.get("entry_price"):
                 continue
@@ -112,13 +107,14 @@ class TradingService:
         await self.redis.set_json(self.POSITIONS_KEY, positions)
 
     async def get_open_orders(self) -> List[Dict]:
-        """获取未完成订单"""
         orders = await self.redis.get_json(self.ORDERS_KEY)
         return orders if orders else []
 
     async def place_order(self, order_data: Dict) -> Dict:
-        """下单"""
         from uuid import uuid4
+
+        from runtime.execution.router import get_execution_router, safe_execute
+        from domain.execution.models import OrderRequest, OrderSide, OrderType as DomainOrderType, MarketType, Exchange
 
         order_id = str(uuid4())[:12]
         symbol = order_data["symbol"]
@@ -132,12 +128,6 @@ class TradingService:
         take_profit_pct = order_data.get("take_profit_pct")
 
         entry_price = order_data.get("price", 50000.0)
-        position_value = quantity * entry_price
-
-        if market_type == "spot":
-            entry_price = entry_price
-        else:
-            entry_price = entry_price
 
         order = {
             "order_id": order_id,
@@ -166,15 +156,53 @@ class TradingService:
         orders.append(order)
         await self.redis.set_json(self.ORDERS_KEY, orders)
 
-        asyncio.create_task(self._simulate_order_fill(order_id))
+        try:
+            domain_side = OrderSide.BUY if side == "buy" else OrderSide.SELL
+            domain_order_type = DomainOrderType.MARKET if order_data.get("order_type", "market") == "market" else DomainOrderType.LIMIT
+            domain_exchange = Exchange(exchange)
+            domain_market_type = MarketType(market_type)
 
-        logger.info(f"Order placed: {order_id} {side} {symbol} {quantity} @ {entry_price} [{market_type}] {leverage}x")
+            request = OrderRequest(
+                symbol=symbol,
+                exchange=domain_exchange,
+                side=domain_side,
+                order_type=domain_order_type,
+                quantity=quantity,
+                price=entry_price if domain_order_type == DomainOrderType.LIMIT else None,
+                client_order_id=order_id,
+                market_type=domain_market_type,
+                leverage=leverage,
+            )
+
+            result = await safe_execute(request)
+
+            if result.success and result.order:
+                filled_order = result.order
+                order["status"] = filled_order.status.value
+                order["filled_quantity"] = filled_order.filled_quantity
+                order["avg_fill_price"] = filled_order.average_price
+                order["updated_at"] = datetime.now().isoformat()
+                await self.redis.set_json(f"order:{order_id}", order)
+
+                if filled_order.status.value == "filled":
+                    await self._store_position_from_order(order)
+
+                logger.info(f"Order executed via ExecutionRouter: {order_id} {side} {symbol} {quantity} @ {entry_price} [{market_type}] {leverage}x")
+            else:
+                order["status"] = "rejected"
+                order["updated_at"] = datetime.now().isoformat()
+                if result.error:
+                    order["error"] = result.error
+                await self.redis.set_json(f"order:{order_id}", order)
+                logger.warning(f"Order rejected by ExecutionRouter: {order_id} - {result.error}")
+
+        except Exception as e:
+            logger.warning(f"ExecutionRouter unavailable, using local fill: {e}")
+            await self._local_fill(order_id)
+
         return order
 
-    async def _simulate_order_fill(self, order_id: str):
-        """模拟订单成交"""
-        await asyncio.sleep(0.5)
-
+    async def _local_fill(self, order_id: str):
         order = await self.redis.get_json(f"order:{order_id}")
         if not order:
             return
@@ -185,9 +213,14 @@ class TradingService:
         order["updated_at"] = datetime.now().isoformat()
         await self.redis.set_json(f"order:{order_id}", order)
 
+        await self._store_position_from_order(order)
+
+        logger.info(f"Order filled locally (fallback): {order_id}")
+
+    async def _store_position_from_order(self, order: Dict):
         positions = await self.redis.get_json(self.POSITIONS_KEY) or []
         position = {
-            "position_id": str(order_id) + "_pos",
+            "position_id": str(order["order_id"]) + "_pos",
             "symbol": order["symbol"],
             "side": "long" if order["side"] == "buy" else "short",
             "quantity": order["quantity"],
@@ -210,35 +243,8 @@ class TradingService:
         positions.append(position)
         await self.redis.set_json(self.POSITIONS_KEY, positions)
 
-        await self._update_account_balance(order)
-
-        logger.info(f"Order filled: {order_id}")
-
-    async def _update_account_balance(self, order: Dict):
-        """更新账户余额"""
-        accounts = await self.redis.get_json(self.ACCOUNTS_KEY) or {}
-        account_key = f"{order['exchange']}_{order['market_type']}"
-
-        if account_key not in accounts:
-            accounts[account_key] = {
-                "exchange": order["exchange"],
-                "market_type": order["market_type"],
-                "balance": 10000.0,
-                "available_balance": 10000.0,
-                "margin_balance": 0,
-                "unrealized_pnl": 0,
-                "positions_count": 0,
-            }
-
-        margin = order["quantity"] * order["price"] / order["leverage"]
-        accounts[account_key]["available_balance"] -= margin
-        accounts[account_key]["margin_balance"] += margin
-        accounts[account_key]["positions_count"] += 1
-
-        await self.redis.set_json(self.ACCOUNTS_KEY, accounts)
-
+    # TODO: close_position should eventually go through execution_runtime
     async def close_position(self, close_data: Dict) -> Dict:
-        """平仓"""
         symbol = close_data["symbol"]
         quantity = close_data.get("quantity")
         order_type = close_data.get("order_type", "market")
@@ -278,7 +284,6 @@ class TradingService:
         raise ValueError(f"Position not found for {symbol}")
 
     def _calculate_realized_pnl(self, pos: Dict, close_qty: float, fully_closed: bool) -> float:
-        """计算已实现盈亏（考虑杠杆）"""
         entry_price = pos["entry_price"]
         current_price = pos.get("current_price", entry_price)
         leverage = pos.get("leverage", 1)
@@ -295,7 +300,6 @@ class TradingService:
         return round(realized_pnl, 2)
 
     async def _refund_margin(self, exchange: str, market_type: str, margin: float, pnl: float):
-        """返还保证金"""
         accounts = await self.redis.get_json(self.ACCOUNTS_KEY) or {}
         account_key = f"{exchange}_{market_type}"
 
@@ -305,8 +309,8 @@ class TradingService:
             accounts[account_key]["positions_count"] = max(0, accounts[account_key]["positions_count"] - 1)
             await self.redis.set_json(self.ACCOUNTS_KEY, accounts)
 
+    # TODO: set_leverage should eventually go through execution_runtime
     async def set_leverage(self, data: Dict) -> Dict:
-        """设置杠杆"""
         symbol = data["symbol"]
         leverage = data["leverage"]
 
@@ -325,15 +329,20 @@ class TradingService:
 
                 diff = old_margin - new_margin
                 if diff > 0:
-                    asyncio.create_task(self._refund_margin(pos["exchange"], pos["market_type"], diff, 0))
+                    from infrastructure.runtime import get_runtime_governor
+                    governor = get_runtime_governor()
+                    governor.create_task(
+                        self._refund_margin(pos["exchange"], pos["market_type"], diff, 0),
+                        name=f"refund_margin_{symbol}",
+                    )
 
                 logger.info(f"Leverage updated: {symbol} {old_leverage}x -> {leverage}x")
                 return {"success": True, "symbol": symbol, "leverage": leverage, "margin_change": -diff}
 
         raise ValueError(f"Position not found for {symbol}")
 
+    # TODO: set_stop_loss_take_profit should eventually go through execution_runtime
     async def set_stop_loss_take_profit(self, data: Dict) -> Dict:
-        """设置止盈止损"""
         symbol = data["symbol"]
         stop_loss_pct = data.get("stop_loss_pct")
         take_profit_pct = data.get("take_profit_pct")
@@ -372,8 +381,8 @@ class TradingService:
 
         raise ValueError(f"Position not found for {symbol}")
 
+    # TODO: adjust_position should eventually go through execution_runtime
     async def adjust_position(self, data: Dict) -> Dict:
-        """调整仓位"""
         symbol = data["symbol"]
         new_quantity = data["new_quantity"]
         new_leverage = data.get("new_leverage")
@@ -398,7 +407,6 @@ class TradingService:
         raise ValueError(f"Position not found for {symbol}")
 
     async def check_stop_loss_take_profit(self):
-        """检查并触发止盈止损"""
         positions = await self.redis.get_json(self.POSITIONS_KEY) or []
 
         triggered = []
@@ -435,7 +443,6 @@ class TradingService:
         return triggered
 
     async def get_trading_status(self) -> Dict:
-        """获取交易状态"""
         positions = await self.get_positions()
         orders = await self.get_open_orders()
         accounts = await self.get_accounts()
@@ -463,7 +470,6 @@ class TradingService:
         }
 
     async def set_trading_mode(self, mode: str, threshold: float = None) -> Dict:
-        """设置交易模式"""
         status = await self.redis.get_json(self.STATUS_KEY) or {}
         status["mode"] = mode
         if threshold is not None:
@@ -475,7 +481,6 @@ class TradingService:
         return status
 
     async def health_check(self) -> Dict:
-        """健康检查"""
         accounts = await self.get_accounts()
         return {
             "status": "healthy",

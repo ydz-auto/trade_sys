@@ -1,13 +1,15 @@
 """
 API Server - Main Entry Point
-API 服务器主入口
 
-集成 Runtime Governor:
-- 启动时初始化 RuntimeGovernor
-- 关闭时优雅停止
-- 提供 /api/v1/runtime 端点查看状态
+架构：
+    API Server
+      ↓
+    RuntimeGovernor (lifecycle)
+      ↓
+    RuntimeBus (统一通信)
+      ↓
+    Orchestrator → Runtimes
 """
-import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -31,27 +33,30 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
     logger.info("  Starting API Server...")
     logger.info("=" * 60)
-    
+
     governor = get_runtime_governor()
     await governor.start()
-    
+
     ws_gateway = await get_ws_gateway()
-    asyncio.create_task(ws_gateway.run_redis_subscriber())
-    logger.info("WebSocket Gateway Redis subscriber started")
-    
+    governor.create_task(
+        ws_gateway.run_redis_subscriber(),
+        name="ws_redis_subscriber",
+    )
+    logger.info("WebSocket Gateway Redis subscriber started via RuntimeGovernor")
+
     logger.info("API Server started successfully")
     logger.info(f"  Mode: {governor.get_mode().value}")
     logger.info(f"  Queue size: {governor.priority_queue.size()}")
-    
+
     yield
-    
+
     logger.info("=" * 60)
     logger.info("  Shutting down API Server...")
     logger.info("=" * 60)
-    
+
     await ws_gateway.shutdown()
     await governor.stop()
-    
+
     logger.info("API Server stopped")
 
 
@@ -109,19 +114,24 @@ async def get_runtime_mode() -> Dict[str, Any]:
 
 @runtime_router.post("/mode")
 async def set_runtime_mode(mode: str, reason: str = "manual") -> Dict[str, str]:
-    governor = get_runtime_governor()
-    try:
-        new_mode = RuntimeMode(mode)
-        await governor.set_mode(new_mode, reason)
+    from runtime.command.command_bus import get_command_bus, CommandType
+
+    bus = get_command_bus()
+    result = await bus.execute(
+        CommandType.SWITCH_MODE,
+        {"target_mode": mode, "reason": reason},
+        source="api.runtime",
+    )
+
+    if result.success:
         return {
-            "mode": governor.get_mode().value,
-            "message": f"Mode changed to {mode}",
+            "mode": mode,
+            "message": f"Mode change dispatched via RuntimeCommandBus",
         }
-    except ValueError:
-        return {
-            "mode": governor.get_mode().value,
-            "message": f"Invalid mode: {mode}",
-        }
+    return {
+        "mode": get_runtime_governor().get_mode().value,
+        "message": f"Mode change failed: {result.error}",
+    }
 
 
 @runtime_router.post("/recovery")
@@ -166,7 +176,7 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 8001))
     print("=" * 80)
     print("  Quantitative Trading System API Server")
-    print("  with Runtime Governor")
+    print("  with Runtime Governor + RuntimeBus")
     print("=" * 80)
     print(f"  Starting on: http://0.0.0.0:{port}")
     print(f"  Swagger Docs: http://0.0.0.0:{port}/docs")

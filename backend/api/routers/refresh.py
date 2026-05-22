@@ -1,216 +1,178 @@
 """
 Refresh Router - 数据刷新 API 端点
+
+架构：
+    API Router
+      ↓
+    RuntimeBus (publish_command → 对应 Runtime)
+      ↓
+    各 Runtime 处理刷新
+      ↓
+    runtime_bus
+
+注意：所有刷新命令通过 RuntimeBus 调度到对应 Runtime，
+不再直接使用 Redis pub/sub。
 """
-from typing import Optional, List
-from datetime import datetime
+from fastapi import APIRouter, Query
+from typing import Dict, Any
 
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from ..schemas.common import SuccessResponse
 
-from infrastructure.logging import get_logger
-
-logger = get_logger("api.refresh")
-
-router = APIRouter(prefix="/refresh", tags=["Refresh"])
+router = APIRouter()
 
 
-class RefreshResult(BaseModel):
-    success: bool
-    message: str
-    data_type: str
-    timestamp: str
+async def _dispatch_refresh(command: str, target: str, params: dict):
+    from runtime.bus.runtime_bus import get_runtime_bus
+
+    bus = get_runtime_bus()
+    await bus.publish_command(
+        command=command,
+        target=target,
+        params=params,
+        source="api.refresh",
+    )
 
 
-class RefreshAllResponse(BaseModel):
-    success: bool
-    message: str
-    results: List[RefreshResult]
-    timestamp: str
+@router.post("/refresh/price")
+async def refresh_price(
+    symbol: str = Query(default="BTCUSDT", description="币种"),
+) -> Dict[str, Any]:
+    """刷新价格数据 - 通过 RuntimeBus 调度"""
+    await _dispatch_refresh(
+        command="refresh_price",
+        target="data_runtime",
+        params={"symbol": symbol},
+    )
+
+    return {
+        "success": True,
+        "symbol": symbol,
+        "message": "Price refresh dispatched via RuntimeBus",
+        "dispatch_via": "runtime_bus",
+        "target": "data_runtime",
+    }
 
 
-@router.post("/prices", response_model=RefreshResult)
-async def refresh_prices(
-    symbol: Optional[str] = Query(None, description="指定交易对，如 BTC，不指定则刷新全部"),
-):
-    """
-    刷新价格数据
-    
-    触发从交易所重新获取最新价格
-    """
-    from ..services.refresh_service import refresh_prices_data
-    
-    try:
-        result = await refresh_prices_data(symbol)
-        return RefreshResult(
-            success=True,
-            message=f"价格数据刷新成功: {result.get('count', 0)} 条",
-            data_type="prices",
-            timestamp=datetime.utcnow().isoformat(),
-        )
-    except Exception as e:
-        logger.error(f"Failed to refresh prices: {e}")
-        return RefreshResult(
-            success=False,
-            message=f"刷新失败: {str(e)}",
-            data_type="prices",
-            timestamp=datetime.utcnow().isoformat(),
-        )
-
-
-@router.post("/signals", response_model=RefreshResult)
+@router.post("/refresh/signals")
 async def refresh_signals(
-    symbol: Optional[str] = Query(None, description="指定交易对，如 BTC"),
-):
-    """
-    刷新信号数据
-    
-    触发信号重新计算
-    """
-    from ..services.refresh_service import refresh_signals_data
-    
-    try:
-        result = await refresh_signals_data(symbol)
-        return RefreshResult(
-            success=True,
-            message=f"信号数据刷新成功",
-            data_type="signals",
-            timestamp=datetime.utcnow().isoformat(),
-        )
-    except Exception as e:
-        logger.error(f"Failed to refresh signals: {e}")
-        return RefreshResult(
-            success=False,
-            message=f"刷新失败: {str(e)}",
-            data_type="signals",
-            timestamp=datetime.utcnow().isoformat(),
-        )
+    symbol: str = Query(default="BTCUSDT", description="币种"),
+) -> Dict[str, Any]:
+    """刷新信号数据 - 通过 RuntimeBus 调度到 SignalRuntime"""
+    await _dispatch_refresh(
+        command="refresh_signals",
+        target="signal_runtime",
+        params={"symbol": symbol},
+    )
+
+    return {
+        "success": True,
+        "symbol": symbol,
+        "message": "Signal refresh dispatched via RuntimeBus",
+        "dispatch_via": "runtime_bus",
+        "target": "signal_runtime",
+    }
 
 
-@router.post("/factors", response_model=RefreshResult)
-async def refresh_factors():
-    """
-    刷新因子数据
-    
-    触发因子重新计算
-    """
-    from ..services.refresh_service import refresh_factors_data
-    
-    try:
-        result = await refresh_factors_data()
-        return RefreshResult(
-            success=True,
-            message=f"因子数据刷新成功: {result.get('count', 0)} 个因子",
-            data_type="factors",
-            timestamp=datetime.utcnow().isoformat(),
-        )
-    except Exception as e:
-        logger.error(f"Failed to refresh factors: {e}")
-        return RefreshResult(
-            success=False,
-            message=f"刷新失败: {str(e)}",
-            data_type="factors",
-            timestamp=datetime.utcnow().isoformat(),
-        )
+@router.post("/refresh/factors")
+async def refresh_factors(
+    symbol: str = Query(default="BTCUSDT", description="币种"),
+) -> Dict[str, Any]:
+    """刷新因子数据 - 通过 RuntimeBus 调度到 FeatureRuntime"""
+    await _dispatch_refresh(
+        command="refresh_factors",
+        target="feature_runtime",
+        params={"symbol": symbol},
+    )
+
+    return {
+        "success": True,
+        "symbol": symbol,
+        "message": "Factor refresh dispatched via RuntimeBus",
+        "dispatch_via": "runtime_bus",
+        "target": "feature_runtime",
+    }
 
 
-@router.post("/news", response_model=RefreshResult)
-async def refresh_news():
-    """
-    刷新新闻数据
-    
-    触发从新闻源重新获取最新资讯
-    """
-    from ..services.refresh_service import refresh_news_data
-    
-    try:
-        result = await refresh_news_data()
-        return RefreshResult(
-            success=True,
-            message=f"新闻数据刷新成功: {result.get('count', 0)} 条",
-            data_type="news",
-            timestamp=datetime.utcnow().isoformat(),
-        )
-    except Exception as e:
-        logger.error(f"Failed to refresh news: {e}")
-        return RefreshResult(
-            success=False,
-            message=f"刷新失败: {str(e)}",
-            data_type="news",
-            timestamp=datetime.utcnow().isoformat(),
-        )
+@router.post("/refresh/news")
+async def refresh_news(
+    symbol: str = Query(default="BTCUSDT", description="币种"),
+) -> Dict[str, Any]:
+    """刷新新闻数据 - 通过 RuntimeBus 调度"""
+    await _dispatch_refresh(
+        command="refresh_news",
+        target="data_runtime",
+        params={"symbol": symbol},
+    )
+
+    return {
+        "success": True,
+        "symbol": symbol,
+        "message": "News refresh dispatched via RuntimeBus",
+        "dispatch_via": "runtime_bus",
+        "target": "data_runtime",
+    }
 
 
-@router.post("/correlation", response_model=RefreshResult)
+@router.post("/refresh/correlation")
 async def refresh_correlation(
-    symbol: str = Query("BTC", description="交易对"),
-    timeframe: str = Query("1h", description="时间周期"),
-):
-    """
-    刷新相关性分析
-    
-    触发相关性分析重新计算
-    """
-    from ..services.refresh_service import refresh_correlation_data
-    
-    try:
-        result = await refresh_correlation_data(symbol, timeframe)
-        return RefreshResult(
-            success=True,
-            message=f"相关性分析刷新成功",
-            data_type="correlation",
-            timestamp=datetime.utcnow().isoformat(),
-        )
-    except Exception as e:
-        logger.error(f"Failed to refresh correlation: {e}")
-        return RefreshResult(
-            success=False,
-            message=f"刷新失败: {str(e)}",
-            data_type="correlation",
-            timestamp=datetime.utcnow().isoformat(),
-        )
+    symbol: str = Query(default="BTCUSDT", description="币种"),
+) -> Dict[str, Any]:
+    """刷新相关性数据 - 通过 RuntimeBus 调度到 CorrelationRuntime"""
+    await _dispatch_refresh(
+        command="run_correlation_analysis",
+        target="correlation_runtime",
+        params={"symbol": symbol},
+    )
+
+    return {
+        "success": True,
+        "symbol": symbol,
+        "message": "Correlation refresh dispatched via RuntimeBus",
+        "dispatch_via": "runtime_bus",
+        "target": "correlation_runtime",
+    }
 
 
-@router.post("/all", response_model=RefreshAllResponse)
-async def refresh_all():
-    """
-    刷新所有数据
-    
-    触发价格、信号、因子、新闻等所有数据的刷新
-    """
-    from ..services.refresh_service import refresh_all_data
-    
-    try:
-        results = await refresh_all_data()
-        
-        success_count = sum(1 for r in results if r.get("success"))
-        total_count = len(results)
-        
-        return RefreshAllResponse(
-            success=success_count == total_count,
-            message=f"刷新完成: {success_count}/{total_count} 成功",
-            results=[
-                RefreshResult(
-                    success=r.get("success", False),
-                    message=r.get("message", ""),
-                    data_type=r.get("data_type", "unknown"),
-                    timestamp=datetime.utcnow().isoformat(),
-                )
-                for r in results
-            ],
-            timestamp=datetime.utcnow().isoformat(),
-        )
-    except Exception as e:
-        logger.error(f"Failed to refresh all: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+@router.post("/refresh/all")
+async def refresh_all(
+    symbol: str = Query(default="BTCUSDT", description="币种"),
+) -> Dict[str, Any]:
+    """刷新所有数据 - 通过 RuntimeBus 调度到所有 Runtime"""
+    await _dispatch_refresh("refresh_price", "data_runtime", {"symbol": symbol})
+    await _dispatch_refresh("refresh_signals", "signal_runtime", {"symbol": symbol})
+    await _dispatch_refresh("refresh_factors", "feature_runtime", {"symbol": symbol})
+    await _dispatch_refresh("refresh_news", "data_runtime", {"symbol": symbol})
+    await _dispatch_refresh("run_correlation_analysis", "correlation_runtime", {"symbol": symbol})
+
+    return {
+        "success": True,
+        "symbol": symbol,
+        "message": "All refresh commands dispatched via RuntimeBus",
+        "dispatch_via": "runtime_bus",
+        "targets": [
+            "data_runtime",
+            "signal_runtime",
+            "feature_runtime",
+            "correlation_runtime",
+        ],
+    }
 
 
-@router.get("/status")
-async def get_refresh_status():
-    """
-    获取刷新状态
-    
-    返回各数据源的最近刷新时间
-    """
-    from ..services.refresh_service import get_refresh_status as get_status
-    
-    return await get_status()
+@router.post("/refresh/projection")
+async def refresh_projection(
+    symbol: str = Query(default="BTCUSDT", description="币种"),
+) -> Dict[str, Any]:
+    """刷新投影状态 - 通过 RuntimeBus 调度到 ProjectionRuntime"""
+    await _dispatch_refresh(
+        command="refresh_projection",
+        target="projection_runtime",
+        params={"symbol": symbol},
+    )
+
+    return {
+        "success": True,
+        "symbol": symbol,
+        "message": "Projection refresh dispatched via RuntimeBus",
+        "dispatch_via": "runtime_bus",
+        "target": "projection_runtime",
+    }

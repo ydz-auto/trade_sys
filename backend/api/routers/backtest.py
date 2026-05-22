@@ -1,5 +1,16 @@
 """
 Backtest Router - 回测管理端点
+
+架构：
+    API Router
+      ↓
+    RuntimeBus (publish_command)
+      ↓
+    BacktestService
+      ↓
+    OptimizationBacktestEngine (走 ReplayRuntime)
+      ↓
+    runtime_bus
 """
 from fastapi import APIRouter, HTTPException
 from typing import List
@@ -26,10 +37,21 @@ async def get_manager():
 
 @router.post("/backtest", response_model=BacktestResult)
 async def create_and_run_backtest(request: BacktestRequest):
-    """创建并运行回测"""
+    """创建并运行回测 - 通过 RuntimeBus 调度"""
+    from runtime.bus.runtime_bus import get_runtime_bus
+
+    bus = get_runtime_bus()
+    config = request.config.model_dump()
+
+    await bus.publish_command(
+        command="run_backtest",
+        target="backtest_service",
+        params=config,
+        source="api.backtest",
+    )
+
     manager = await get_manager()
 
-    config = request.config.model_dump()
     backtest = await manager.create_backtest(config)
     backtest_id = backtest["id"]
 

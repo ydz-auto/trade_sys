@@ -1,12 +1,14 @@
 """
 Trading Mode Router - 交易模式管理 API
 
-端点:
-- GET /trading-mode - 获取当前模式状态
-- GET /trading-mode/modes - 获取所有模式信息
-- POST /trading-mode/transition - 切换模式
-- GET /trading-mode/portfolio - 获取当前 Portfolio
-- GET /trading-mode/stats - 获取统计信息
+架构：
+    API Router
+      ↓
+    RuntimeCommandBus (模式切换)
+      ↓
+    RuntimeOrchestrator
+      ↓
+    RuntimeBus
 """
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
@@ -38,7 +40,7 @@ async def get_trading_mode_status() -> Dict[str, Any]:
     manager = get_trading_mode_manager()
     status = manager.get_status()
     config = manager.config
-    
+
     return {
         "mode": status.mode.value,
         "state": status.state.value,
@@ -61,7 +63,7 @@ async def get_all_modes() -> Dict[str, Any]:
     """获取所有交易模式信息"""
     manager = get_trading_mode_manager()
     modes = manager.get_all_modes_info()
-    
+
     return {
         "modes": modes,
         "current_mode": manager.mode.value,
@@ -70,15 +72,9 @@ async def get_all_modes() -> Dict[str, Any]:
 
 @router.post("/transition")
 async def transition_mode(request: TransitionRequest) -> Dict[str, Any]:
-    """切换交易模式
-    
-    注意:
-    - 切换到 LIVE 模式需要 confirmed=true
-    - 切换会断开当前 Adapter 并连接新的 Adapter
-    - Portfolio 会自动隔离
-    """
-    manager = get_trading_mode_manager()
-    
+    """切换交易模式 - 通过 RuntimeCommandBus 调度"""
+    from runtime.command.command_bus import get_command_bus, CommandType
+
     try:
         target_mode = TradingMode(request.target_mode.lower())
     except ValueError:
@@ -86,30 +82,49 @@ async def transition_mode(request: TransitionRequest) -> Dict[str, Any]:
             status_code=400,
             detail=f"Invalid mode: {request.target_mode}. Must be one of: backtest, paper, live"
         )
-    
-    result = await manager.transition_to(
-        target_mode=target_mode,
-        reason=request.reason,
-        confirmed=request.confirmed,
-        force=request.force,
+
+    bus = get_command_bus()
+    cmd_result = await bus.execute(
+        CommandType.SWITCH_MODE,
+        {
+            "target_mode": request.target_mode.lower(),
+            "reason": request.reason,
+            "confirmed": request.confirmed,
+        },
+        source="api.trading_mode",
     )
-    
-    if not result.get("success"):
-        if result.get("requires_confirmation"):
-            return result
-        raise HTTPException(
-            status_code=400,
-            detail=result.get("error", "Transition failed")
+
+    if not cmd_result.success:
+        manager = get_trading_mode_manager()
+        result = await manager.transition_to(
+            target_mode=target_mode,
+            reason=request.reason,
+            confirmed=request.confirmed,
+            force=request.force,
         )
-    
-    return result
+
+        if not result.get("success"):
+            if result.get("requires_confirmation"):
+                return result
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("error", "Transition failed")
+            )
+        return result
+
+    return {
+        "success": True,
+        "mode": request.target_mode.lower(),
+        "message": f"Mode transition dispatched via RuntimeCommandBus",
+        "dispatch_via": "runtime_command_bus",
+    }
 
 
 @router.post("/transition/preview")
 async def preview_transition(request: TransitionRequest) -> Dict[str, Any]:
     """预览模式切换 (不实际执行)"""
     manager = get_trading_mode_manager()
-    
+
     try:
         target_mode = TradingMode(request.target_mode.lower())
     except ValueError:
@@ -117,12 +132,12 @@ async def preview_transition(request: TransitionRequest) -> Dict[str, Any]:
             status_code=400,
             detail=f"Invalid mode: {request.target_mode}"
         )
-    
+
     can_transition, message = await manager.can_transition_to(target_mode)
-    
+
     target_config = manager.get_all_modes_info()
     target_info = next((m for m in target_config if m["mode"] == target_mode.value), None)
-    
+
     return {
         "can_transition": can_transition,
         "message": message,
@@ -135,22 +150,18 @@ async def preview_transition(request: TransitionRequest) -> Dict[str, Any]:
 
 @router.get("/portfolio")
 async def get_portfolio(mode: str = None) -> Dict[str, Any]:
-    """获取 Portfolio
-    
-    Args:
-        mode: 可选，指定模式。不指定则返回当前模式的 Portfolio
-    """
+    """获取 Portfolio"""
     manager = get_trading_mode_manager()
-    
+
     target_mode = None
     if mode:
         try:
             target_mode = TradingMode(mode.lower())
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid mode: {mode}")
-    
+
     portfolio = manager.get_portfolio(target_mode)
-    
+
     return {
         "mode": (target_mode or manager.mode).value,
         "portfolio": portfolio,
@@ -168,12 +179,12 @@ async def get_stats() -> Dict[str, Any]:
 async def set_exchange(request: SetExchangeRequest) -> Dict[str, Any]:
     """设置交易所"""
     manager = get_trading_mode_manager()
-    
+
     try:
         manager.set_exchange(request.exchange)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
+
     return {
         "success": True,
         "exchange": request.exchange,
@@ -186,7 +197,7 @@ async def safety_check() -> Dict[str, Any]:
     """安全检查 - 是否可以安全交易"""
     manager = get_trading_mode_manager()
     is_safe, message = manager.is_safe_to_trade()
-    
+
     return {
         "is_safe": is_safe,
         "message": message,
