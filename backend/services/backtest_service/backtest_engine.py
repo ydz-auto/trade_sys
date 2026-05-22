@@ -566,9 +566,11 @@ async def run_parallel_optimization(
     enable_gpu: bool = True,
 ) -> List[Any]:
     """
-    并行参数优化
+    并行参数优化（走 Runtime 主链）
     
-    使用 GPU 加速特征计算，多进程并行回测。
+    使用 OptimizationBacktestEngine（走 ReplayRuntime），
+    asyncio.gather 并行执行多组参数回测。
+    GPU 加速特征计算由 shared/acceleration 自动处理。
     
     Args:
         symbol: 交易对
@@ -577,31 +579,37 @@ async def run_parallel_optimization(
         start_time: 开始时间戳
         end_time: 结束时间戳
         data_path: 数据路径
-        n_workers: 并行进程数
+        n_workers: 并行并发数
         enable_gpu: 是否启用 GPU
     
     Returns:
         回测结果列表
     """
-    from application.optimization_service.parallel_engine import (
-        ParallelBacktestEngine, BacktestConfig, generate_param_grid
+    from application.optimization_service.engine import (
+        OptimizationBacktestEngine, BacktestConfig
     )
     
     config = BacktestConfig()
+    engine = OptimizationBacktestEngine(config)
     
-    engine = ParallelBacktestEngine(config)
+    max_concurrent = n_workers or 4
+    semaphore = asyncio.Semaphore(max_concurrent)
     
-    results = await engine.optimize_parallel(
-        symbol=symbol,
-        strategy_id=strategy_id,
-        param_grid=param_grid,
-        start_time=start_time,
-        end_time=end_time,
-        data_path=data_path,
-        n_workers=n_workers,
-    )
+    async def _run_single(params: Dict[str, Any]):
+        async with semaphore:
+            return await engine.run(
+                symbol=symbol,
+                strategy_id=strategy_id,
+                params=params,
+                start_time=start_time,
+                end_time=end_time,
+                data_path=data_path,
+            )
     
-    return results
+    tasks = [_run_single(params) for params in param_grid]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    return [r for r in results if not isinstance(r, Exception)]
 
 
 # 示例策略

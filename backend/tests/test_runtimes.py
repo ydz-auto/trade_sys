@@ -4,7 +4,7 @@ import sys
 import os
 import traceback
 
-sys.path.insert(0, '.')
+sys.path.insert(0, '..')
 
 os.environ['KAFKA_BOOTSTRAP_SERVERS'] = 'mock:9092'
 os.environ['REDIS_URL'] = 'redis://mock:6379/0'
