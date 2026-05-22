@@ -291,3 +291,6 @@ class OptimizationBacktestAdapter:
 
 
 import asyncio
+
+
+OptimizationBacktestEngine = OptimizationBacktestAdapter

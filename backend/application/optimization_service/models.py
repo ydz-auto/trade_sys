@@ -108,6 +108,7 @@ class OptimizationConfig:
     param_grid: Optional[dict] = None
     n_trials: int = 50
     max_concurrent: int = 3
+    use_multiprocess: bool = True
     
     use_runtime: bool = True
     enable_slippage: bool = True

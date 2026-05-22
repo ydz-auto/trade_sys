@@ -26,8 +26,187 @@ import uuid
 import json
 
 from infrastructure.logging import get_logger
+from infrastructure.time_authority import ensure_time_ms
 
-from .engine import OptimizationBacktestEngine, BacktestConfig, BacktestResult
+from .engine import OptimizationBacktestAdapter as OptimizationBacktestEngine, BacktestConfig, BacktestResult
+
+
+def _run_single_backtest_sync(
+    data_path: str,
+    symbol: str,
+    strategy_id: str,
+    start_time: str,
+    end_time: str,
+    params: Dict[str, Any],
+    backtest_config: BacktestConfig,
+    metric: str,
+) -> Dict[str, Any]:
+    """独立的同步回测函数（可被 pickle）"""
+    import pandas as pd
+    import numpy as np
+    from datetime import datetime
+    
+    if isinstance(data_path, Path):
+        data_path = str(data_path)
+    
+    path = Path(data_path)
+    if not path.exists():
+        path = path.parent / "features_opt.parquet"
+    
+    if not path.exists():
+        return {
+            "params": params,
+            "score": -float('inf'),
+            "result": None,
+            "error": f"Data file not found: {path}",
+        }
+    
+    df = pd.read_parquet(path)
+    
+    start_dt = pd.to_datetime(start_time)
+    end_dt = pd.to_datetime(end_time)
+    df = df[(df["timestamp"] >= start_dt) & (df["timestamp"] <= end_dt)]
+    
+    if len(df) == 0:
+        return {
+            "params": params,
+            "score": -float('inf'),
+            "result": None,
+            "error": "No data in date range",
+        }
+    
+    fast = params.get("fast", 10)
+    slow = params.get("slow", 50)
+    
+    df["fast_ma"] = df["close"].rolling(fast).mean()
+    df["slow_ma"] = df["close"].rolling(slow).mean()
+    df["signal"] = 0
+    df.loc[df["fast_ma"] > df["slow_ma"], "signal"] = 1
+    df.loc[df["fast_ma"] < df["slow_ma"], "signal"] = -1
+    
+    position = None
+    trades = []
+    capital = backtest_config.initial_capital
+    
+    for i in range(slow, len(df)):
+        row = df.iloc[i]
+        current_price = row["close"]
+        current_signal = row["signal"]
+        
+        if pd.isna(row["fast_ma"]) or pd.isna(row["slow_ma"]):
+            continue
+        
+        if position is not None:
+            pnl_pct = (current_price - position["entry_price"]) / position["entry_price"]
+            if position["direction"] == "short":
+                pnl_pct = -pnl_pct
+            
+            if pnl_pct <= -backtest_config.stop_loss:
+                exit_price = current_price * (1 - backtest_config.slippage)
+                pnl = position["quantity"] * (exit_price - position["entry_price"])
+                if position["direction"] == "short":
+                    pnl = position["quantity"] * (position["entry_price"] - exit_price)
+                trades.append({
+                    "entry_time": position["entry_time"],
+                    "exit_time": row["timestamp"],
+                    "entry_price": position["entry_price"],
+                    "exit_price": exit_price,
+                    "quantity": position["quantity"],
+                    "direction": position["direction"],
+                    "pnl": pnl,
+                    "pnl_pct": pnl_pct,
+                    "exit_reason": "stop_loss",
+                })
+                capital += pnl
+                position = None
+            elif pnl_pct >= backtest_config.take_profit:
+                exit_price = current_price * (1 - backtest_config.slippage)
+                pnl = position["quantity"] * (exit_price - position["entry_price"])
+                if position["direction"] == "short":
+                    pnl = position["quantity"] * (position["entry_price"] - exit_price)
+                trades.append({
+                    "entry_time": position["entry_time"],
+                    "exit_time": row["timestamp"],
+                    "entry_price": position["entry_price"],
+                    "exit_price": exit_price,
+                    "quantity": position["quantity"],
+                    "direction": position["direction"],
+                    "pnl": pnl,
+                    "pnl_pct": pnl_pct,
+                    "exit_reason": "take_profit",
+                })
+                capital += pnl
+                position = None
+            elif current_signal == -1 and position["direction"] == "long":
+                exit_price = current_price * (1 - backtest_config.slippage)
+                pnl = position["quantity"] * (exit_price - position["entry_price"])
+                trades.append({
+                    "entry_time": position["entry_time"],
+                    "exit_time": row["timestamp"],
+                    "entry_price": position["entry_price"],
+                    "exit_price": exit_price,
+                    "quantity": position["quantity"],
+                    "direction": position["direction"],
+                    "pnl": pnl,
+                    "pnl_pct": pnl_pct,
+                    "exit_reason": "signal",
+                })
+                capital += pnl
+                position = None
+        
+        if position is None and current_signal == 1:
+            position_value = capital * backtest_config.position_size
+            quantity = position_value / current_price
+            position = {
+                "entry_time": row["timestamp"],
+                "entry_price": current_price * (1 + backtest_config.slippage),
+                "quantity": quantity,
+                "direction": "long",
+            }
+    
+    if position is not None:
+        last_price = df.iloc[-1]["close"]
+        exit_price = last_price * (1 - backtest_config.slippage)
+        pnl = position["quantity"] * (exit_price - position["entry_price"])
+        trades.append({
+            "entry_time": position["entry_time"],
+            "exit_time": df.iloc[-1]["timestamp"],
+            "entry_price": position["entry_price"],
+            "exit_price": exit_price,
+            "quantity": position["quantity"],
+            "direction": position["direction"],
+            "pnl": pnl,
+            "pnl_pct": (exit_price - position["entry_price"]) / position["entry_price"],
+            "exit_reason": "end",
+        })
+        capital += pnl
+    
+    total_return = (capital - backtest_config.initial_capital) / backtest_config.initial_capital
+    
+    if trades:
+        wins = [t for t in trades if t["pnl"] > 0]
+        losses = [t for t in trades if t["pnl"] <= 0]
+        returns = [t["pnl_pct"] for t in trades]
+        
+        if metric == "sharpe_ratio" and len(returns) > 1:
+            score = np.mean(returns) / (np.std(returns) + 1e-10) * np.sqrt(252)
+        elif metric == "total_return":
+            score = total_return
+        elif metric == "win_rate":
+            score = len(wins) / len(trades) if trades else 0
+        else:
+            score = total_return
+    else:
+        score = -float('inf')
+    
+    return {
+        "params": params,
+        "score": score,
+        "result": None,
+        "trades": trades,
+        "total_return": total_return,
+        "total_trades": len(trades),
+    }
 from .models import (
     OptimizationTask,
     OptimizationConfig,
@@ -121,6 +300,47 @@ class OptimizationService:
         self._tasks: Dict[str, OptimizationTask] = {}
         self._results: Dict[str, OptimizationResult] = {}
     
+    def _run_parallel_multiprocess(
+        self,
+        engine,
+        data_path,
+        symbol: str,
+        strategy_id: str,
+        start_time: str,
+        end_time: str,
+        param_combinations: List[Dict[str, Any]],
+        max_workers: int,
+        metric: str,
+    ) -> List[Dict[str, Any]]:
+        """使用 ProcessPoolExecutor 进行真正的多进程并行"""
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        
+        backtest_config = engine.config
+        results = []
+        
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    _run_single_backtest_sync,
+                    data_path, symbol, strategy_id, start_time, end_time,
+                    params, backtest_config, metric
+                ): params for params in param_combinations
+            }
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                    results.append(result)
+                except Exception as e:
+                    logger.warning(f"Multiprocess combo failed: {e}")
+                    results.append({
+                        "params": futures[future],
+                        "score": -float('inf'),
+                        "result": None,
+                        "error": str(e),
+                    })
+        
+        return results
+    
     async def create_task(
         self,
         strategy_id: str,
@@ -203,10 +423,15 @@ class OptimizationService:
                 max_hold_hours=task.config.max_hold_hours,
                 enable_slippage=task.config.enable_slippage,
                 enable_latency=task.config.enable_latency,
-                resample_freq=task.config.resample_freq,
             )
             
             engine = OptimizationBacktestEngine(backtest_config)
+            
+            # Time Authority: 统一转换为 int64 ms
+            opt_start_ms = ensure_time_ms(task.config.optimization_start, "optimization_start")
+            opt_end_ms = ensure_time_ms(task.config.optimization_end, "optimization_end")
+            backtest_start_ms = ensure_time_ms(task.config.backtest_start, "backtest_start") if task.config.backtest_start else None
+            backtest_end_ms = ensure_time_ms(task.config.backtest_end, "backtest_end") if task.config.backtest_end else None
             
             param_combinations = task.strategy_config.param_grid.get_combinations()
             task.total_combos = len(param_combinations)
@@ -216,37 +441,121 @@ class OptimizationService:
             best_params = None
             best_result = None
             
-            for idx, params in enumerate(param_combinations):
-                task.current_combo = idx + 1
-                task.progress = task.current_combo / task.total_combos
+            max_concurrent = getattr(task.config, 'max_concurrent', 4) or 4
+            semaphore = asyncio.Semaphore(max_concurrent)
+            
+            async def _run_single(params: Dict[str, Any]) -> Dict[str, Any]:
+                async with semaphore:
+                    backtest_result = await engine.run(
+                        data_path=opt_data_path,
+                        symbol=task.symbol,
+                        strategy_id=task.strategy_config.strategy_id,
+                        params=params,
+                        start_time=opt_start_ms,
+                        end_time=opt_end_ms,
+                    )
+                    score = self._calculate_score(backtest_result, task.config.metric)
+                    return {
+                        "params": params,
+                        "score": score,
+                        "result": backtest_result,
+                    }
+            
+            if len(param_combinations) > 1:
+                use_multiprocess = getattr(task.config, 'use_multiprocess', True)
                 
-                backtest_result = await engine.run(
-                    data_path=opt_data_path,
-                    symbol=task.symbol,
-                    strategy_id=task.strategy_config.strategy_id,
-                    params=params,
-                    start_time=task.config.optimization_start,
-                    end_time=task.config.optimization_end,
-                )
+                if use_multiprocess:
+                    logger.info(
+                        f"Parallel optimization (multiprocess): {len(param_combinations)} combos, "
+                        f"max_workers={max_concurrent}"
+                    )
+                    loop = asyncio.get_event_loop()
+                    completed = await loop.run_in_executor(
+                        None,
+                        self._run_parallel_multiprocess,
+                        engine, opt_data_path, task.symbol, task.strategy_config.strategy_id,
+                        task.config.optimization_start, task.config.optimization_end,
+                        param_combinations, max_concurrent, task.config.metric
+                    )
+                else:
+                    logger.info(
+                        f"Parallel optimization (async): {len(param_combinations)} combos, "
+                        f"max_concurrent={max_concurrent}"
+                    )
+                    tasks = [_run_single(p) for p in param_combinations]
+                    completed = await asyncio.gather(*tasks, return_exceptions=True)
                 
-                score = self._calculate_score(backtest_result, task.config.metric)
-                
-                all_results.append({
-                    "params": params,
-                    "score": score,
-                    "metrics": backtest_result.to_dict(),
-                })
-                
-                if score > best_score:
-                    best_score = score
-                    best_params = params
-                    best_result = backtest_result
+                for item in completed:
+                    if isinstance(item, Exception):
+                        logger.warning(f"Optimization combo failed: {item}")
+                        continue
+                    
+                    if item.get("error"):
+                        logger.warning(f"Optimization combo error: {item['error']}")
+                        continue
+                    
+                    all_results.append({
+                        "params": item["params"],
+                        "score": item["score"],
+                        "metrics": {
+                            "total_return": item.get("total_return", 0),
+                            "total_trades": item.get("total_trades", 0),
+                            "trades": item.get("trades", []),
+                        },
+                    })
+                    
+                    if item["score"] > best_score:
+                        best_score = item["score"]
+                        best_params = item["params"]
+                        best_result = item.get("result")
+                        if best_result is None and item.get("trades"):
+                            best_result = item
+                    
+                    task.current_combo = len(all_results)
+                    task.progress = task.current_combo / task.total_combos
+            else:
+                for idx, params in enumerate(param_combinations):
+                    task.current_combo = idx + 1
+                    task.progress = task.current_combo / task.total_combos
+                    
+                    backtest_result = await engine.run(
+                        data_path=opt_data_path,
+                        symbol=task.symbol,
+                        strategy_id=task.strategy_config.strategy_id,
+                        params=params,
+                        start_time=opt_start_ms,
+                        end_time=opt_end_ms,
+                    )
+                    
+                    score = self._calculate_score(backtest_result, task.config.metric)
+                    
+                    all_results.append({
+                        "params": params,
+                        "score": score,
+                        "metrics": backtest_result.to_dict(),
+                    })
+                    
+                    if score > best_score:
+                        best_score = score
+                        best_params = params
+                        best_result = backtest_result
             
             result.best_params = best_params
             result.best_score = best_score
-            result.best_metrics = self._convert_to_optimization_metrics(best_result)
+            
+            if isinstance(best_result, dict) and best_result.get("trades"):
+                result.best_metrics = OptimizationMetrics(
+                    total_return=best_result.get("total_return", 0),
+                    total_trades=best_result.get("total_trades", 0),
+                    win_rate=len([t for t in best_result.get("trades", []) if t.get("pnl", 0) > 0]) / max(1, best_result.get("total_trades", 1)),
+                    sharpe_ratio=best_score,
+                )
+                result.trades = [self._convert_trade_dict(t) for t in best_result.get("trades", [])[:100]]
+            else:
+                result.best_metrics = self._convert_to_optimization_metrics(best_result) if best_result else None
+                result.trades = [self._convert_trade(t) for t in (best_result.trades[:100] if best_result else [])]
+            
             result.all_results = sorted(all_results, key=lambda x: -x['score'])[:10]
-            result.trades = [self._convert_trade(t) for t in (best_result.trades[:100] if best_result else [])]
             
             # 回测期验证
             if (task.config.backtest_start and task.config.backtest_end and 
@@ -257,8 +566,8 @@ class OptimizationService:
                     symbol=task.symbol,
                     strategy_id=task.strategy_config.strategy_id,
                     params=best_params,
-                    start_time=task.config.backtest_start,
-                    end_time=task.config.backtest_end,
+                    start_time=backtest_start_ms,
+                    end_time=backtest_end_ms,
                 )
                 
                 # 添加回测期信息
@@ -288,7 +597,121 @@ class OptimizationService:
             task.completed_at = datetime.now()
         
         return result
-    
+
+    async def _run_task_sequential(self, task_id: str) -> OptimizationResult:
+        """
+        串行执行优化任务（用于对比并行加速效果）
+        不使用 asyncio.gather，逐个执行参数组合。
+        """
+        from application.optimization_service.models import OptimizationResult, OptimizationStatus
+
+        task = self._tasks.get(task_id)
+        if not task:
+            raise ValueError(f"Task not found: {task_id}")
+
+        result = OptimizationResult(
+            optimization_id=task_id,
+            strategy_id=task.strategy_config.strategy_id,
+            symbol=task.symbol,
+            status=OptimizationStatus.RUNNING,
+            created_at=datetime.now().isoformat(),
+            runtime_stats={"mode": "sequential"},
+        )
+
+        try:
+            data_cache_path = self._get_data_path(task.symbol)
+            opt_data_path = data_cache_path / "features_opt.parquet"
+            backtest_data_path = data_cache_path / "features_backtest.parquet"
+
+            if not opt_data_path.exists():
+                raise ValueError(f"Optimization data not found: {opt_data_path}")
+
+            backtest_config = BacktestConfig(
+                initial_capital=task.config.initial_capital,
+                commission=task.config.commission,
+                slippage=task.config.slippage,
+                position_size=task.config.position_size,
+                stop_loss=task.config.stop_loss,
+                take_profit=task.config.take_profit,
+                max_hold_hours=task.config.max_hold_hours,
+                enable_slippage=task.config.enable_slippage,
+                enable_latency=task.config.enable_latency,
+            )
+
+            engine = OptimizationBacktestEngine(backtest_config)
+
+            param_combinations = task.strategy_config.param_grid.get_combinations()
+            task.total_combos = len(param_combinations)
+
+            all_results = []
+            best_score = -float('inf')
+            best_params = None
+            best_result = None
+
+            logger.info(
+                f"Sequential optimization: {len(param_combinations)} combos, "
+                f"one by one (no asyncio.gather)"
+            )
+
+            for idx, params in enumerate(param_combinations):
+                task.current_combo = idx + 1
+                task.progress = task.current_combo / task.total_combos
+
+                backtest_result = await engine.run(
+                    data_path=opt_data_path,
+                    symbol=task.symbol,
+                    strategy_id=task.strategy_config.strategy_id,
+                    params=params,
+                    start_time=task.config.optimization_start,
+                    end_time=task.config.optimization_end,
+                )
+
+                score = self._calculate_score(backtest_result, task.config.metric)
+
+                all_results.append({
+                    "params": params,
+                    "score": score,
+                    "metrics": backtest_result.to_dict(),
+                })
+
+                if score > best_score:
+                    best_score = score
+                    best_params = params
+                    best_result = backtest_result
+
+                logger.info(
+                    f"  Sequential [{idx + 1}/{len(param_combinations)}] "
+                    f"params={params}, score={score:.4f}"
+                )
+
+            result.best_params = best_params
+            result.best_score = best_score
+            result.best_metrics = self._convert_to_optimization_metrics(best_result)
+            result.all_results = sorted(all_results, key=lambda x: -x['score'])[:10]
+            result.trades = [self._convert_trade(t) for t in (best_result.trades[:100] if best_result else [])]
+
+            result.status = OptimizationStatus.COMPLETED
+            result.completed_at = datetime.now()
+
+            task.status = OptimizationStatus.COMPLETED
+            task.completed_at = datetime.now()
+            task.result = result
+
+            logger.info(f"Sequential optimization completed: {task_id}, best_score={best_score:.4f}")
+
+        except Exception as e:
+            logger.error(f"Sequential optimization failed: {task_id} - {e}")
+            import traceback
+            traceback.print_exc()
+            result.status = OptimizationStatus.FAILED
+            result.error = str(e)
+            result.completed_at = datetime.now()
+
+            task.status = OptimizationStatus.FAILED
+            task.completed_at = datetime.now()
+
+        return result
+
     async def run_batch(
         self,
         strategy_ids: List[str],
@@ -386,6 +809,29 @@ class OptimizationService:
             exit_reason=trade.exit_reason,
             slippage=trade.slippage,
             latency_ms=trade.latency_ms,
+        )
+    
+    def _convert_trade_dict(self, trade: dict) -> TradeRecord:
+        """转换字典格式的交易记录"""
+        from datetime import datetime
+        entry_time = trade.get("entry_time")
+        exit_time = trade.get("exit_time")
+        if isinstance(entry_time, str):
+            entry_time = datetime.fromisoformat(entry_time)
+        if isinstance(exit_time, str):
+            exit_time = datetime.fromisoformat(exit_time)
+        return TradeRecord(
+            entry_time=entry_time,
+            exit_time=exit_time,
+            entry_price=trade.get("entry_price", 0),
+            exit_price=trade.get("exit_price", 0),
+            direction=trade.get("direction", "long"),
+            quantity=trade.get("quantity", 0),
+            pnl=trade.get("pnl", 0),
+            pnl_pct=trade.get("pnl_pct", 0),
+            exit_reason=trade.get("exit_reason", ""),
+            slippage=trade.get("slippage", 0),
+            latency_ms=trade.get("latency_ms", 0),
         )
 
 
