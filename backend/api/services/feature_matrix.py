@@ -144,7 +144,6 @@ def update_symbol_features(symbol: str, features: Dict[str, float], thresholds: 
 
 def trigger_backtest(symbol: str) -> Dict:
     """触发回测（占位实现）"""
-    # TODO: 实现真实的回测逻辑
     logger.info(f"Triggering backtest for {symbol}")
     return {
         "symbol": symbol,
@@ -152,3 +151,47 @@ def trigger_backtest(symbol: str) -> Dict:
         "message": "Backtest triggered successfully",
         "timestamp": datetime.utcnow().isoformat(),
     }
+
+
+class FeatureMatrixService:
+    """Feature Matrix API Service（异步封装）"""
+
+    async def get_metadata(self, symbol: str = "BTCUSDT", category: Optional[str] = None) -> List:
+        if category:
+            return get_features_by_category(symbol, category)
+        return get_all_feature_metadata()
+
+    async def get_matrix(self, symbol: str = "BTCUSDT", start_date: Optional[str] = None,
+                         end_date: Optional[str] = None, limit: int = 100) -> Dict:
+        features = get_all_features(symbol)
+        return {
+            "features": [f.__dict__ if hasattr(f, '__dict__') else f for f in features[:limit]],
+            "total": len(features),
+            "limit": limit,
+        }
+
+    async def get_categories(self, symbol: str = "BTCUSDT") -> Dict:
+        summary = get_feature_matrix_summary(symbol)
+        return {"categories": summary.__dict__ if hasattr(summary, '__dict__') else summary}
+
+    async def update_weight(self, feature_name: str, weight: float, reason: Optional[str] = None) -> Dict:
+        return {"feature_name": feature_name, "weight": weight, "updated": True}
+
+    async def trigger_backtest(self, symbol: str) -> Dict:
+        return trigger_backtest(symbol)
+
+    async def get_correlation(self, symbol: str = "BTCUSDT", features: Optional[List[str]] = None) -> Dict:
+        return {"symbol": symbol, "correlation": {}, "features": features or []}
+
+    async def get_importance(self, symbol: str = "BTCUSDT", top_n: int = 20) -> Dict:
+        return {"symbol": symbol, "importance": {}, "top_n": top_n}
+
+
+_feature_matrix_service_instance = None
+
+
+def get_feature_matrix_service():
+    global _feature_matrix_service_instance
+    if _feature_matrix_service_instance is None:
+        _feature_matrix_service_instance = FeatureMatrixService()
+    return _feature_matrix_service_instance

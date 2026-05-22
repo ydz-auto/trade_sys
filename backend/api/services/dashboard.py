@@ -809,3 +809,30 @@ def _mock_news() -> List[NewsItem]:
             url="https://example.com/news/2"
         ),
     ]
+
+
+_dashboard_service_instance = None
+
+
+def get_dashboard_service():
+    global _dashboard_service_instance
+    if _dashboard_service_instance is None:
+        _dashboard_service_instance = type("DashboardService", (), {
+            "get_overview": lambda self, **kw: _get_overview_data(**kw),
+            "get_prices": lambda self, **kw: _mock_prices(),
+            "get_factors": lambda self, **kw: _mock_factors(),
+            "get_positions": lambda self, **kw: _mock_positions(),
+            "get_news": lambda self, **kw: _mock_news(),
+        })()
+    return _dashboard_service_instance
+
+
+def _get_overview_data(**kwargs):
+    symbol = kwargs.get("symbol", "BTCUSDT")
+    return {
+        "symbol": symbol,
+        "price": _mock_prices(),
+        "factors": _mock_factors(),
+        "positions": _mock_positions(),
+        "news": _mock_news(),
+    }

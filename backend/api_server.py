@@ -38,11 +38,9 @@ async def lifespan(app: FastAPI):
     await governor.start()
 
     ws_gateway = await get_ws_gateway()
-    governor.create_task(
-        ws_gateway.run_redis_subscriber(),
-        name="ws_redis_subscriber",
-    )
-    logger.info("WebSocket Gateway Redis subscriber started via RuntimeGovernor")
+    import asyncio
+    asyncio.ensure_future(ws_gateway.run_redis_subscriber())
+    logger.info("WebSocket Gateway Redis subscriber started")
 
     logger.info("API Server started successfully")
     logger.info(f"  Mode: {governor.get_mode().value}")
