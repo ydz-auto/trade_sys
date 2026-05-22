@@ -27,6 +27,17 @@ import pandas as pd
 import numpy as np
 
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import (
+    RuntimeClock,
+    ClockMode,
+    get_clock,
+    set_clock_mode,
+    now_ms,
+)
+from infrastructure.feature.partial_candle_handler import (
+    PartialCandleHandler,
+    get_partial_candle_handler,
+)
 from .unified_calculator import UnifiedFeatureCalculator, get_feature_calculator
 
 logger = get_logger("feature_generation_service")
@@ -71,6 +82,8 @@ class FeatureGenerationService:
     def __init__(self, config: GenerationConfig = None):
         self.config = config or GenerationConfig()
         self.calculator = get_feature_calculator()
+        self._partial_candle_handler = get_partial_candle_handler()
+        self._clock = get_clock()
     
     async def generate_features(
         self,
@@ -183,6 +196,129 @@ class FeatureGenerationService:
         features = self._compute_market_structure_features(df)
         
         return features
+    
+    async def generate_features_runtime(
+        self,
+        symbol: str,
+        exchange: str = "binance",
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        mode: str = "replay",
+    ) -> pd.DataFrame:
+        if mode == "replay":
+            set_clock_mode(ClockMode.REPLAY)
+        elif mode == "paper":
+            set_clock_mode(ClockMode.PAPER)
+        else:
+            set_clock_mode(ClockMode.LIVE)
+        
+        klines_path = self.config.data_root / "crypto" / exchange / "klines" / f"symbol={symbol}"
+        
+        if not klines_path.exists():
+            logger.error(f"Klines data not found: {klines_path}")
+            return pd.DataFrame()
+        
+        df = await self._load_klines(klines_path, start_time, end_time)
+        
+        if df.empty:
+            logger.warning(f"No data found for {symbol}")
+            return pd.DataFrame()
+        
+        df = self.calculator.compute_batch(df, symbol)
+        
+        if mode == "replay" and 'timestamp' in df.columns and not df.empty:
+            last_ts = df['timestamp'].iloc[-1]
+            if hasattr(last_ts, 'timestamp'):
+                last_ts_ms = int(last_ts.timestamp() * 1000)
+            else:
+                last_ts_ms = int(last_ts)
+            self._clock.advance_to(last_ts_ms)
+        
+        return df
+    
+    async def generate_features_safe(
+        self,
+        symbol: str,
+        exchange: str = "binance",
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        mode: str = "replay",
+        normalize_columns: Optional[List[str]] = None,
+        target_timeframe_ms: Optional[int] = None,
+    ) -> pd.DataFrame:
+        df = await self.generate_features_runtime(
+            symbol=symbol,
+            exchange=exchange,
+            start_time=start_time,
+            end_time=end_time,
+            mode=mode,
+        )
+        
+        if df.empty:
+            return df
+        
+        if normalize_columns:
+            existing_cols = [c for c in normalize_columns if c in df.columns]
+            if existing_cols:
+                df = self._safe_zscore_normalize(df, existing_cols)
+        
+        if target_timeframe_ms is not None:
+            df = self._safe_multi_timeframe_aggregate(df, target_timeframe_ms)
+        
+        return df
+    
+    def _safe_zscore_normalize(
+        self,
+        df: pd.DataFrame,
+        columns: List[str],
+        timestamp_col: str = 'timestamp',
+    ) -> pd.DataFrame:
+        df = df.copy()
+        df = df.sort_values(timestamp_col).reset_index(drop=True)
+        
+        for col in columns:
+            if col not in df.columns:
+                continue
+            
+            expanding_mean = df[col].expanding(min_periods=2).mean()
+            expanding_std = df[col].expanding(min_periods=2).std()
+            
+            zscore_col = f"{col}_zscore"
+            df[zscore_col] = (df[col] - expanding_mean) / expanding_std
+            df[zscore_col] = df[zscore_col].replace([np.inf, -np.inf], np.nan)
+        
+        return df
+    
+    def _safe_multi_timeframe_aggregate(
+        self,
+        df: pd.DataFrame,
+        target_timeframe_ms: int,
+        timestamp_col: str = 'timestamp',
+    ) -> pd.DataFrame:
+        df = df.copy()
+        
+        if timestamp_col not in df.columns:
+            return df
+        
+        if df[timestamp_col].dtype == 'datetime64[ns]' or hasattr(df[timestamp_col].dt, 'tz'):
+            query_time = int(df[timestamp_col].max().timestamp() * 1000)
+        elif pd.api.types.is_numeric_dtype(df[timestamp_col]):
+            query_time = int(df[timestamp_col].max())
+        else:
+            try:
+                query_time = int(pd.Timestamp(df[timestamp_col].max()).timestamp() * 1000)
+            except Exception:
+                query_time = now_ms()
+        
+        result = self._partial_candle_handler.aggregate_to_higher_timeframe(
+            lower_tf_df=df,
+            target_period_ms=target_timeframe_ms,
+            query_time=query_time,
+            timestamp_col=timestamp_col,
+            use_partial=False,
+        )
+        
+        return result
     
     async def _load_klines(
         self,
