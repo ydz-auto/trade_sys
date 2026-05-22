@@ -33,6 +33,13 @@ from infrastructure.runtime_clock import (
     set_clock_mode,
     now_ms
 )
+from infrastructure.time_authority import (
+    TimeAuthority,
+    get_time_authority,
+    ensure_time_ms,
+    normalize_time_ms,
+    check_monotonic
+)
 from infrastructure.feature_availability import (
     SystematicAvailabilityGuard,
     get_systematic_guard
@@ -138,12 +145,14 @@ class TimeCausalReplayRuntime:
     - 不能偷看未来数据
     - Replay/Live 特征完全一致
     - 事件严格按时间推进
+    - 时间类型统一使用 int64 ms
     """
     
     def __init__(self, config: ReplayConfig = None):
         self.config = config or ReplayConfig()
         
-        # 1. 初始化基础设施
+        # 1. 初始化基础设施（时间权威优先）
+        self._time_authority = get_time_authority()
         self._clock = get_clock()
         self._availability_guard = get_systematic_guard()
         self._label_store = get_label_store()
@@ -241,13 +250,29 @@ class TimeCausalReplayRuntime:
         """
         logger.info(f"Starting replay session for {symbol or self.config.symbol}")
         
-        # 1. 更新配置
+        # 1. 更新配置（强制时间归一化）
         if symbol:
             self.config.symbol = symbol
+        
+        # 强制转换时间参数为 int64 ms
         if start_time_ms:
-            self.config.start_time_ms = start_time_ms
+            self.config.start_time_ms = ensure_time_ms(
+                start_time_ms,
+                source="api",
+                field_name="start_time_ms"
+            )
         if end_time_ms:
-            self.config.end_time_ms = end_time_ms
+            self.config.end_time_ms = ensure_time_ms(
+                end_time_ms,
+                source="api",
+                field_name="end_time_ms"
+            )
+        
+        # 验证时间范围
+        if self.config.start_time_ms >= self.config.end_time_ms:
+            raise ValueError(
+                f"start_time_ms ({self.config.start_time_ms}) >= end_time_ms ({self.config.end_time_ms})"
+            )
         
         # 2. 重置状态
         self._session_state = SessionState(
@@ -319,7 +344,7 @@ class TimeCausalReplayRuntime:
         logger.info(f"Warmup completed: {warmup_count} events processed")
     
     async def load_dataset(self, data_path: str):
-        """加载事件数据源"""
+        """加载事件数据源（强制时间归一化）"""
         logger.info(f"Loading dataset from: {data_path}")
         
         try:
@@ -328,21 +353,40 @@ class TimeCausalReplayRuntime:
             
             df = pd.read_parquet(data_path)
             
+            # 时间字段检测和归一化
+            timestamp_col = None
             if 'timestamp' in df.columns:
-                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                timestamp_col = 'timestamp'
             elif 'open_time' in df.columns:
-                df['timestamp'] = pd.to_datetime(df['open_time'], unit='ms')
+                timestamp_col = 'open_time'
+            elif 'time' in df.columns:
+                timestamp_col = 'time'
+            elif 'event_time' in df.columns:
+                timestamp_col = 'event_time'
             
-            df = df.sort_values('timestamp').reset_index(drop=True)
+            if timestamp_col is None:
+                raise ValueError("No timestamp column found in dataset")
             
-            # 创建事件迭代器
+            # 统一转换为 int64 ms
+            df['timestamp_ms'] = df[timestamp_col].apply(
+                lambda x: normalize_time_ms(x, source="parquet", field_name="timestamp")
+            )
+            
+            df = df.sort_values('timestamp_ms').reset_index(drop=True)
+            
+            # 过滤时间范围
+            df = df[
+                (df['timestamp_ms'] >= self.config.start_time_ms) & 
+                (df['timestamp_ms'] <= self.config.end_time_ms)
+            ]
+            
+            # 创建事件迭代器（强制单调检查）
             async def event_generator():
                 for _, row in df.iterrows():
-                    ts_ms = int(row['timestamp'].timestamp() * 1000)
-                    if ts_ms < self.config.start_time_ms:
-                        continue
-                    if ts_ms > self.config.end_time_ms:
-                        break
+                    ts_ms = int(row['timestamp_ms'])
+                    
+                    # 单调递增检查
+                    check_monotonic(ts_ms)
                     
                     event = ReplayEvent(
                         event_id=f"kline_{ts_ms}",
@@ -362,7 +406,8 @@ class TimeCausalReplayRuntime:
             self._event_iterator = event_generator()
             self._session_state.total_events = len(df)
             
-            logger.info(f"Dataset loaded: {len(df)} events")
+            logger.info(f"Dataset loaded: {len(df)} events, "
+                        f"time range: {self.config.start_time_ms} - {self.config.end_time_ms}")
             
         except Exception as e:
             logger.error(f"Failed to load dataset: {e}")
@@ -407,25 +452,34 @@ class TimeCausalReplayRuntime:
     
     async def _process_event(self, event: ReplayEvent):
         """处理单个事件（时间因果安全）"""
+        # 0. 强制验证时间类型（Runtime 内部必须是 int）
+        if not isinstance(event.timestamp_ms, int):
+            raise TypeError(
+                f"Event timestamp must be int, got {type(event.timestamp_ms).__name__}: {event.timestamp_ms}"
+            )
+        
         # 1. 时间因果检查
         if event.timestamp_ms < self._clock.available_at_ms():
             logger.warning(f"Event time {event.timestamp_ms} is in the past! Skipping.")
             return
         
-        # 2. 推进时钟
+        # 2. 单调递增检查
+        check_monotonic(event.timestamp_ms)
+        
+        # 3. 推进时钟
         self._clock.advance_to(event.timestamp_ms)
         
-        # 3. 事件确定性排序
+        # 4. 事件确定性排序
         ordered_event = create_deterministic_event(
             event=event.data,
             timestamp_ms=event.timestamp_ms
         )
         
-        # 4. 特征计算
+        # 5. 特征计算
         if self._feature_runtime:
             await self._feature_runtime.update(ordered_event)
         
-        # 5. 信号生成
+        # 6. 信号生成
         signal = None
         if self._signal_runtime and self._strategy:
             features = await self._feature_runtime.get_features(event.timestamp_ms)
@@ -435,7 +489,7 @@ class TimeCausalReplayRuntime:
                 event.timestamp_ms
             )
         
-        # 6. 执行
+        # 7. 执行
         if signal and self._execution_runtime:
             trade_result = await self._execution_runtime.execute_signal(signal)
             
@@ -443,7 +497,7 @@ class TimeCausalReplayRuntime:
                 self._session_state.trades.append(trade_result)
                 self._session_state.capital += trade_result.get('pnl', 0)
         
-        # 7. 更新状态
+        # 8. 更新状态
         self._session_state.current_time_ms = event.timestamp_ms
         self._session_state.processed_events += 1
         self._session_state.equity_curve.append(self._session_state.capital)

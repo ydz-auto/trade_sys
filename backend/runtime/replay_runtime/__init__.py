@@ -12,11 +12,15 @@ Replay Runtime - 回放运行时
 """
 
 from runtime.replay_runtime.runtime import (
-    ReplayRuntime,
+    TimeCausalReplayRuntime,
     ReplayConfig,
+    SessionState,
+    get_replay_runtime,
 )
 
 __all__ = [
-    "ReplayRuntime",
+    "TimeCausalReplayRuntime",
     "ReplayConfig",
+    "SessionState",
+    "get_replay_runtime",
 ]
