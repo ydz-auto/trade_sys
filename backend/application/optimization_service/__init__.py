@@ -16,7 +16,7 @@ Optimization Service - 策略参数优化服务
 """
 
 from .service import OptimizationService, get_optimization_service
-from .engine import OptimizationBacktestEngine
+from .engine import OptimizationBacktestAdapter
 from .strategy_adapter import StrategySignalAdapter
 from .metrics_collector import OptimizationMetricsCollector
 from .models import (
@@ -27,10 +27,14 @@ from .models import (
     ParamGrid,
 )
 
+# 向后兼容
+OptimizationBacktestEngine = OptimizationBacktestAdapter
+
 __all__ = [
     "OptimizationService",
     "get_optimization_service",
     "OptimizationBacktestEngine",
+    "OptimizationBacktestAdapter",
     "StrategySignalAdapter",
     "OptimizationMetricsCollector",
     "OptimizationTask",
