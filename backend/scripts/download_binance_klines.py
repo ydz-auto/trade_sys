@@ -13,6 +13,10 @@ from pathlib import Path
 from datetime import datetime
 from tqdm import tqdm
 import time
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from scripts._event_emitter import DownloadEventEmitter
 
 SPOT_BASE_URL = "https://data.binance.vision/data/spot/monthly/klines"
 FUTURES_BASE_URL = "https://data.binance.vision/data/futures/um/monthly/klines"
@@ -61,7 +65,9 @@ def download_klines(
         save_base = data_root / "crypto" / "binance" / "klines"
     
     save_base.mkdir(parents=True, exist_ok=True)
-    
+
+    emitter = DownloadEventEmitter()
+
     total_tasks = len(symbols) * len(years) * 12
     pbar = tqdm(total=total_tasks, desc="总进度")
     
@@ -146,7 +152,14 @@ def download_klines(
                     csv_file.unlink()
                     
                     stats["success"] += 1
-                    
+
+                    emitter.emit(
+                        source="binance_klines",
+                        symbol=symbol,
+                        timeframe=interval,
+                        data_path=str(parquet_path),
+                    )
+
                 except Exception as e:
                     print(f"\n错误 {symbol} {year}-{mm}: {e}")
                     stats["error"] += 1
@@ -155,6 +168,8 @@ def download_klines(
                 time.sleep(0.1)
     
     pbar.close()
+    
+    emitter.close()
     
     print("\n" + "=" * 60)
     print(f"下载统计 ({market}):")

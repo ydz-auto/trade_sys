@@ -15,6 +15,10 @@ import time
 import urllib3
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from scripts._event_emitter import DownloadEventEmitter
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -56,7 +60,9 @@ def download_trades(
     
     save_base = data_root / "crypto" / "binance" / "trades"
     save_base.mkdir(parents=True, exist_ok=True)
-    
+
+    emitter = DownloadEventEmitter()
+
     total_tasks = len(symbols) * len(years) * 12
     pbar = tqdm(total=total_tasks, desc="总进度")
     
@@ -163,6 +169,13 @@ def download_trades(
                         csv_file.unlink()
                         
                         stats["success"] += 1
+
+                        emitter.emit(
+                            source="binance_trades",
+                            symbol=symbol,
+                            data_path=str(parquet_path),
+                        )
+
                         break
                         
                     except (requests.exceptions.SSLError, 
@@ -184,6 +197,8 @@ def download_trades(
                 time.sleep(0.2)
     
     pbar.close()
+    
+    emitter.close()
     
     print("\n" + "=" * 60)
     print("下载统计:")

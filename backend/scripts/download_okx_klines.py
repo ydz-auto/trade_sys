@@ -11,6 +11,10 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime, timedelta
 from tqdm import tqdm
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from scripts._event_emitter import DownloadEventEmitter
 
 BASE_URL = "https://www.okx.com/api/v5/market/history-candles"
 
@@ -47,7 +51,9 @@ def download_klines(
     
     save_base = data_root / "crypto" / "okx" / "klines"
     save_base.mkdir(parents=True, exist_ok=True)
-    
+
+    emitter = DownloadEventEmitter()
+
     interval_map = {
         "1m": "1m",
         "5m": "5m",
@@ -168,10 +174,19 @@ def download_klines(
             ]]
             
             final_df.to_parquet(parquet_path, compression="zstd", index=False)
-            
+
+            emitter.emit(
+                source="okx_klines",
+                symbol=symbol,
+                timeframe=bar,
+                data_path=str(parquet_path),
+            )
+
             print(f"保存 {len(final_df)} 条记录到 {parquet_path}")
         else:
             print("未获取到数据")
+
+    emitter.close()
 
 
 if __name__ == "__main__":
