@@ -3,12 +3,14 @@ Optimization Backtest Adapter - Application 层的轻量 Adapter
 
 核心原则：
 - 绝不维护状态！（position, capital, trades 都归 Runtime 层）
-- 绝不自己跑 replay loop！（只委托 ReplayRuntime）
+- 绝不自己跑 replay loop！（完全委托 ReplayRuntime）
 - 只做：
   1. 配置适配
-  2. RuntimeBus 调用
+  2. Runtime 注入
   3. 结果聚合（纯计算）
   4. 回调映射
+
+现在真正实现：Application → ReplayRuntime（不再自己做 replay）
 """
 
 from dataclasses import dataclass, field
@@ -17,6 +19,7 @@ from typing import Dict, List, Optional, Any
 from pathlib import Path
 
 from infrastructure.logging import get_logger
+from runtime.replay_runtime import get_replay_runtime, SessionState
 
 logger = get_logger("optimization_backtest_adapter")
 
@@ -107,11 +110,27 @@ class BacktestResult:
 
 
 class OptimizationBacktestAdapter:
+    """
+    优化回测适配器（Application 层）
+
+    真正的职责：
+    - 配置适配和验证
+    - 注入依赖（Feature/Signal/Execution Runtime）
+    - 调用 ReplayRuntime.run_backtest()
+    - 聚合结果（纯计算）
+
+    禁止：
+    - 维护任何状态（position, capital, trades）
+    - 自己跑 replay loop
+    - 直接调用 pandas
+    """
 
     def __init__(self, config: BacktestConfig = None):
         self.config = config or BacktestConfig()
+        self._replay_runtime = None
         self._gpu_available = False
         self._init_gpu()
+        self._init_runtime()
 
     def _init_gpu(self):
         try:
@@ -124,6 +143,23 @@ class OptimizationBacktestAdapter:
             logger.debug(f"GPU not available: {e}")
             self._gpu_available = False
 
+    def _init_runtime(self):
+        """初始化 ReplayRuntime 并注入依赖"""
+        self._replay_runtime = get_replay_runtime()
+        
+        try:
+            from runtime.feature_matrix_runtime import get_feature_matrix_runtime
+            from runtime.signal_runtime import get_signal_runtime
+            from runtime.execution_runtime import get_execution_runtime
+            
+            self._replay_runtime.attach_feature_runtime(get_feature_matrix_runtime())
+            self._replay_runtime.attach_signal_runtime(get_signal_runtime())
+            self._replay_runtime.attach_execution_runtime(get_execution_runtime())
+            
+            logger.info("ReplayRuntime dependencies attached")
+        except Exception as e:
+            logger.warning(f"Failed to attach runtime dependencies: {e}")
+
     async def run(
         self,
         symbol: str,
@@ -134,218 +170,124 @@ class OptimizationBacktestAdapter:
         data_path: Optional[Path] = None,
     ) -> BacktestResult:
         """
-        运行回测 - 直接使用 BacktestEngine
+        运行回测 - 完全委托给 ReplayRuntime
 
-        流程：
-        1. 加载特征数据
-        2. 生成交易信号
-        3. 运行回测
-        4. 聚合 metrics
+        这是真正的 Runtime-Oriented 调用方式：
+        Application → ReplayRuntime.run_backtest() → SessionState
+
+        Args:
+            symbol: 交易对
+            strategy_id: 策略 ID
+            params: 策略参数
+            start_time: 开始时间（毫秒）
+            end_time: 结束时间（毫秒）
+            data_path: 数据源路径
+
+        Returns:
+            BacktestResult: 聚合后的回测结果
         """
-        import pandas as pd
+        if not self._replay_runtime:
+            raise RuntimeError("ReplayRuntime not initialized")
+
+        logger.info(f"Running backtest via ReplayRuntime: {symbol}, {strategy_id}")
+
+        try:
+            session_state: SessionState = await self._replay_runtime.run_backtest(
+                symbol=symbol,
+                strategy_id=strategy_id,
+                params=params,
+                start_time_ms=start_time,
+                end_time_ms=end_time,
+                initial_capital=self.config.initial_capital,
+                data_path=str(data_path) if data_path else None,
+            )
+
+            return self._aggregate_results(session_state, symbol, strategy_id, params)
+
+        except Exception as e:
+            logger.error(f"Backtest failed: {e}")
+            return BacktestResult(
+                symbol=symbol,
+                strategy_id=strategy_id,
+                params=params,
+                error=str(e)
+            )
+
+    def _aggregate_results(
+        self,
+        session_state: SessionState,
+        symbol: str,
+        strategy_id: str,
+        params: Dict[str, Any],
+    ) -> BacktestResult:
+        """聚合回测结果（纯计算，无副作用）"""
         import numpy as np
-
-        if data_path is None:
-            data_path = Path("data_lake/features_cache/features_opt.parquet")
-
-        if not data_path.exists():
-            data_path = data_path.parent / "features_opt.parquet"
-
-        if not data_path.exists():
-            return BacktestResult(
-                symbol=symbol,
-                strategy_id=strategy_id,
-                params=params,
-                error=f"Data file not found: {data_path}",
-            )
-
-        df = pd.read_parquet(data_path)
-
-        if isinstance(start_time, str):
-            start_dt = pd.to_datetime(start_time)
-        else:
-            start_dt = datetime.fromtimestamp(start_time / 1000)
-
-        if isinstance(end_time, str):
-            end_dt = pd.to_datetime(end_time)
-        else:
-            end_dt = datetime.fromtimestamp(end_time / 1000)
-
-        df = df[(df["timestamp"] >= start_dt) & (df["timestamp"] <= end_dt)]
-
-        if len(df) == 0:
-            return BacktestResult(
-                symbol=symbol,
-                strategy_id=strategy_id,
-                params=params,
-                error="No data in date range",
-            )
-
-        fast = params.get("fast", 10)
-        slow = params.get("slow", 50)
-
-        df["fast_ma"] = df["close"].rolling(fast).mean()
-        df["slow_ma"] = df["close"].rolling(slow).mean()
-        df["signal"] = 0
-        df.loc[df["fast_ma"] > df["slow_ma"], "signal"] = 1
-        df.loc[df["fast_ma"] < df["slow_ma"], "signal"] = -1
-
-        position = None
-        trades = []
-        capital = self.config.initial_capital
-        equity_curve = [capital]
-        peak = capital
-
-        for i in range(slow, len(df)):
-            row = df.iloc[i]
-            current_price = row["close"]
-            current_signal = row["signal"]
-
-            if pd.isna(row["fast_ma"]) or pd.isna(row["slow_ma"]):
-                continue
-
-            if position is not None:
-                pnl_pct = (current_price - position["entry_price"]) / position["entry_price"]
-                if position["direction"] == "short":
-                    pnl_pct = -pnl_pct
-
-                if pnl_pct <= -self.config.stop_loss:
-                    exit_price = current_price * (1 - self.config.slippage)
-                    pnl = position["quantity"] * (exit_price - position["entry_price"])
-                    if position["direction"] == "short":
-                        pnl = position["quantity"] * (position["entry_price"] - exit_price)
-                    trades.append(BacktestTrade(
-                        entry_time=position["entry_time"],
-                        exit_time=row["timestamp"],
-                        entry_price=position["entry_price"],
-                        exit_price=exit_price,
-                        quantity=position["quantity"],
-                        direction=position["direction"],
-                        pnl=pnl,
-                        pnl_pct=pnl_pct,
-                        exit_reason="stop_loss",
-                    ))
-                    capital += pnl
-                    position = None
-                elif pnl_pct >= self.config.take_profit:
-                    exit_price = current_price * (1 - self.config.slippage)
-                    pnl = position["quantity"] * (exit_price - position["entry_price"])
-                    if position["direction"] == "short":
-                        pnl = position["quantity"] * (position["entry_price"] - exit_price)
-                    trades.append(BacktestTrade(
-                        entry_time=position["entry_time"],
-                        exit_time=row["timestamp"],
-                        entry_price=position["entry_price"],
-                        exit_price=exit_price,
-                        quantity=position["quantity"],
-                        direction=position["direction"],
-                        pnl=pnl,
-                        pnl_pct=pnl_pct,
-                        exit_reason="take_profit",
-                    ))
-                    capital += pnl
-                    position = None
-                elif current_signal == -1 and position["direction"] == "long":
-                    exit_price = current_price * (1 - self.config.slippage)
-                    pnl = position["quantity"] * (exit_price - position["entry_price"])
-                    trades.append(BacktestTrade(
-                        entry_time=position["entry_time"],
-                        exit_time=row["timestamp"],
-                        entry_price=position["entry_price"],
-                        exit_price=exit_price,
-                        quantity=position["quantity"],
-                        direction=position["direction"],
-                        pnl=pnl,
-                        pnl_pct=pnl_pct,
-                        exit_reason="signal",
-                    ))
-                    capital += pnl
-                    position = None
-
-            if position is None and current_signal == 1:
-                position_value = capital * self.config.position_size
-                quantity = position_value / current_price
-                position = {
-                    "entry_time": row["timestamp"],
-                    "entry_price": current_price * (1 + self.config.slippage),
-                    "quantity": quantity,
-                    "direction": "long",
-                }
-
-            current_equity = capital
-            if position is not None:
-                current_equity += position["quantity"] * (current_price - position["entry_price"])
-            equity_curve.append(current_equity)
-
-            if current_equity > peak:
-                peak = current_equity
-
-        if position is not None:
-            last_price = df.iloc[-1]["close"]
-            exit_price = last_price * (1 - self.config.slippage)
-            pnl = position["quantity"] * (exit_price - position["entry_price"])
-            trades.append(BacktestTrade(
-                entry_time=position["entry_time"],
-                exit_time=df.iloc[-1]["timestamp"],
-                entry_price=position["entry_price"],
-                exit_price=exit_price,
-                quantity=position["quantity"],
-                direction=position["direction"],
-                pnl=pnl,
-                pnl_pct=(exit_price - position["entry_price"]) / position["entry_price"],
-                exit_reason="end",
-            ))
-            capital += pnl
 
         result = BacktestResult(
             symbol=symbol,
             strategy_id=strategy_id,
             params=params,
-            trades=trades,
-            equity_curve=equity_curve,
         )
 
-        if trades:
-            wins = [t for t in trades if t.pnl > 0]
-            losses = [t for t in trades if t.pnl <= 0]
+        result.equity_curve = session_state.equity_curve
+        result.total_trades = len(session_state.trades)
+        result.total_return = (session_state.capital - self.config.initial_capital) / self.config.initial_capital if self.config.initial_capital > 0 else 0
+        result.annualized_return = result.total_return * 252 / 365
 
-            result.total_trades = len(trades)
+        if session_state.trades:
+            wins = [t for t in session_state.trades if t.get('pnl', 0) > 0]
+            losses = [t for t in session_state.trades if t.get('pnl', 0) <= 0]
+            
             result.winning_trades = len(wins)
             result.losing_trades = len(losses)
-            result.win_rate = len(wins) / len(trades) if trades else 0
+            result.win_rate = len(wins) / len(session_state.trades) if session_state.trades else 0
 
-            result.total_return = (capital - self.config.initial_capital) / self.config.initial_capital
-            result.annualized_return = result.total_return * 365 / max(1, len(df))
+            total_wins = sum(t.get('pnl', 0) for t in wins)
+            total_losses = abs(sum(t.get('pnl', 0) for t in losses))
+            result.profit_factor = total_wins / total_losses if total_losses > 0 else 0
 
-            result.avg_win = np.mean([t.pnl_pct for t in wins]) if wins else 0
-            result.avg_loss = np.mean([t.pnl_pct for t in losses]) if losses else 0
-
-            if losses:
-                result.profit_factor = abs(np.sum([t.pnl for t in wins]) / np.sum([t.pnl for t in losses])) if losses else 0
-
-            returns = [t.pnl_pct for t in trades]
-            result.sharpe_ratio = np.mean(returns) / (np.std(returns) + 1e-10) * np.sqrt(252) if len(returns) > 1 else 0
+            returns = [t.get('pnl', 0) / self.config.initial_capital for t in session_state.trades]
+            result.sharpe_ratio = np.mean(returns) / (np.std(returns) + 1e-10) * np.sqrt(252) if returns else 0
 
             negative_returns = [r for r in returns if r < 0]
             result.sortino_ratio = np.mean(returns) / (np.std(negative_returns) + 1e-10) * np.sqrt(252) if negative_returns else result.sharpe_ratio
 
             peak = self.config.initial_capital
             max_dd = 0
-            for eq in equity_curve:
+            for eq in session_state.equity_curve:
                 if eq > peak:
                     peak = eq
                 dd = (peak - eq) / peak
                 if dd > max_dd:
                     max_dd = dd
             result.max_drawdown = max_dd
-
             result.calmar_ratio = (result.total_return * 252 / 365) / max_dd if max_dd > 0 else 0
-            result.avg_hold_hours = np.mean([(t.exit_time - t.entry_time).total_seconds() / 3600 for t in trades]) if trades else 0
+
+            result.avg_win = np.mean([t.get('pnl', 0) for t in wins]) / self.config.initial_capital if wins else 0
+            result.avg_loss = np.mean([t.get('pnl', 0) for t in losses]) / self.config.initial_capital if losses else 0
 
         return result
 
+    async def run_batch(
+        self,
+        tasks: List[Dict[str, Any]]
+    ) -> Dict[str, BacktestResult]:
+        """批量运行回测"""
+        results = {}
+        
+        for task in tasks:
+            result = await self.run(
+                symbol=task['symbol'],
+                strategy_id=task['strategy_id'],
+                params=task.get('params', {}),
+                start_time=task['start_time'],
+                end_time=task['end_time'],
+                data_path=task.get('data_path'),
+            )
+            key = f"{task['symbol']}_{task['strategy_id']}"
+            results[key] = result
+        
+        return results
+
 
 import asyncio
-
-
-OptimizationBacktestEngine = OptimizationBacktestAdapter

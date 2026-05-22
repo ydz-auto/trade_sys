@@ -52,6 +52,7 @@ from infrastructure.feature.feature_lineage import (
     FeatureLineageSystem,
     get_feature_lineage
 )
+from runtime.feature_matrix_runtime import get_feature_matrix_runtime
 
 
 logger = get_logger("signal_runtime")
@@ -88,6 +89,7 @@ class TimeCausalSignalRuntime:
         self._snapshot_store = get_immutable_snapshot_store("MULTI")
         self._cross_symbol = get_cross_symbol_semantics(self.config.symbols)
         self._lineage = get_feature_lineage()
+        self._feature_matrices = {}
         
         # 2. 设置模式
         self._setup_mode()
@@ -191,14 +193,59 @@ class TimeCausalSignalRuntime:
         
         return signals
     
+    async def generate_signal(
+        self,
+        strategy,
+        features: Dict[str, Any],
+        timestamp_ms: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        为指定策略生成信号（供 ReplayRuntime 调用）
+        
+        Args:
+            strategy: 策略对象
+            features: 特征字典
+            timestamp_ms: 时间戳（毫秒）
+        
+        Returns:
+            Signal 字典或 None
+        """
+        # 1. 时间因果检查
+        if timestamp_ms > self._clock.available_at_ms():
+            logger.warning(f"Timestamp {timestamp_ms} ahead of clock {self._clock.available_at_ms()}")
+            return None
+        
+        # 2. 调用策略生成信号
+        try:
+            signal = strategy.generate_signal(features)
+            
+            if signal:
+                signal['timestamp_ms'] = timestamp_ms
+                signal['strategy_id'] = strategy.__class__.__name__
+                
+                # 记录特征血缘
+                self._lineage.register_source(
+                    feature_name=signal['strategy_id'],
+                    feature_type="signal"
+                )
+            
+            return signal
+        except Exception as e:
+            logger.error(f"Signal generation failed: {e}")
+            return None
+    
     def _get_safe_features(
         self,
         symbol: str,
         timestamp_ms: int
     ) -> Dict[str, Any]:
-        """获取安全特征（时间因果保证）"""
-        # 从 feature_matrix_runtime 获取
-        return {}
+        if symbol not in self._feature_matrices:
+            self._feature_matrices[symbol] = get_feature_matrix_runtime(
+                symbol=symbol,
+                mode=self.config.mode
+            )
+        feature_matrix = self._feature_matrices[symbol]
+        return feature_matrix.get_features_at(timestamp_ms)
     
     async def start(self):
         """启动运行时"""

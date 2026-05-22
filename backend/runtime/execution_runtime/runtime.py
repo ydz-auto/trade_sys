@@ -227,6 +227,55 @@ class ExecutionRuntime(BaseRuntime):
             "timestamp": datetime.now().isoformat(),
         }
     
+    async def execute_signal(self, signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        执行信号（供 ReplayRuntime 调用）
+        
+        Args:
+            signal: 信号字典，包含 signal_type, confidence, reason 等
+        
+        Returns:
+            交易结果字典或 None
+        """
+        if not signal:
+            return None
+        
+        signal_type = signal.get('signal_type')
+        if signal_type not in ['buy', 'sell', 'long', 'short']:
+            return None
+        
+        # 构建决策
+        decision = {
+            "action": "LONG" if signal_type in ['buy', 'long'] else "SHORT",
+            "symbol": signal.get('symbol', 'BTCUSDT'),
+            "quantity": signal.get('quantity', 0.01),
+            "confidence": signal.get('confidence', 1.0),
+            "reason": signal.get('reason', ''),
+            "trace_id": f"signal_{signal.get('timestamp_ms', datetime.now().timestamp())}",
+        }
+        
+        # 风控检查
+        risk_result = await self._check_risk(decision)
+        if not risk_result.get("approved", False):
+            self.logger.debug(f"Signal rejected by risk check: {risk_result.get('reason')}")
+            return None
+        
+        # 执行
+        order = await self._execute_decision(decision)
+        
+        if order:
+            return {
+                "order_id": order.get("order_id"),
+                "symbol": order.get("symbol"),
+                "side": order.get("side"),
+                "quantity": order.get("quantity"),
+                "pnl": 0.0,
+                "pnl_pct": 0.0,
+                "timestamp": order.get("timestamp"),
+            }
+        
+        return None
+    
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""
         health = await super().health_check()
