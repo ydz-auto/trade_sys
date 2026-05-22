@@ -12,13 +12,15 @@ LSTM Dataset Builder - LSTM 数据集构建器
     from domain.ml.lstm_dataset_builder import LSTMDatasetBuilder
     
     builder = LSTMDatasetBuilder()
-    X_train, X_val, y_train, y_val = builder.build(parquet_path)
+    X_train, X_val, y_train, y_val = builder.build_with_runtime(parquet_path)
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
+import warnings
+
 import pandas as pd
 import numpy as np
 
@@ -56,7 +58,7 @@ class LSTMDatasetBuilder:
     用法：
     ```python
     builder = LSTMDatasetBuilder()
-    X_train, X_val, y_train, y_val, scaler = builder.build(parquet_path)
+    X_train, X_val, y_train, y_val, scaler = builder.build_with_runtime(parquet_path)
     ```
     """
     
@@ -72,7 +74,7 @@ class LSTMDatasetBuilder:
         symbol: str = "BTCUSDT",
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Any]:
         """
-        构建数据集
+        构建数据集（已弃用，不经过时间因果基础设施）
         
         Args:
             parquet_path: 特征 Parquet 路径
@@ -81,6 +83,14 @@ class LSTMDatasetBuilder:
         Returns:
             X_train, X_val, y_train, y_val, scaler
         """
+        warnings.warn(
+            "LSTMDatasetBuilder.build() bypasses the time-causal infrastructure "
+            "(feature_matrix_runtime, Point-in-Time store, feature availability guard). "
+            "Use build_with_runtime() instead to prevent future data leakage.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        
         df = pd.read_parquet(parquet_path)
         
         if 'timestamp' in df.columns:
@@ -102,6 +112,120 @@ class LSTMDatasetBuilder:
         
         return X_train_scaled, X_val_scaled, y_train, y_val, scaler
     
+    def build_with_runtime(
+        self,
+        parquet_path: Path,
+        symbol: str = "BTCUSDT",
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Any]:
+        from runtime.feature_matrix_runtime import TimeCausalFeatureMatrix, get_feature_matrix_runtime
+        from infrastructure.storage.point_in_time_store import FeatureSourceType
+        from infrastructure.label_isolation import StrictLabelStore, get_label_store, set_label_store_mode
+        
+        # 1. 设置 Label Store 模式（Research 模式可以访问 Label）
+        set_label_store_mode("research")
+        label_store = get_label_store()
+        
+        df = pd.read_parquet(parquet_path)
+        
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+        
+        df = df.sort_values('timestamp').reset_index(drop=True)
+        
+        df = self._ensure_features(df, symbol)
+        
+        available_features = self._get_available_features(df)
+        
+        runtime = get_feature_matrix_runtime(symbol, mode="replay")
+        pit_store = runtime._pit_store
+        
+        timestamps_ms = []
+        for idx, row in df.iterrows():
+            if 'timestamp' in df.columns:
+                ts_val = row['timestamp']
+                if isinstance(ts_val, pd.Timestamp):
+                    ts_ms = int(ts_val.timestamp() * 1000)
+                else:
+                    ts_ms = int(pd.Timestamp(ts_val).timestamp() * 1000)
+            else:
+                ts_ms = int(idx) * 60000
+            timestamps_ms.append(ts_ms)
+        
+        # 2. 存储特征到 Point-in-Time Store
+        for i, row in df.iterrows():
+            ts_ms = timestamps_ms[i]
+            feature_dict = {}
+            for feat in available_features:
+                val = row[feat]
+                if pd.notna(val):
+                    feature_dict[feat] = float(val)
+            if feature_dict:
+                pit_store.store_features_batch(
+                    features=feature_dict,
+                    feature_timestamp=ts_ms,
+                    source_types={feat: FeatureSourceType.AGGREGATED for feat in feature_dict},
+                )
+        
+        # 3. 存储 Label 到 Label Store（物理隔离）
+        for i in range(len(df) - self.config.target_shift):
+            ts_ms = timestamps_ms[i]
+            target_ts_ms = timestamps_ms[i + self.config.target_shift]
+            
+            if self.config.target_column in df.columns:
+                target_val = df.iloc[i + self.config.target_shift][self.config.target_column]
+            else:
+                close_now = df.iloc[i]['close']
+                close_future = df.iloc[i + self.config.target_shift]['close']
+                target_val = (close_future - close_now) / close_now if close_now != 0 else 0
+            
+            label_store.store_label(
+                label_id=f"lstm_{symbol}_{ts_ms}",
+                label_value=int(target_val > 0) if self.config.target_column else target_val,
+                label_timestamp=target_ts_ms,
+                feature_timestamp=ts_ms,
+                source="dataset_builder"
+            )
+        
+        feature_rows = []
+        y_all = []
+        
+        valid_start = self.config.sequence_length
+        valid_end = len(df) - self.config.target_shift
+        
+        for i in range(valid_start, valid_end):
+            ts_ms = timestamps_ms[i]
+            runtime.advance_to(ts_ms)
+            snapshot = pit_store.get_features_at_time(ts_ms, feature_names=available_features)
+            row_features = {feat: snapshot.features.get(feat, 0.0) for feat in available_features}
+            feature_rows.append(row_features)
+            
+            # 4. 从 Label Store 读取（物理隔离确保安全）
+            label = label_store.get_label(f"lstm_{symbol}_{ts_ms}")
+            y_all.append(label.label_value if label else 0)
+        
+        feature_df = pd.DataFrame(feature_rows, columns=available_features).fillna(0.0)
+        feature_data = feature_df.values
+        
+        X_all = []
+        y_arr = np.array(y_all)
+        
+        for i in range(len(feature_data) - self.config.sequence_length + 1):
+            X_all.append(feature_data[i:i + self.config.sequence_length])
+        
+        if len(X_all) > len(y_arr):
+            X_all = X_all[:len(y_arr)]
+        
+        X_all = np.array(X_all)
+        y_all = np.array(y_arr)[:len(X_all)]
+        
+        X_train, X_val, y_train, y_val = self._split_data(X_all, y_all)
+        
+        X_train_scaled, X_val_scaled, scaler = self._scale_data(X_train, X_val)
+        
+        logger.info(f"Dataset built with runtime: train={X_train_scaled.shape}, val={X_val_scaled.shape}")
+        
+        return X_train_scaled, X_val_scaled, y_train, y_val, scaler
+    
     def build_with_feature_guard(
         self,
         parquet_path: Path,
@@ -110,16 +234,9 @@ class LSTMDatasetBuilder:
         """
         构建数据集（带特征可用性检查）
         
-        使用 FeatureAvailabilityGuard 防止数据泄漏。
+        使用 feature_matrix_runtime + Point-in-Time Store 防止数据泄漏。
         """
-        if self.config.enable_feature_guard:
-            try:
-                from shared.replay.feature_availability_guard import get_feature_availability_guard
-                self._feature_guard = get_feature_availability_guard()
-            except ImportError:
-                logger.warning("FeatureAvailabilityGuard not available")
-        
-        return self.build(parquet_path, symbol)
+        return self.build_with_runtime(parquet_path, symbol)
     
     def _ensure_features(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:
         """确保所有特征都存在"""
@@ -224,4 +341,4 @@ def build_lstm_dataset(
     替代 train_lstm_strategy.py 中的 prepare_training_data
     """
     builder = LSTMDatasetBuilder(config)
-    return builder.build(parquet_path)
+    return builder.build_with_runtime(parquet_path)
