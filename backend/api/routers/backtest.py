@@ -2,18 +2,15 @@
 Backtest Router - 回测管理端点
 
 架构：
-    API Router
+    API Router (转发)
       ↓
-    RuntimeBus (publish_command)
+    RuntimeBus.publish_command(run_backtest)
       ↓
-    BacktestService
+    BacktestManager (task persistence)
       ↓
-    OptimizationBacktestEngine (走 ReplayRuntime)
-      ↓
-    runtime_bus
+    ReplayRuntime (唯一 execution source)
 """
 from fastapi import APIRouter, HTTPException
-from typing import List
 
 from ..schemas.backtest import (
     BacktestRequest,
@@ -23,7 +20,6 @@ from ..schemas.backtest import (
     PerformanceMetrics,
     TradeRecord,
 )
-
 from ..services.backtest_service import get_backtest_manager
 
 router = APIRouter()
@@ -37,46 +33,33 @@ async def get_manager():
 
 @router.post("/backtest", response_model=BacktestResult)
 async def create_and_run_backtest(request: BacktestRequest):
-    """创建并运行回测 - 通过 RuntimeBus 调度"""
+    """创建并运行回测 - Router 只转发"""
     from runtime.bus.runtime_bus import get_runtime_bus
+    from uuid import uuid4
 
     bus = get_runtime_bus()
     config = request.config.model_dump()
+    backtest_id = str(uuid4())[:8]
 
     await bus.publish_command(
         command="run_backtest",
-        target="backtest_service",
-        params=config,
+        target="replay_runtime",
+        params={"backtest_id": backtest_id, **config},
         source="api.backtest",
     )
 
     manager = await get_manager()
-
-    backtest = await manager.create_backtest(config)
-    backtest_id = backtest["id"]
-
-    result = await manager.run_backtest(backtest_id)
-
-    metrics = None
-    if result.get("metrics"):
-        metrics = PerformanceMetrics(**result["metrics"])
-
-    trades = [TradeRecord(**t) for t in result.get("trades", [])]
+    await manager.start(backtest_id, config)
 
     return BacktestResult(
-        id=result["id"],
-        status=result["status"],
-        config=BacktestConfig(**result["config"]),
-        metrics=metrics,
-        trades=trades,
-        equity_curve=result.get("equity_curve", []),
-        drawdown_curve=result.get("drawdown_curve", []),
-        start_date=result.get("start_date"),
-        end_date=result.get("end_date"),
-        duration_days=result.get("duration_days", 0),
-        created_at=result["created_at"],
-        completed_at=result.get("completed_at"),
-        error_message=result.get("error_message"),
+        id=backtest_id,
+        status="pending",
+        config=BacktestConfig(**config),
+        metrics=None,
+        trades=[],
+        equity_curve=[],
+        drawdown_curve=[],
+        created_at="",
     )
 
 
@@ -84,7 +67,7 @@ async def create_and_run_backtest(request: BacktestRequest):
 async def list_backtests():
     """获取回测列表"""
     manager = await get_manager()
-    backtests = await manager.list_backtests()
+    backtests = await manager.list()
 
     results = []
     for b in backtests:
@@ -122,7 +105,7 @@ async def list_backtests():
 async def get_backtest(backtest_id: str):
     """获取回测详情"""
     manager = await get_manager()
-    backtest = await manager.get_backtest(backtest_id)
+    backtest = await manager.query(backtest_id)
 
     if not backtest:
         raise HTTPException(status_code=404, detail="Backtest not found")
@@ -156,3 +139,20 @@ async def get_backtest(backtest_id: str):
         completed_at=backtest.get("completed_at"),
         error_message=backtest.get("error_message"),
     )
+
+
+@router.delete("/backtest/{backtest_id}")
+async def stop_backtest(backtest_id: str):
+    """停止回测"""
+    from runtime.bus.runtime_bus import get_runtime_bus
+
+    bus = get_runtime_bus()
+    await bus.publish_command(
+        command="stop_backtest",
+        target="replay_runtime",
+        params={"backtest_id": backtest_id},
+        source="api.backtest",
+    )
+
+    manager = await get_manager()
+    return await manager.stop(backtest_id)
