@@ -16,6 +16,20 @@ DataSource → UnifiedPublisher → Kafka → UnifiedConsumer → Processing
     │         监控                       监控
     ↓              ↓                         ↓
 统一格式: StandardEvent ──────────────────────────→ Processing
+
+边界说明：
+    unified_pipeline = 数据采集管道 (source → Kafka → consumer)
+        职责：数据源接入、消息发布、消息消费、熔断/降级/重试
+        不负责：特征计算、时间因果保证、特征矩阵管理
+
+    feature_matrix_runtime = 特征计算运行时 (时间因果保证)
+        职责：时间因果一致的特征计算、Label 物理隔离、Point-in-Time 存储
+        不负责：数据源接入、消息发布/消费
+
+    两者互补，不重叠：
+    - unified_pipeline 负责把数据从源头搬运到消费端
+    - feature_matrix_runtime 负责对消费到的数据做时间因果一致的特征计算
+    - consumer 的 message_handler 不应直接做特征计算，应委托给 feature_matrix_runtime
 """
 
 import asyncio
@@ -62,24 +76,19 @@ class PipelineConfig:
     name: str
     source_type: DataSourceType
     kafka_topic: str
-    
-    # 熔断配置
+
     circuit_failure_threshold: int = 3
     circuit_recovery_timeout: float = 60.0
-    
-    # 重试配置
+
     retry_max_attempts: int = 3
     retry_initial_delay: float = 1.0
-    
-    # 降级配置
+
     fallback_enabled: bool = True
     fallback_data: Optional[List[Dict]] = None
-    
-    # 发布配置
+
     batch_size: int = 10
     batch_timeout: float = 5.0
-    
-    # 消费配置
+
     consumer_group: str = "default_group"
     max_poll_records: int = 100
 
@@ -95,7 +104,7 @@ class PipelineMetrics:
     retry_count: int = 0
     last_success_time: Optional[datetime] = None
     last_failure_time: Optional[datetime] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "published": self.published_count,
@@ -112,7 +121,7 @@ class PipelineMetrics:
 class UnifiedPublisher:
     """
     统一发布者
-    
+
     特性：
     - 熔断保护
     - 自动降级
@@ -120,7 +129,7 @@ class UnifiedPublisher:
     - 批量发布
     - 监控指标
     """
-    
+
     def __init__(
         self,
         config: PipelineConfig,
@@ -129,8 +138,7 @@ class UnifiedPublisher:
         self.config = config
         self.kafka_servers = kafka_bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS
         self.metrics = PipelineMetrics()
-        
-        # 熔断器
+
         self.circuit_breaker = CircuitBreaker(
             CircuitBreakerConfig(
                 name=f"publisher_{config.name}",
@@ -138,41 +146,38 @@ class UnifiedPublisher:
                 recovery_timeout=config.circuit_recovery_timeout
             )
         )
-        
-        # 重试策略
+
         self.retry_policy = RetryPolicy(
             RetryConfig(
                 max_attempts=config.retry_max_attempts,
                 initial_delay=config.retry_initial_delay
             )
         )
-        
-        # Kafka 生产者
+
         self._producer = None
         self._pending_messages: List[Dict] = []
         self._batch_task: Optional[asyncio.Task] = None
-        
+
         logger.info(f"UnifiedPublisher '{config.name}' initialized")
-    
+
     async def start(self) -> None:
         """启动发布者"""
         try:
             from aiokafka import AIOKafkaProducer
-            
+
             self._producer = AIOKafkaProducer(
                 bootstrap_servers=self.kafka_servers,
                 value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode()
             )
             await self._producer.start()
-            
-            # 启动批量发布任务
+
             self._batch_task = asyncio.create_task(self._batch_publisher())
-            
+
             logger.info(f"UnifiedPublisher '{self.config.name}' started")
         except Exception as e:
             logger.error(f"Failed to start publisher: {e}")
             raise
-    
+
     async def stop(self) -> None:
         """停止发布者"""
         if self._batch_task:
@@ -181,38 +186,36 @@ class UnifiedPublisher:
                 await self._batch_task
             except asyncio.CancelledError:
                 pass
-        
+
         if self._producer:
             await self._producer.stop()
-        
+
         logger.info(f"UnifiedPublisher '{self.config.name}' stopped")
-    
+
     async def publish(self, event: Dict[str, Any]) -> bool:
         """
         发布单个事件
-        
+
         Args:
             event: 要发布的事件
-            
+
         Returns:
             bool: 是否发布成功
         """
         try:
-            # 检查熔断器
             if not self.circuit_breaker.can_execute():
                 self.metrics.circuit_open_count += 1
                 logger.warning(f"Circuit breaker open for '{self.config.name}'")
-                
+
                 if self.config.fallback_enabled:
                     return await self._use_fallback()
                 return False
-            
-            # 执行发布（带重试）
+
             async def _do_publish():
                 return await self._send_to_kafka(event)
-            
+
             result = await self.retry_policy.execute(_do_publish)
-            
+
             if result:
                 self.metrics.published_count += 1
                 self.metrics.last_success_time = datetime.now()
@@ -220,24 +223,24 @@ class UnifiedPublisher:
                 return True
             else:
                 raise Exception("Publish failed")
-                
+
         except Exception as e:
             self.metrics.failed_count += 1
             self.metrics.last_failure_time = datetime.now()
             self.circuit_breaker.record_failure()
             logger.error(f"Failed to publish event: {e}")
-            
+
             if self.config.fallback_enabled:
                 return await self._use_fallback()
             return False
-    
+
     async def publish_batch(self, events: List[Dict[str, Any]]) -> int:
         """
         批量发布事件
-        
+
         Args:
             events: 要发布的事件列表
-            
+
         Returns:
             int: 成功发布的数量
         """
@@ -246,12 +249,12 @@ class UnifiedPublisher:
             if await self.publish(event):
                 success_count += 1
         return success_count
-    
+
     async def _send_to_kafka(self, event: Dict[str, Any]) -> bool:
         """发送消息到 Kafka"""
         if not self._producer:
             raise Exception("Producer not started")
-        
+
         try:
             key = event.get("id", "").encode() if event.get("id") else None
             await self._producer.send_and_wait(
@@ -263,27 +266,27 @@ class UnifiedPublisher:
         except Exception as e:
             logger.error(f"Kafka send error: {e}")
             raise
-    
+
     async def _use_fallback(self) -> bool:
         """使用降级数据"""
         self.metrics.fallback_count += 1
         logger.info(f"Using fallback data for '{self.config.name}'")
-        
+
         if self.config.fallback_data:
             for event in self.config.fallback_data:
                 logger.info(f"Fallback event: {event.get('title', 'N/A')[:50]}")
         return True
-    
+
     async def _batch_publisher(self) -> None:
         """批量发布任务"""
         while True:
             try:
                 await asyncio.sleep(self.config.batch_timeout)
-                
+
                 if self._pending_messages and self._producer:
                     events = self._pending_messages[:self.config.batch_size]
                     self._pending_messages = self._pending_messages[self.config.batch_size:]
-                    
+
                     for event in events:
                         try:
                             await self._send_to_kafka(event)
@@ -291,12 +294,12 @@ class UnifiedPublisher:
                         except Exception as e:
                             self.metrics.failed_count += 1
                             logger.error(f"Batch send error: {e}")
-                            
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Batch publisher error: {e}")
-    
+
     def get_metrics(self) -> PipelineMetrics:
         """获取指标"""
         return self.metrics
@@ -304,12 +307,12 @@ class UnifiedPublisher:
 
 class DataSource(ABC):
     """数据源抽象基类"""
-    
+
     @abstractmethod
     async def fetch(self) -> List[Dict[str, Any]]:
         """获取数据"""
         pass
-    
+
     @abstractmethod
     def get_source_name(self) -> str:
         """获取数据源名称"""
@@ -319,7 +322,7 @@ class DataSource(ABC):
 class UnifiedConsumer:
     """
     统一消费者
-    
+
     特性：
     - 熔断保护
     - 自动降级
@@ -327,7 +330,9 @@ class UnifiedConsumer:
     - 消息处理
     - 监控指标
     """
-    
+
+    FEATURE_COMPUTATION_TYPE = "feature_computation"
+
     def __init__(
         self,
         config: PipelineConfig,
@@ -338,8 +343,7 @@ class UnifiedConsumer:
         self.kafka_servers = kafka_bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS
         self.message_handler = message_handler
         self.metrics = PipelineMetrics()
-        
-        # 熔断器
+
         self.circuit_breaker = CircuitBreaker(
             CircuitBreakerConfig(
                 name=f"consumer_{config.name}",
@@ -347,26 +351,24 @@ class UnifiedConsumer:
                 recovery_timeout=config.circuit_recovery_timeout
             )
         )
-        
-        # 重试策略
+
         self.retry_policy = RetryPolicy(
             RetryConfig(
                 max_attempts=config.retry_max_attempts,
                 initial_delay=config.retry_initial_delay
             )
         )
-        
-        # Kafka 消费者
+
         self._consumer = None
         self._running = False
-        
+
         logger.info(f"UnifiedConsumer '{config.name}' initialized")
-    
+
     async def start(self) -> None:
         """启动消费者"""
         try:
             from aiokafka import AIOKafkaConsumer
-            
+
             self._consumer = AIOKafkaConsumer(
                 self.config.kafka_topic,
                 bootstrap_servers=self.kafka_servers,
@@ -375,30 +377,30 @@ class UnifiedConsumer:
             )
             await self._consumer.start()
             self._running = True
-            
+
             logger.info(f"UnifiedConsumer '{self.config.name}' started")
-            
+
         except Exception as e:
             logger.error(f"Failed to start consumer: {e}")
             raise
-    
+
     async def stop(self) -> None:
         """停止消费者"""
         self._running = False
         if self._consumer:
             await self._consumer.stop()
         logger.info(f"UnifiedConsumer '{self.config.name}' stopped")
-    
+
     async def consume(self) -> None:
         """消费消息"""
         if not self._running or not self._consumer:
             raise Exception("Consumer not started")
-        
+
         try:
             async for message in self._consumer:
                 if not self._running:
                     break
-                
+
                 try:
                     await self._process_message(message.value)
                 except Exception as e:
@@ -406,51 +408,83 @@ class UnifiedConsumer:
                     self.metrics.failed_count += 1
         except Exception as e:
             logger.error(f"Consumer error: {e}")
-    
+
     async def _process_message(self, message: Dict[str, Any]) -> None:
         """处理单条消息"""
-        # 检查熔断器
+        if message.get("type") == self.FEATURE_COMPUTATION_TYPE:
+            await self._route_to_feature_matrix_runtime(message)
+            return
+
         if not self.circuit_breaker.can_execute():
             self.metrics.circuit_open_count += 1
             logger.warning(f"Circuit breaker open for consumer '{self.config.name}'")
-            
+
             if self.config.fallback_enabled:
                 await self._use_fallback_handler(message)
             return
-        
-        # 执行处理（带重试）
+
         async def _do_process():
             if self.message_handler:
                 await self.message_handler(message)
             return True
-        
+
         try:
             result = await self.retry_policy.execute(_do_process)
-            
+
             if result:
                 self.metrics.consumed_count += 1
                 self.metrics.last_success_time = datetime.now()
                 self.circuit_breaker.record_success()
             else:
                 raise Exception("Processing failed")
-                
+
         except Exception as e:
             self.metrics.failed_count += 1
             self.metrics.last_failure_time = datetime.now()
             self.circuit_breaker.record_failure()
             logger.error(f"Failed to process message: {e}")
-            
+
             if self.config.fallback_enabled:
                 await self._use_fallback_handler(message)
-    
+
+    async def _route_to_feature_matrix_runtime(self, message: Dict[str, Any]) -> None:
+        try:
+            from runtime.feature_matrix_runtime import get_feature_matrix_runtime
+
+            symbol = message.get("symbol", "")
+            mode = message.get("mode", "live")
+
+            if not symbol:
+                logger.error("Feature computation request missing 'symbol' field")
+                self.metrics.failed_count += 1
+                return
+
+            runtime = get_feature_matrix_runtime(symbol=symbol, mode=mode)
+
+            if not runtime.is_running():
+                await runtime.start()
+
+            await runtime.compute_features(message)
+
+            self.metrics.consumed_count += 1
+            self.metrics.last_success_time = datetime.now()
+            logger.info(f"Routed feature computation to feature_matrix_runtime for {symbol}")
+
+        except Exception as e:
+            self.metrics.failed_count += 1
+            self.metrics.last_failure_time = datetime.now()
+            logger.error(f"Failed to route to feature_matrix_runtime: {e}")
+
+            if self.config.fallback_enabled:
+                await self._use_fallback_handler(message)
+
     async def _use_fallback_handler(self, message: Dict[str, Any]) -> None:
         """使用降级处理器"""
         self.metrics.fallback_count += 1
         logger.info(f"Using fallback handler for message: {message.get('id', 'N/A')}")
-        
-        # 简单的日志记录降级
+
         logger.warning(f"Message processed with fallback: {json.dumps(message, ensure_ascii=False)[:100]}")
-    
+
     def get_metrics(self) -> PipelineMetrics:
         """获取指标"""
         return self.metrics
@@ -459,10 +493,14 @@ class UnifiedConsumer:
 class DataPipeline:
     """
     统一数据管道
-    
+
     整合数据源、发布者、消费者，提供端到端的数据处理能力
+
+    注意：consumer 的 message_handler 不应直接执行特征计算。
+    特征计算应委托给 feature_matrix_runtime，由其保证时间因果一致性。
+    如需创建特征计算管道，请使用 create_feature_pipeline() 方法。
     """
-    
+
     def __init__(
         self,
         config: PipelineConfig,
@@ -474,64 +512,60 @@ class DataPipeline:
         self.data_source = data_source
         self.publisher = UnifiedPublisher(config, kafka_bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS)
         self.consumer = UnifiedConsumer(config, kafka_bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS, message_handler)
-        
+
         self._status = PipelineStatus.HEALTHY
         self._running = False
-        
+
         logger.info(f"DataPipeline '{config.name}' initialized")
-    
+
     async def start(self) -> None:
         """启动管道"""
         await self.publisher.start()
         await self.consumer.start()
         self._running = True
         logger.info(f"DataPipeline '{self.config.name}' started")
-    
+
     async def stop(self) -> None:
         """停止管道"""
         self._running = False
         await self.publisher.stop()
         await self.consumer.stop()
         logger.info(f"DataPipeline '{self.config.name}' stopped")
-    
+
     async def run(self) -> None:
         """运行管道（采集→发布→消费）"""
         await self.start()
-        
+
         try:
             while self._running:
-                # 采集数据
                 try:
                     data = await self.data_source.fetch()
                     logger.info(f"Fetched {len(data)} items from {self.data_source.get_source_name()}")
-                    
-                    # 发布数据
+
                     published = await self.publisher.publish_batch(data)
                     logger.info(f"Published {published} items to {self.config.kafka_topic}")
-                    
+
                     self._status = PipelineStatus.HEALTHY
-                    
+
                 except Exception as e:
                     logger.error(f"Pipeline error: {e}")
                     self._status = PipelineStatus.DEGRADED
-                
-                # 等待下一个采集周期
+
                 await asyncio.sleep(60)
-                
+
         except asyncio.CancelledError:
             pass
         finally:
             await self.stop()
-    
+
     def get_status(self) -> PipelineStatus:
         """获取管道状态"""
-        # 根据指标更新状态
         if self.publisher.metrics.failed_count > 10:
             return PipelineStatus.CIRCUIT_OPEN
         elif self.publisher.metrics.failed_count > 5:
             return PipelineStatus.DEGRADED
         return PipelineStatus.HEALTHY
-    
+
     def get_metrics(self) -> Dict[str, Any]:
         """获取管道指标"""
         return {
@@ -540,8 +574,44 @@ class DataPipeline:
             "consumer": self.consumer.get_metrics().to_dict()
         }
 
+    @classmethod
+    def create_feature_pipeline(
+        cls,
+        config: PipelineConfig,
+        data_source: DataSource,
+        kafka_bootstrap_servers: str = None
+    ) -> "DataPipeline":
+        """
+        创建特征计算管道
 
-# 便捷函数
+        consumer 的 message_handler 委托给 feature_matrix_runtime 进行特征计算，
+        而不是在 consumer 中直接执行特征计算逻辑。
+        消息格式需包含 type="feature_computation" 字段以触发路由。
+        """
+        async def _feature_runtime_handler(message: Dict[str, Any]) -> None:
+            from runtime.feature_matrix_runtime import get_feature_matrix_runtime
+
+            symbol = message.get("symbol", "")
+            mode = message.get("mode", "live")
+
+            if not symbol:
+                logger.error("Feature pipeline handler: message missing 'symbol'")
+                return
+
+            runtime = get_feature_matrix_runtime(symbol=symbol, mode=mode)
+
+            if not runtime.is_running():
+                await runtime.start()
+
+            await runtime.compute_features(message)
+
+        return cls(
+            config=config,
+            data_source=data_source,
+            kafka_bootstrap_servers=kafka_bootstrap_servers,
+            message_handler=_feature_runtime_handler
+        )
+
 
 def create_rss_pipeline(
     name: str,
@@ -550,19 +620,19 @@ def create_rss_pipeline(
     kafka_servers: str = None
 ) -> DataPipeline:
     """创建 RSS 数据管道"""
-    
+
     class RSSDataSource(DataSource):
         def __init__(self, url: str):
             self.url = url
-        
+
         async def fetch(self) -> List[Dict[str, Any]]:
             import feedparser
             import httpx
-            
+
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(self.url)
                 feed = feedparser.parse(response.text)
-                
+
                 items = []
                 for entry in feed.entries[:20]:
                     items.append({
@@ -574,16 +644,16 @@ def create_rss_pipeline(
                         "source": self.url
                     })
                 return items
-        
+
         def get_source_name(self) -> str:
             return self.url
-    
+
     config = PipelineConfig(
         name=name,
         source_type=DataSourceType.RSS,
         kafka_topic=kafka_topic
     )
-    
+
     return DataPipeline(
         config=config,
         data_source=RSSDataSource(rss_url),
@@ -599,25 +669,25 @@ def create_skill_pipeline(
     **adapter_kwargs
 ) -> DataPipeline:
     """创建 Skill 数据管道"""
-    
+
     class SkillDataSource(DataSource):
         def __init__(self, adapter_class, kwargs):
             self.adapter = adapter_class(**kwargs)
-        
+
         async def fetch(self) -> List[Dict[str, Any]]:
             raw_data = await self.adapter.fetch_raw_data()
             events = self.adapter.normalize(raw_data)
             return [event.to_dict() if hasattr(event, 'to_dict') else event for event in events]
-        
+
         def get_source_name(self) -> str:
             return self.adapter.__class__.__name__
-    
+
     config = PipelineConfig(
         name=name,
         source_type=DataSourceType.SKILL,
         kafka_topic=kafka_topic
     )
-    
+
     return DataPipeline(
         config=config,
         data_source=SkillDataSource(skill_adapter_class, adapter_kwargs),

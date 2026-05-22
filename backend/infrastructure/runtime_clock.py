@@ -60,6 +60,14 @@ class RuntimeClock:
         self._last_closed_kline_timestamp: Optional[int] = None
         self._kline_interval_ms: int = 60000
 
+    def reset(self):
+        """重置时钟状态"""
+        self._current_tick = 0
+        self._current_timestamp_ms = 0
+        self._exchange_time = 0
+        self._time_snapshots = []
+        self._last_closed_kline_timestamp = None
+
     def set_mode(self, mode: ClockMode):
         """设置时钟模式"""
         self.mode = mode

@@ -19,6 +19,11 @@ import pandas as pd
 import hashlib
 
 from infrastructure.logging import get_logger
+from infrastructure.time_authority import (
+    get_time_authority,
+    ensure_time_ms,
+    normalize_time_ms
+)
 
 logger = get_logger("infrastructure.unified_event")
 
@@ -42,7 +47,7 @@ class UnifiedEvent:
     symbol: str
     exchange: str
     
-    # 时间戳字段（精确到毫秒）
+    # 时间戳字段（精确到毫秒）- 强制 int64 ms
     exchange_timestamp: int  # 交易所时间（事件发生）
     received_timestamp: int  # 本地接收时间
     processed_timestamp: int  # 系统处理时间
@@ -63,9 +68,35 @@ class UnifiedEvent:
     liquidation_data: Optional[Dict] = None
     
     def __post_init__(self):
-        """自动计算验证哈希"""
+        """自动计算验证哈希并验证时间字段"""
+        # 强制验证时间类型
+        self._validate_time_fields()
+        
+        # 自动计算验证哈希
         if not self.verification_hash:
             self.verification_hash = self._compute_hash()
+    
+    def _validate_time_fields(self):
+        """验证所有时间字段必须是 int 类型"""
+        time_fields = [
+            ('exchange_timestamp', self.exchange_timestamp),
+            ('received_timestamp', self.received_timestamp),
+            ('processed_timestamp', self.processed_timestamp)
+        ]
+        
+        for field_name, value in time_fields:
+            if not isinstance(value, int):
+                # 尝试转换
+                try:
+                    normalized = normalize_time_ms(value, source=self.source, field_name=field_name)
+                    setattr(self, field_name, normalized)
+                    logger.warning(
+                        f"Converted {field_name} from {type(value).__name__} to int: {value} -> {normalized}"
+                    )
+                except ValueError as e:
+                    raise TypeError(
+                        f"{field_name} must be int (ms timestamp), got {type(value).__name__}: {value}. {e}"
+                    )
     
     def _compute_hash(self) -> str:
         """计算验证哈希（用于确定性检查）"""
