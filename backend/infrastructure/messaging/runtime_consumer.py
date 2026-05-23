@@ -163,15 +163,15 @@ class RuntimeConsumer:
             )
 
             if result and result.value:
-                from infrastructure.messaging.event_registry import EventRegistry
+                from infrastructure.messaging.event_registry import parse_event
+                from infrastructure.messaging.serializer import EventSerializer
                 value = result.value
                 if isinstance(value, dict):
-                    return EventRegistry.parse(value)
+                    return parse_event(value)
                 if isinstance(value, str):
                     import json as _json
-                    return EventRegistry.parse(_json.loads(value))
+                    return parse_event(_json.loads(value))
                 if isinstance(value, bytes):
-                    from infrastructure.messaging.serializer import EventSerializer
                     return EventSerializer.deserialize(value)
                 return None
             return None

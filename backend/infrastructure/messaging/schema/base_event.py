@@ -1,7 +1,6 @@
 ﻿import uuid
 from enum import Enum
-from types import MappingProxyType
-from typing import Optional, Dict, Any, List, Mapping, Callable
+from typing import Optional, Dict, Any, List, Callable
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
@@ -64,19 +63,8 @@ class EventSource(str, Enum):
 SCHEMA_VERSION = "2.0"
 
 
-def _freeze_metadata(v: Any) -> Mapping[str, Any]:
-    if v is None:
-        return MappingProxyType({})
-    if isinstance(v, MappingProxyType):
-        return v
-    if isinstance(v, dict):
-        return MappingProxyType(v)
-    return MappingProxyType(dict(v))
-
-
 class BaseEvent(BaseModel):
     model_config = ConfigDict(
-        frozen=True,
         populate_by_name=True,
         ser_json_timedelta="iso8601",
         arbitrary_types_allowed=True,
@@ -100,7 +88,7 @@ class BaseEvent(BaseModel):
 
     clock_mode: str = Field(default=ClockMode.LIVE.value)
 
-    metadata: Mapping[str, Any] = Field(default_factory=lambda: MappingProxyType({}))
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("symbol", mode="before")
     @classmethod
@@ -115,11 +103,6 @@ class BaseEvent(BaseModel):
         if "-" in v:
             v = v.replace("-", "")
         return v
-
-    @field_validator("metadata", mode="before")
-    @classmethod
-    def freeze_metadata(cls, v):
-        return _freeze_metadata(v)
 
     @model_validator(mode="after")
     def validate_event_type_not_empty(self):
@@ -143,10 +126,7 @@ class BaseEvent(BaseModel):
         return self.__class__(**child_kwargs)
 
     def to_dict(self) -> Dict[str, Any]:
-        d = self.model_dump()
-        if isinstance(d.get("metadata"), MappingProxyType):
-            d["metadata"] = dict(d["metadata"])
-        return d
+        return self.model_dump()
 
     def to_json(self) -> str:
         import json
@@ -168,7 +148,7 @@ class BaseEvent(BaseModel):
     def with_metadata(self, **kwargs) -> "BaseEvent":
         merged = dict(self.metadata)
         merged.update(kwargs)
-        return self.model_copy(update={"metadata": MappingProxyType(merged)})
+        return self.model_copy(update={"metadata": merged})
 
 
 class RawDataEvent(BaseEvent):
@@ -341,33 +321,6 @@ class ErrorEvent(BaseEvent):
     recoverable: bool = Field(default=False)
 
 
-EVENT_CLASS_MAP: Dict[str, type] = {
-    PipelineEventType.RAW_DATA: RawDataEvent,
-    PipelineEventType.MARKET: MarketEvent,
-    PipelineEventType.FEATURE: FeatureEvent,
-    PipelineEventType.SIGNAL: SignalEvent,
-    PipelineEventType.NARRATIVE: NarrativeEvent,
-    PipelineEventType.DECISION: DecisionEvent,
-    PipelineEventType.RISK_CHECKED: RiskCheckedEvent,
-    PipelineEventType.ORDER: OrderEvent,
-    PipelineEventType.FILL: FillEvent,
-    PipelineEventType.SYSTEM: SystemEvent,
-    PipelineEventType.ERROR: ErrorEvent,
-}
-
-
-def parse_event(data: Dict[str, Any]) -> BaseEvent:
-    event_type = data.get("event_type")
-    if event_type is None:
-        raise ValueError("Missing event_type field")
-
-    event_class = EVENT_CLASS_MAP.get(event_type)
-    if event_class is None:
-        return BaseEvent(**data)
-
-    return event_class(**data)
-
-
 class EventFactory:
     _clock_ms: Optional[Callable[[], int]] = None
 
@@ -377,12 +330,9 @@ class EventFactory:
 
     @classmethod
     def _now(cls) -> int:
-        if cls._clock_ms is None:
-            raise RuntimeError(
-                "EventFactory clock not configured. "
-                "Call EventFactory.set_clock(runtime_clock.now_ms) at runtime startup."
-            )
-        return cls._clock_ms()
+        if cls._clock_ms is not None:
+            return cls._clock_ms()
+        return now_ms()
 
     @classmethod
     def create(

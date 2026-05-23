@@ -145,8 +145,8 @@ class ClickHouseJournalBackend:
                 if payload_str:
                     try:
                         data = json.loads(payload_str) if isinstance(payload_str, str) else payload_str
-                        from infrastructure.messaging.event_registry import EventRegistry
-                        events.append(EventRegistry.parse(data))
+                        from infrastructure.messaging.event_registry import parse_event
+                        events.append(parse_event(data))
                     except Exception as e:
                         logger.warning(f"Failed to parse journal event: {e}")
             return events
@@ -275,8 +275,8 @@ class FileJournalBackend:
                                 data = json.loads(line)
                                 if not self._matches_filter(data, start_time_ms, end_time_ms, event_type, symbol, trace_id):
                                     continue
-                                from infrastructure.messaging.event_registry import EventRegistry
-                                events.append(EventRegistry.parse(data))
+                                from infrastructure.messaging.event_registry import parse_event
+                                events.append(parse_event(data))
                             except Exception:
                                 continue
                 except Exception as e:

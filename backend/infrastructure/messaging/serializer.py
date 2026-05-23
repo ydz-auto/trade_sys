@@ -1,7 +1,8 @@
 import json
 from typing import Dict, Any, Union
 
-from infrastructure.messaging.schema.base_event import BaseEvent, parse_event
+from infrastructure.messaging.schema.base_event import BaseEvent
+from infrastructure.messaging.event_registry import parse_event
 
 
 class EventSerializer:

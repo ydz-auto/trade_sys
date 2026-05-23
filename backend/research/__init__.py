@@ -1,232 +1,134 @@
-"""
-Research Module - 研究模块
 
-Alpha Infrastructure 核心模块：
-1. Factor Registry - 因子注册表
-2. Feature Pipeline - 特征流水线
-3. Factor Evaluator - 因子评估
-4. Walk-Forward Engine - 滚动回测
-5. Experiment Tracker - 实验追踪
-6. Alpha Pipeline - Alpha 生产流水线
-7. Derivatives Factors - 衍生品结构因子
-8. AI Framework - AI辅助研究框架（含安全系统）
-9. Event Memory - 事件记忆库
-10. Alpha Lifecycle - Alpha生命周期管理
-11. Correlation Analyzer - 多数据源正负相关性评估
-"""
-
-from .factor import (
-    FactorRegistry,
-    FactorType,
-    FactorStatus,
-    FactorEvaluator,
-    EvaluationMetrics,
-    get_factor_registry,
-    get_factor_evaluator,
+from research.protocol import (
+    Timepoint,
+    deep_freeze,
+    EventSnapshot,
+    FeatureSnapshot,
+    LabelSnapshot,
+    ResearchMetadata,
+    FeatureVector,
+    ResearchDataset,
+    InMemoryDataset,
+    EventAdapter,
+    FeatureAdapter,
+    LabelAdapter,
+    JournalEventAdapter,
+    ParquetFeatureAdapter,
+    ReplayFeatureAdapter,
+    BacktestLabelAdapter,
+    DatasetBuilder,
+    compute_fingerprint,
+    get_build_commit,
 )
-
-from .pipeline import (
-    FeaturePipeline,
-    PipelineStage,
-    PipelineConfig,
-    FeatureSpec,
-    LabelSpec,
-    Trainset,
-    get_feature_pipeline,
-)
-
-from .backtest import (
-    WalkForwardEngine,
-    WalkForwardReport,
-    WindowConfig,
+from research.walk_forward import (
+    TimeRange,
+    WindowSpec,
     WindowResult,
-    get_walk_forward_engine,
+    WalkForwardReport,
+    ResearchContext,
+    ExecutionModels,
+    ExecutionMode,
+    RegimeFilter,
+    ResearchStrategy,
+    SignalDirection,
+    TradeSignal,
+    BacktestTrade,
+    WindowMetrics,
+    SimpleSignalStrategy,
+    WindowSplitter,
+    RollingSplitter,
+    ExpandingSplitter,
+    AnchoredSplitter,
+    PurgedKFoldSplitter,
+    EmbargoSplitter,
+    create_splitter,
+    ResearchExecutionEngine,
 )
-
-from .experiment import (
-    ExperimentTracker,
-    ExperimentStatus,
-    ExperimentType,
-    ExperimentResult,
-    HyperparameterTrial,
-    get_experiment_tracker,
+from research.leakage_audit import (
+    LeakageAudit,
+    LeakageAuditResult,
+    LeakageIssue,
+    LeakageCategory,
+    AvailabilityTimeline,
+    TimelineEvent,
 )
-
-from .strategy import (
-    AlphaPipeline,
-    StrategyVersion,
-    AlphaDeployment,
-    DeploymentStatus,
-    get_alpha_pipeline,
+from research.reality_engine import (
+    RealityExecutionLayer,
+    ExecutionCostResult,
+    SlippageModel,
+    LatencyModel,
+    FeeModel,
+    FundingModel,
+    LiquidationImpactModel,
 )
-
-# 可选导入 - 如果有依赖缺失不会崩溃
-try:
-    from .ai_framework import (
-        SafetyConstraints,
-        ProposalValidator,
-        ProposalManager,
-        Proposal,
-        ProposalType,
-        ProposalStatus,
-        create_llm_proposal,
-        ConfidenceScore,
-        ApprovalLevel,
-        ValidationResult,
-    )
-    AI_FRAMEWORK_AVAILABLE = True
-except ImportError:
-    AI_FRAMEWORK_AVAILABLE = False
-
-try:
-    from .event.event_memory import (
-        EventMemoryDatabase,
-        EventMemory,
-        StructuredEvent,
-        MarketReaction,
-        EventType,
-        Sentiment,
-        Urgency,
-    )
-    EVENT_MEMORY_AVAILABLE = True
-except ImportError:
-    EVENT_MEMORY_AVAILABLE = False
-
-try:
-    from .factor.derivatives import (
-        DerivativesFactors,
-        DerivativesMetrics,
-    )
-    DERIVATIVE_FACTORS_AVAILABLE = True
-except ImportError:
-    DERIVATIVE_FACTORS_AVAILABLE = False
-
-try:
-    from .alpha_lifecycle import (
-        AlphaLifecycleManager,
-        ProposalLifecycleStatus,
-        RegimeType,
-        RegimeValidationResult,
-        ProposalLineage,
-        DatasetVersion,
-        FeatureLineage,
-        ReplaySnapshotBinding,
-        ResearchBudget,
-    )
-    ALPHA_LIFECYCLE_AVAILABLE = True
-except ImportError:
-    ALPHA_LIFECYCLE_AVAILABLE = False
-
-try:
-    from .correlation import (
-        CorrelationAnalyzer,
-        CorrelationConfig,
-        CorrelationResult,
-        SignalDirection,
-        SignalAssessment,
-        DataPreparation,
-        FeatureMatrix,
-        UnivariateAnalyzer,
-        MultivariateAnalyzer,
-        LLMEnhancement,
-        CorrelationScorer,
-        CorrelationVisualizer,
-        analyze_correlation,
-    )
-    CORRELATION_AVAILABLE = True
-except ImportError:
-    CORRELATION_AVAILABLE = False
+from research.stability import (
+    StabilityAnalyzer,
+    StabilityResult,
+    ParameterSweepResult,
+    StabilityRegion,
+    RegimePerformance,
+    CrossRegimeStabilityResult,
+)
 
 __all__ = [
-    "FactorRegistry",
-    "FactorType",
-    "FactorStatus",
-    "FactorEvaluator",
-    "EvaluationMetrics",
-    "get_factor_registry",
-    "get_factor_evaluator",
-    "FeaturePipeline",
-    "PipelineStage",
-    "PipelineConfig",
-    "FeatureSpec",
-    "LabelSpec",
-    "Trainset",
-    "get_feature_pipeline",
-    "WalkForwardEngine",
-    "WalkForwardReport",
-    "WindowConfig",
+    "Timepoint",
+    "deep_freeze",
+    "EventSnapshot",
+    "FeatureSnapshot",
+    "LabelSnapshot",
+    "ResearchMetadata",
+    "FeatureVector",
+    "ResearchDataset",
+    "InMemoryDataset",
+    "EventAdapter",
+    "FeatureAdapter",
+    "LabelAdapter",
+    "JournalEventAdapter",
+    "ParquetFeatureAdapter",
+    "ReplayFeatureAdapter",
+    "BacktestLabelAdapter",
+    "DatasetBuilder",
+    "compute_fingerprint",
+    "get_build_commit",
+    "TimeRange",
+    "WindowSpec",
     "WindowResult",
-    "get_walk_forward_engine",
-    "ExperimentTracker",
-    "ExperimentStatus",
-    "ExperimentType",
-    "ExperimentResult",
-    "HyperparameterTrial",
-    "get_experiment_tracker",
-    "AlphaPipeline",
-    "StrategyVersion",
-    "AlphaDeployment",
-    "DeploymentStatus",
-    "get_alpha_pipeline",
+    "WalkForwardReport",
+    "ResearchContext",
+    "ExecutionModels",
+    "ExecutionMode",
+    "RegimeFilter",
+    "ResearchStrategy",
+    "SignalDirection",
+    "TradeSignal",
+    "BacktestTrade",
+    "WindowMetrics",
+    "SimpleSignalStrategy",
+    "WindowSplitter",
+    "RollingSplitter",
+    "ExpandingSplitter",
+    "AnchoredSplitter",
+    "PurgedKFoldSplitter",
+    "EmbargoSplitter",
+    "create_splitter",
+    "ResearchExecutionEngine",
+    "LeakageAudit",
+    "LeakageAuditResult",
+    "LeakageIssue",
+    "LeakageCategory",
+    "AvailabilityTimeline",
+    "TimelineEvent",
+    "RealityExecutionLayer",
+    "ExecutionCostResult",
+    "SlippageModel",
+    "LatencyModel",
+    "FeeModel",
+    "FundingModel",
+    "LiquidationImpactModel",
+    "StabilityAnalyzer",
+    "StabilityResult",
+    "ParameterSweepResult",
+    "StabilityRegion",
+    "RegimePerformance",
+    "CrossRegimeStabilityResult",
 ]
-
-if AI_FRAMEWORK_AVAILABLE:
-    __all__ += [
-        "SafetyConstraints",
-        "ProposalValidator",
-        "ProposalManager",
-        "Proposal",
-        "ProposalType",
-        "ProposalStatus",
-        "create_llm_proposal",
-        "ConfidenceScore",
-        "ApprovalLevel",
-        "ValidationResult",
-    ]
-
-if EVENT_MEMORY_AVAILABLE:
-    __all__ += [
-        "EventMemoryDatabase",
-        "EventMemory",
-        "StructuredEvent",
-        "MarketReaction",
-        "EventType",
-        "Sentiment",
-        "Urgency",
-    ]
-
-if DERIVATIVE_FACTORS_AVAILABLE:
-    __all__ += [
-        "DerivativesFactors",
-        "DerivativesMetrics",
-    ]
-
-if ALPHA_LIFECYCLE_AVAILABLE:
-    __all__ += [
-        "AlphaLifecycleManager",
-        "ProposalLifecycleStatus",
-        "RegimeType",
-        "RegimeValidationResult",
-        "ProposalLineage",
-        "DatasetVersion",
-        "FeatureLineage",
-        "ReplaySnapshotBinding",
-        "ResearchBudget",
-    ]
-
-if CORRELATION_AVAILABLE:
-    __all__ += [
-        "CorrelationAnalyzer",
-        "CorrelationConfig",
-        "CorrelationResult",
-        "SignalDirection",
-        "SignalAssessment",
-        "DataPreparation",
-        "FeatureMatrix",
-        "UnivariateAnalyzer",
-        "MultivariateAnalyzer",
-        "LLMEnhancement",
-        "CorrelationScorer",
-        "CorrelationVisualizer",
-        "analyze_correlation",
-    ]
