@@ -48,5 +48,5 @@ data_lake:
   smb_host: "${DATA_LAKE_SMB_HOST:-192.168.1.14}"
   smb_share: "${DATA_LAKE_SMB_SHARE:-00_crypto}"
   smb_path: "${DATA_LAKE_SMB_PATH:-00_code/backend/data_lake}"
-  local_path: "${DATA_LAKE_LOCAL_PATH:-./data_lake}"
+  local_path: "${DATA_LAKE_LOCAL_PATH:-e:/00_crypto/00_code/backend/data_lake}"
   use_smb: "${DATA_LAKE_USE_SMB:-false}"

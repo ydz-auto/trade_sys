@@ -14,33 +14,33 @@ NC='\033[0m'
 
 declare -A RUNTIMES=(
     ["ingestion"]="runtime.ingestion_runtime"
+    ["feature"]="runtime.feature_runtime"
     ["signal"]="runtime.signal_runtime"
     ["execution"]="runtime.execution_runtime"
+    ["portfolio"]="runtime.portfolio_runtime"
     ["projection"]="runtime.projection_runtime"
     ["correlation"]="runtime.correlation_runtime"
     ["narrative"]="runtime.narrative_runtime"
-    ["monitoring"]="runtime.monitoring_runtime"
-    ["scheduler"]="runtime.scheduler_runtime"
-    ["governor"]="runtime.governor_runtime"
+    ["regime"]="runtime.regime_runtime"
+    ["replay"]="runtime.replay_runtime"
 )
 
 declare -A GPU_RUNTIMES=(
     ["gpu-signal"]="runtime.signal_runtime"
-    ["gpu-optimization"]="application.optimization_service"
 )
 
 declare -A RUNTIME_NAMES=(
     ["ingestion"]="数据采集运行时"
+    ["feature"]="特征计算运行时"
     ["signal"]="信号生成运行时"
     ["execution"]="订单执行运行时"
+    ["portfolio"]="组合管理运行时"
     ["projection"]="CQRS投影运行时"
     ["correlation"]="相关性分析运行时"
     ["narrative"]="AI叙事运行时"
-    ["monitoring"]="监控运行时"
-    ["scheduler"]="调度运行时"
-    ["governor"]="Runtime Governor"
+    ["regime"]="市场状态运行时"
+    ["replay"]="回放运行时"
     ["gpu-signal"]="GPU信号生成运行时"
-    ["gpu-optimization"]="GPU参数优化服务"
 )
 
 LOG_DIR="$SCRIPT_DIR/logs"
@@ -368,7 +368,7 @@ gpu_status() {
 import sys
 sys.path.insert(0, '$SCRIPT_DIR')
 try:
-    from shared.acceleration import get_accelerator_info
+    from infrastructure.acceleration import get_accelerator_info
     info = get_accelerator_info()
     print(f'  Backend: {info[\"backend\"]}')
     print(f'  Device: {info[\"device_type\"]}')

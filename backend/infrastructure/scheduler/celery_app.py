@@ -13,8 +13,6 @@ logger = get_logger("scheduler")
 
 
 def get_celery_app(name: str = "tradeagent") -> Celery:
-    """获取Celery应用实例"""
-
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     broker_url = os.getenv("CELERY_BROKER_URL", redis_url)
     result_backend = os.getenv("CELERY_RESULT_BACKEND", redis_url)
@@ -100,17 +98,13 @@ celery_app.conf.beat_schedule = {
 
 @celery_app.task(name="tasks.collect_prices", bind=True, max_retries=3)
 def collect_prices(self):
-    """采集交易所价格"""
-    from services.data_service.collectors import ExchangeCollector
+    from application.commands.data_commands import collect_exchange_data
 
     try:
-        collector = ExchangeCollector(
-            symbols=["BTC", "ETH", "SOL", "DOGE"],
-            exchanges=["binance", "okx", "hyperliquid"]
-        )
-
         import asyncio
-        result = asyncio.run(collector.collect())
+        result = asyncio.run(collect_exchange_data(
+            symbols=["BTC", "ETH", "SOL", "DOGE"],
+        ))
 
         return {"success": True, "count": len(result)}
     except Exception as e:
@@ -119,14 +113,11 @@ def collect_prices(self):
 
 @celery_app.task(name="tasks.collect_etf", bind=True, max_retries=3)
 def collect_etf(self):
-    """采集ETF数据"""
-    from services.data_service.collectors import ETFCollector
+    from application.commands.data_commands import collect_etf_data
 
     try:
-        collector = ETFCollector()
-
         import asyncio
-        result = asyncio.run(collector.collect())
+        result = asyncio.run(collect_etf_data())
 
         return {"success": True, "count": len(result)}
     except Exception as e:
@@ -135,14 +126,11 @@ def collect_etf(self):
 
 @celery_app.task(name="tasks.collect_news", bind=True, max_retries=3)
 def collect_news(self):
-    """采集新闻"""
-    from services.data_service.collectors import NewsCollector
+    from application.commands.data_commands import collect_news_data
 
     try:
-        collector = NewsCollector()
-
         import asyncio
-        result = asyncio.run(collector.collect())
+        result = asyncio.run(collect_news_data())
 
         return {"success": True, "count": len(result)}
     except Exception as e:
@@ -151,14 +139,11 @@ def collect_news(self):
 
 @celery_app.task(name="tasks.collect_macro", bind=True, max_retries=3)
 def collect_macro(self):
-    """采集宏观数据"""
-    from services.data_service.collectors import MacroCollector
+    from application.commands.data_commands import collect_macro_data
 
     try:
-        collector = MacroCollector()
-
         import asyncio
-        result = asyncio.run(collector.collect())
+        result = asyncio.run(collect_macro_data())
 
         return {"success": True, "count": len(result)}
     except Exception as e:
@@ -167,14 +152,11 @@ def collect_macro(self):
 
 @celery_app.task(name="tasks.collect_social", bind=True, max_retries=2)
 def collect_social(self):
-    """采集社交媒体"""
-    from services.data_service.collectors import SocialMediaCollector
+    from application.commands.data_commands import collect_social_media_data
 
     try:
-        collector = SocialMediaCollector()
-
         import asyncio
-        result = asyncio.run(collector.collect())
+        result = asyncio.run(collect_social_media_data())
 
         return {"success": True, "count": len(result)}
     except Exception as e:
@@ -183,14 +165,11 @@ def collect_social(self):
 
 @celery_app.task(name="tasks.collect_trader", bind=True, max_retries=2)
 def collect_trader(self):
-    """采集交易员观点"""
-    from services.data_service.collectors import TraderDataCollector
+    from application.commands.data_commands import collect_trader_data
 
     try:
-        collector = TraderDataCollector()
-
         import asyncio
-        result = asyncio.run(collector.collect())
+        result = asyncio.run(collect_trader_data())
 
         return {"success": True, "count": len(result.get("statements", []))}
     except Exception as e:
@@ -199,22 +178,16 @@ def collect_trader(self):
 
 @celery_app.task(name="tasks.analyze_news")
 def analyze_news():
-    """分析新闻情绪"""
     pass
 
 
 @celery_app.task(name="tasks.check_black_swan")
 def check_black_swan():
-    """检查黑天鹅事件"""
-    from services.data_service.collectors import NewsCollector
+    from application.commands.data_commands import check_black_swan as check_swan
 
     try:
-        collector = NewsCollector()
-
         import asyncio
-        asyncio.run(collector.collect())
-
-        black_swan = collector.get_black_swan_news()
+        black_swan = asyncio.run(check_swan())
 
         if black_swan:
             from infrastructure.alerting import AlertManager
@@ -234,7 +207,6 @@ def check_black_swan():
 
 @celery_app.task(name="tasks.publish_ws_data")
 def publish_ws_data():
-    """发布WebSocket数据"""
     from infrastructure.websocket import get_ws_server
 
     try:
@@ -249,15 +221,12 @@ def publish_ws_data():
 
 
 async def _publish_data(ws_server):
-    """内部发布数据方法"""
-    from services.data_service.collectors import ExchangeCollector
+    from application.commands.data_commands import publish_exchange_prices
 
-    collector = ExchangeCollector(
+    prices = await publish_exchange_prices(
         symbols=["BTC", "ETH", "SOL", "DOGE"],
-        exchanges=["binance", "okx"]
+        exchanges=["binance", "okx"],
     )
-
-    prices = await collector.collect()
 
     for symbol, multi_prices in prices.items():
         if "binance" in multi_prices.prices:

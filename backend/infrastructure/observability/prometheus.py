@@ -9,6 +9,7 @@ Prometheus Exporter - Prometheus 指标导出器
 """
 
 import asyncio
+import os
 import time
 import threading
 from typing import Dict, List, Optional, Any, Callable
@@ -46,11 +47,11 @@ except ImportError:
 @dataclass
 class PrometheusConfig:
     """Prometheus 配置"""
-    port: int = 9090
-    prefix: str = "trade_agent"
+    port: int = int(os.environ.get("PROMETHEUS_PORT", "9090"))
+    prefix: str = os.environ.get("PROMETHEUS_PREFIX", "trade_agent")
     
-    enable_default_metrics: bool = True
-    enable_process_metrics: bool = True
+    enable_default_metrics: bool = os.environ.get("PROMETHEUS_DEFAULT_METRICS", "true").lower() == "true"
+    enable_process_metrics: bool = os.environ.get("PROMETHEUS_PROCESS_METRICS", "true").lower() == "true"
     
     histogram_buckets: List[float] = field(default_factory=lambda: [
         0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0

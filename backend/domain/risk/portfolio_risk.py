@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import numpy as np
 
-from infrastructure.logging import get_logger
+from domain.logging import get_logger
 
 logger = get_logger("risk.portfolio_risk")
 

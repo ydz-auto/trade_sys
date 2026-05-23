@@ -257,7 +257,7 @@ class DashboardProjection(BaseProjection):
         
         if self._multi_channel:
             try:
-                base_symbol = symbol.replace("/USDT", "").replace("USDT", "")
+                base_symbol = symbol.replace("/USDT", "USDT")
                 full_price = await self._multi_channel.get_price(base_symbol)
                 
                 if full_price:
@@ -281,7 +281,7 @@ class DashboardProjection(BaseProjection):
     
     async def _periodic_price_snapshot(self) -> None:
         """定期获取完整价格快照（每30秒），推送到 prices 频道"""
-        symbols = ["BTC", "ETH", "SOL", "DOGE"]
+        symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT"]
         
         while self._running:
             try:
@@ -293,7 +293,8 @@ class DashboardProjection(BaseProjection):
                             price_data = await self._multi_channel.get_price(symbol)
                             
                             if price_data:
-                                symbol_key = f"{symbol}/USDT"
+                                base = symbol.replace("USDT", "")
+                                symbol_key = f"{base}/USDT"
                                 snapshot_prices[symbol_key] = {
                                     "symbol": symbol_key,
                                     "price": price_data.price,

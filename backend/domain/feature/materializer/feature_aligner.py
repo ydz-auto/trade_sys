@@ -13,7 +13,7 @@ import numpy as np
 from datetime import datetime
 from dataclasses import dataclass
 
-from infrastructure.logging import get_logger
+from domain.logging import get_logger
 
 logger = get_logger("feature.materializer.aligner")
 

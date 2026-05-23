@@ -6,6 +6,8 @@ Observability Module - 可观测性模块
 2. 指标采集 (Metrics) - Prometheus
 3. 事件监控 (Event Monitoring) - Lag, Loss Detection
 4. 日志关联 (Log Correlation)
+5. 服务注册与发现 (Service Registry)
+6. 监控面板 API (Monitoring Dashboard)
 """
 
 from .lag_monitor import (
@@ -43,14 +45,33 @@ from .prometheus import (
 )
 
 from .manager import (
-    ObservabilityManager as InfraObservabilityManager,
-    ObservabilityConfig,
-    get_observability_manager as get_infra_observability_manager,
-)
-
-from shared.observability import (
+    MetricType,
+    Metric,
+    Span,
+    HealthStatus,
+    MetricsCollector,
+    Tracer,
+    HealthChecker,
     ObservabilityManager,
     get_observability_manager,
+)
+
+from .service_registry import (
+    ServiceStatus,
+    ServiceEndpoint,
+    ServiceInfo,
+    ServiceRegistry,
+    get_service_registry,
+    ServiceClient,
+    get_service_client,
+)
+
+from .monitoring_api import (
+    DashboardMetric,
+    DashboardPanel,
+    MonitoringDashboard,
+    create_dashboard_routes,
+    get_dashboard,
 )
 
 __all__ = [
@@ -76,9 +97,25 @@ __all__ = [
     "increment_counter",
     "set_gauge",
     "observe_histogram",
-    "InfraObservabilityManager",
-    "ObservabilityConfig",
-    "get_infra_observability_manager",
+    "MetricType",
+    "Metric",
+    "Span",
+    "HealthStatus",
+    "MetricsCollector",
+    "Tracer",
+    "HealthChecker",
     "ObservabilityManager",
     "get_observability_manager",
+    "ServiceStatus",
+    "ServiceEndpoint",
+    "ServiceInfo",
+    "ServiceRegistry",
+    "get_service_registry",
+    "ServiceClient",
+    "get_service_client",
+    "DashboardMetric",
+    "DashboardPanel",
+    "MonitoringDashboard",
+    "create_dashboard_routes",
+    "get_dashboard",
 ]

@@ -12,6 +12,8 @@ Signal Runtime - 信号生成运行时
     python -m runtime.signal_runtime
 """
 
-from runtime.signal_runtime.runtime import SignalRuntime, get_signal_runtime
+from runtime.signal_runtime.runtime import TimeCausalSignalRuntime, get_signal_runtime
 
-__all__ = ["SignalRuntime", "get_signal_runtime"]
+SignalRuntime = TimeCausalSignalRuntime
+
+__all__ = ["SignalRuntime", "TimeCausalSignalRuntime", "get_signal_runtime"]

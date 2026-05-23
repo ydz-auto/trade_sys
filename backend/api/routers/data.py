@@ -8,8 +8,8 @@ from datetime import datetime
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from infrastructure.logging import get_logger
-from infrastructure.cache import get_redis_client
+from domain.logging import get_logger
+from application.queries.infrastructure_queries import get_redis_client_sync
 
 logger = get_logger("data_api")
 router = APIRouter(prefix="/data", tags=["Data"])
@@ -87,7 +87,7 @@ class AggregateSentimentResponse(BaseModel):
 
 def _get_redis():
     try:
-        return get_redis_client()
+        return get_redis_client_sync()
     except Exception as e:
         logger.warning(f"Redis not available: {e}")
         return None

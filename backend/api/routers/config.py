@@ -230,12 +230,10 @@ async def update_exchange_config(exchange: str, config: dict):
 @router.get("/trading-mode", response_model=TradingModeInfo)
 async def get_trading_mode():
     """获取当前交易模式"""
-    from domain.execution.trading_mode import (
-        get_trading_mode_config,
-        TradingMode,
-    )
-    
-    config = get_trading_mode_config()
+    from application.queries.domain_queries import get_execution_trading_mode, get_execution_trading_mode_config
+
+    TradingMode = get_execution_trading_mode()
+    config = get_execution_trading_mode_config()
     mode = config.mode
     
     descriptions = {
@@ -265,7 +263,9 @@ async def get_trading_mode():
 @router.get("/trading-mode/options")
 async def get_trading_mode_options():
     """获取所有可用的交易模式选项"""
-    from domain.execution.trading_mode import TradingMode
+    from application.queries.domain_queries import get_execution_trading_mode
+
+    TradingMode = get_execution_trading_mode()
     
     return {
         "options": [
@@ -294,8 +294,9 @@ async def get_trading_mode_options():
 @router.post("/trading-mode")
 async def set_trading_mode(request: SetTradingModeRequest):
     """设置交易模式 (需要重启服务生效)"""
-    from domain.execution.trading_mode import TradingMode
-    
+    from application.queries.domain_queries import get_execution_trading_mode
+
+    TradingMode = get_execution_trading_mode()
     try:
         mode = TradingMode(request.mode.lower())
     except ValueError:

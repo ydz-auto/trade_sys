@@ -1,15 +1,24 @@
 """
-Feature Matrix Runtime - 时间因果一致的特征矩阵运行时
+Feature Matrix Runtime - 时间因果一致的特征矩阵存储运行时
 
-重构版本！
+架构定位：
+    FeatureRuntime (计算层，事件驱动)
+         ↓ compute + store
+    FeatureMatrixRuntime (存储层，PIT + 可用性检查 + 快照)
+         ↓ query
+    SignalRuntime / ReplayRuntime / Strategy
+
+边界：
+    FeatureRuntime        = 特征计算 (emit_event → compute → store)
+    FeatureMatrixRuntime  = 特征存储 (PIT store + availability guard + snapshot)
+    两者是上下游关系，不是替代关系
+
 接入基础设施：
 1. Runtime Clock - 单一时间源
 2. Systematic Availability Guard - 特征可用性
 3. Immutable Snapshot - 不可变特征
 4. Label Isolation - 物理隔离
 5. Point-in-Time Store - 时间点存储
-
-不做上帝对象！只是组合使用基础设施。
 """
 
 from typing import Dict, List, Optional, Any

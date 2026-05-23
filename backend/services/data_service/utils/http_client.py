@@ -9,8 +9,8 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from shared.http_client import HTTPClient as SharedHTTPClient
-from shared.http_client import HTTPRequest, HTTPMethod
+from infrastructure.http.client import HTTPClient as SharedHTTPClient
+from infrastructure.http.client import HTTPRequest, HTTPMethod
 from infrastructure.logging import get_logger
 from infrastructure.resilience import CircuitBreaker, CircuitBreakerConfig, RetryPolicy, RetryConfig, FallbackChain
 

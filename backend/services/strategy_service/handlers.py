@@ -9,7 +9,8 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from infrastructure.logging import get_logger
-from infrastructure.messaging.schema import Signal, Decision
+from infrastructure.messaging.schema.signal import Signal
+from infrastructure.messaging.schema.decision import Decision
 from services.strategy_service.strategies import (
     create_default_strategies,
     StrategySignal,

@@ -13,8 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from shared.http_client import HTTPClient, HTTPRequest, HTTPMethod
-from shared.llm_client import LLMServiceClient, StreamChunk
+from infrastructure.http.client import HTTPClient, HTTPRequest, HTTPMethod
+from infrastructure.llm.client import LLMServiceClient, StreamChunk
 from infrastructure.logging import get_logger
 
 logger = get_logger("collectors.llm_scraper")

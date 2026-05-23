@@ -15,6 +15,7 @@ import uuid
 
 from domain.trading_mode import TradingMode
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import now_ms
 
 logger = get_logger("runtime.session")
 
@@ -42,7 +43,7 @@ class RuntimeSession:
     mode: TradingMode
     namespace: str
     state: SessionState = SessionState.CREATED
-    created_at: datetime = field(default_factory=datetime.now)
+    created_at: datetime = field(default_factory=lambda: datetime.fromtimestamp(now_ms() / 1000))
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
     
@@ -57,7 +58,7 @@ class RuntimeSession:
     @property
     def duration_seconds(self) -> float:
         if self.started_at:
-            end = self.ended_at or datetime.now()
+            end = self.ended_at or datetime.fromtimestamp(now_ms() / 1000)
             return (end - self.started_at).total_seconds()
         return 0.0
 
@@ -142,7 +143,7 @@ class SessionManager:
             return False
         
         session.state = SessionState.ACTIVE
-        session.started_at = datetime.now()
+        session.started_at = datetime.fromtimestamp(now_ms() / 1000)
         self._active_session = session
         
         logger.info(f"Started session: {session_id}")
@@ -154,7 +155,7 @@ class SessionManager:
             return False
         
         session.state = SessionState.ENDED
-        session.ended_at = datetime.now()
+        session.ended_at = datetime.fromtimestamp(now_ms() / 1000)
         
         if self._active_session and self._active_session.session_id == session_id:
             self._active_session = None
@@ -204,7 +205,7 @@ class SessionManager:
             return
         
         event = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.fromtimestamp(now_ms() / 1000).isoformat(),
             "type": event_type,
             "data": data,
         }

@@ -18,7 +18,7 @@ Signal Runtime - 时间因果一致的信号生成运行时
 """
 
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import asyncio
 
 from infrastructure.logging import get_logger
@@ -61,7 +61,7 @@ logger = get_logger("signal_runtime")
 @dataclass
 class SignalConfig:
     """信号运行时配置"""
-    symbols: List[str] = None
+    symbols: List[str] = field(default_factory=list)
     mode: str = "live"
 
 
@@ -277,3 +277,20 @@ def get_signal_runtime(config: Optional[SignalConfig] = None) -> TimeCausalSigna
             config = SignalConfig()
         _tc_signal_runtime = TimeCausalSignalRuntime(config)
     return _tc_signal_runtime
+
+
+async def main():
+    print("=" * 60)
+    print("Signal Runtime - Time-Causal Signal Generation")
+    print("=" * 60)
+
+    runtime = get_signal_runtime()
+    await runtime.start()
+
+    try:
+        while runtime.is_running():
+            await asyncio.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        await runtime.stop()

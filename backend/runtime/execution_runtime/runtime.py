@@ -31,7 +31,7 @@ from runtime.shared import (
 )
 from infrastructure.messaging import Topics
 from infrastructure.messaging.kafka_config import ConsumerGroup
-from infrastructure.runtime_clock import get_clock
+from infrastructure.runtime_clock import get_clock, now_ms
 from infrastructure.feature_availability import get_systematic_guard
 from infrastructure.label_isolation import get_label_store
 from infrastructure.storage.immutable_snapshot import get_immutable_snapshot_store
@@ -75,6 +75,7 @@ class ExecutionRuntime(BaseRuntime):
         self.execution_engine = None
         self.risk_engine = None
         self.order_manager = None
+        self._state: Dict[str, Any] = {"orders": {}, "state": "unknown", "last_error": None}
     
     async def initialize(self) -> None:
         """初始化运行时组件"""
@@ -135,6 +136,15 @@ class ExecutionRuntime(BaseRuntime):
     async def _check_risk_engine(self) -> bool:
         return self.risk_engine is not None
     
+    def get_state(self) -> Dict[str, Any]:
+        if self.order_manager and hasattr(self.order_manager, 'get_orders'):
+            try:
+                self._state["orders"] = self.order_manager.get_orders()
+            except Exception:
+                pass
+        self._state["state"] = self.state.value if hasattr(self, 'state') else "unknown"
+        return self._state
+    
     async def shutdown(self) -> None:
         """关闭运行时组件"""
         self.logger.info("Shutting down Execution Runtime...")
@@ -163,7 +173,7 @@ class ExecutionRuntime(BaseRuntime):
                 await self.lifecycle.handle_error(e)
     
     async def _process_decision(self, decision: Dict[str, Any]) -> None:
-        """处理决策（运行时编排）- 支持时间因果一致性"""
+        from infrastructure.messaging.schema.base_event import OrderEvent, EventSource
         trace_id = decision.get("trace_id", "unknown")
         current_time = self._clock.now()
         
@@ -184,16 +194,40 @@ class ExecutionRuntime(BaseRuntime):
             order = await self._execute_decision(decision)
             
             if order:
-                # 保存不可变快照
                 if self._snapshot_store:
-                    order["snapshot_timestamp"] = current_time.isoformat()
-                    order["clock_mode"] = self._clock.mode.value
-                    self._snapshot_store.save(order, timestamp=current_time)
+                    self._snapshot_store.save(order, timestamp=now_ms())
                 
                 self.metrics.increment("orders_executed")
                 self.logger.info(f"[{trace_id}] Order executed: {order}")
                 
-                await self.publisher.publish(order)
+                if isinstance(order, dict):
+                    order_event = OrderEvent(
+                        source=EventSource.EXECUTION_RUNTIME,
+                        symbol=order.get("symbol", "BTCUSDT"),
+                        event_time_ms=now_ms(),
+                        order_id=order.get("order_id", f"ord_{now_ms()}"),
+                        side=order.get("side", "buy"),
+                        order_type=order.get("type", "market"),
+                        quantity=order.get("quantity", 0),
+                        price=order.get("price"),
+                        status=order.get("status", "new"),
+                        trace_id=order.get("trace_id", trace_id),
+                    )
+                    await self.publisher.publish(order_event)
+                else:
+                    order_event = OrderEvent(
+                        source=EventSource.EXECUTION_RUNTIME,
+                        symbol=getattr(order, "symbol", "BTCUSDT"),
+                        event_time_ms=now_ms(),
+                        order_id=getattr(order, "order_id", f"ord_{now_ms()}"),
+                        side=getattr(order, "side", "buy"),
+                        order_type=getattr(order, "order_type", "market"),
+                        quantity=getattr(order, "quantity", 0),
+                        price=getattr(order, "price"),
+                        status=getattr(order, "status", "new"),
+                        trace_id=trace_id,
+                    )
+                    await self.publisher.publish(order_event)
     
     async def _check_risk(self, decision: Dict[str, Any]) -> Dict[str, Any]:
         """风控检查（调用 services/risk_service/）"""
@@ -215,17 +249,19 @@ class ExecutionRuntime(BaseRuntime):
         return self._create_mock_order(decision)
     
     def _create_mock_order(self, decision: Dict[str, Any]) -> Dict[str, Any]:
-        """创建模拟订单"""
-        return {
-            "order_id": f"ord_{datetime.now().timestamp()}",
-            "trace_id": decision.get("trace_id", ""),
-            "symbol": decision.get("symbol", "BTCUSDT"),
-            "side": "buy" if decision.get("action") == "LONG" else "sell",
-            "type": "market",
-            "quantity": decision.get("quantity", 0.01),
-            "status": "filled",
-            "timestamp": datetime.now().isoformat(),
-        }
+        from infrastructure.messaging.schema.base_event import OrderEvent, EventSource
+        event = OrderEvent(
+            source=EventSource.EXECUTION_RUNTIME,
+            symbol=decision.get("symbol", "BTCUSDT"),
+            event_time_ms=now_ms(),
+            order_id=f"ord_{now_ms()}",
+            side="buy" if decision.get("action") == "LONG" else "sell",
+            order_type="market",
+            quantity=decision.get("quantity", 0.01),
+            status="filled",
+            trace_id=decision.get("trace_id", ""),
+        )
+        return event.to_dict()
     
     async def execute_signal(self, signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
@@ -251,7 +287,7 @@ class ExecutionRuntime(BaseRuntime):
             "quantity": signal.get('quantity', 0.01),
             "confidence": signal.get('confidence', 1.0),
             "reason": signal.get('reason', ''),
-            "trace_id": f"signal_{signal.get('timestamp_ms', datetime.now().timestamp())}",
+            "trace_id": f"signal_{signal.get('timestamp_ms', now_ms())}",
         }
         
         # 风控检查

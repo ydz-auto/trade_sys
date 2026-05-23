@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 from domain.execution.models import Order, OrderCreated, OrderFilled, PositionUpdated
 from infrastructure.logging import get_logger
 from infrastructure.messaging import get_broker, Topics
-from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 logger = get_logger("execution_service.publishers.order")
 
@@ -37,14 +37,20 @@ class OrderPublisher:
         logger.info(f"Published order_created: {order.order_id}")
 
     async def publish_order_updated(self, order: Order, old_status: str, new_status: str) -> None:
-        """发布订单更新事件"""
-        data = {
-            "event_type": "order_updated",
-            "order": order.to_dict(),
-            "old_status": old_status,
-            "new_status": new_status,
-        }
-        await self._publish("execution.orders.updated", data)
+        from infrastructure.messaging.schema.base_event import OrderEvent, EventSource
+        event = OrderEvent(
+            source=EventSource.EXECUTION_SERVICE,
+            symbol=order.symbol if hasattr(order, "symbol") else "BTCUSDT",
+            event_time_ms=order.created_at if isinstance(getattr(order, "created_at", None), int) else 0,
+            order_id=order.order_id,
+            side=getattr(order, "side", "buy"),
+            order_type=getattr(order, "order_type", "market"),
+            quantity=getattr(order, "quantity", 0),
+            price=getattr(order, "price", None),
+            status=new_status,
+            metadata={"old_status": old_status, "new_status": new_status},
+        )
+        await self._publish("execution.orders.updated", event.to_dict())
         logger.info(f"Published order_updated: {order.order_id}")
 
     async def publish_order_filled(self, order: Order, fill_quantity: float, fill_price: float) -> None:

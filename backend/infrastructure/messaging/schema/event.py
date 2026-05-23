@@ -3,9 +3,9 @@ from typing import List, Optional
 from pydantic import Field
 
 from infrastructure.messaging.schema.base import BaseMessage
-from domain.event.event_category import EventCategory
-from domain.event.event_type import EventType
-from domain.event.direction import Direction
+from domain.event.event_category import EventCategory  # NOTE: infrastructure → domain (type-only, allowed by architecture)
+from domain.event.event_type import EventType  # NOTE: infrastructure → domain (type-only, allowed by architecture)
+from domain.event.direction import Direction  # NOTE: infrastructure → domain (type-only, allowed by architecture)
 
 
 class Event(BaseMessage):
@@ -39,7 +39,7 @@ class Event(BaseMessage):
         sources: List[str] = None,
         **kwargs
     ) -> "Event":
-        from domain.event.mapping import get_direction
+        from domain.event.mapping import get_direction  # NOTE: infrastructure → domain (type-only, allowed by architecture)
 
         return cls(
             event_type=event_type.value,

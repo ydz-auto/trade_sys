@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from infrastructure.logging import get_logger
+from domain.logging import get_logger
 
 logger = get_logger("api.feature_generation")
 

@@ -1,4 +1,4 @@
-"""
+﻿"""
 统一数据管道 - 数据采集到消费的完整管道
 
 提供：
@@ -48,7 +48,7 @@ from infrastructure.resilience import (
     RetryConfig
 )
 from infrastructure.messaging import Topics
-from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 logger = get_logger("unified_pipeline")
 
@@ -329,9 +329,10 @@ class UnifiedConsumer:
     - 重试机制
     - 消息处理
     - 监控指标
-    """
 
-    FEATURE_COMPUTATION_TYPE = "feature_computation"
+    边界：consumer 只负责消息消费和容错，不负责业务路由。
+    message_handler 由调用方传入，consumer 不决定消息去向。
+    """
 
     def __init__(
         self,
@@ -411,10 +412,6 @@ class UnifiedConsumer:
 
     async def _process_message(self, message: Dict[str, Any]) -> None:
         """处理单条消息"""
-        if message.get("type") == self.FEATURE_COMPUTATION_TYPE:
-            await self._route_to_feature_matrix_runtime(message)
-            return
-
         if not self.circuit_breaker.can_execute():
             self.metrics.circuit_open_count += 1
             logger.warning(f"Circuit breaker open for consumer '{self.config.name}'")
@@ -447,37 +444,6 @@ class UnifiedConsumer:
             if self.config.fallback_enabled:
                 await self._use_fallback_handler(message)
 
-    async def _route_to_feature_matrix_runtime(self, message: Dict[str, Any]) -> None:
-        try:
-            from runtime.feature_matrix_runtime import get_feature_matrix_runtime
-
-            symbol = message.get("symbol", "")
-            mode = message.get("mode", "live")
-
-            if not symbol:
-                logger.error("Feature computation request missing 'symbol' field")
-                self.metrics.failed_count += 1
-                return
-
-            runtime = get_feature_matrix_runtime(symbol=symbol, mode=mode)
-
-            if not runtime.is_running():
-                await runtime.start()
-
-            await runtime.compute_features(message)
-
-            self.metrics.consumed_count += 1
-            self.metrics.last_success_time = datetime.now()
-            logger.info(f"Routed feature computation to feature_matrix_runtime for {symbol}")
-
-        except Exception as e:
-            self.metrics.failed_count += 1
-            self.metrics.last_failure_time = datetime.now()
-            logger.error(f"Failed to route to feature_matrix_runtime: {e}")
-
-            if self.config.fallback_enabled:
-                await self._use_fallback_handler(message)
-
     async def _use_fallback_handler(self, message: Dict[str, Any]) -> None:
         """使用降级处理器"""
         self.metrics.fallback_count += 1
@@ -492,13 +458,13 @@ class UnifiedConsumer:
 
 class DataPipeline:
     """
-    统一数据管道
+    统一数据管道 (Infrastructure 层原语)
 
-    整合数据源、发布者、消费者，提供端到端的数据处理能力
+    只提供 start/stop/fetch_one_cycle 原语。
+    事件循环编排（while running 循环）由 runtime 层负责。
 
-    注意：consumer 的 message_handler 不应直接执行特征计算。
-    特征计算应委托给 feature_matrix_runtime，由其保证时间因果一致性。
-    如需创建特征计算管道，请使用 create_feature_pipeline() 方法。
+    边界：pipeline 只负责 source → Kafka → consumer 的数据搬运。
+    consumer 的 message_handler 由调用方传入，pipeline 不决定业务路由。
     """
 
     def __init__(
@@ -513,53 +479,27 @@ class DataPipeline:
         self.publisher = UnifiedPublisher(config, kafka_bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS)
         self.consumer = UnifiedConsumer(config, kafka_bootstrap_servers or KAFKA_BOOTSTRAP_SERVERS, message_handler)
 
-        self._status = PipelineStatus.HEALTHY
-        self._running = False
-
         logger.info(f"DataPipeline '{config.name}' initialized")
 
     async def start(self) -> None:
-        """启动管道"""
         await self.publisher.start()
         await self.consumer.start()
-        self._running = True
         logger.info(f"DataPipeline '{self.config.name}' started")
 
     async def stop(self) -> None:
-        """停止管道"""
-        self._running = False
         await self.publisher.stop()
         await self.consumer.stop()
         logger.info(f"DataPipeline '{self.config.name}' stopped")
 
-    async def run(self) -> None:
-        """运行管道（采集→发布→消费）"""
-        await self.start()
-
-        try:
-            while self._running:
-                try:
-                    data = await self.data_source.fetch()
-                    logger.info(f"Fetched {len(data)} items from {self.data_source.get_source_name()}")
-
-                    published = await self.publisher.publish_batch(data)
-                    logger.info(f"Published {published} items to {self.config.kafka_topic}")
-
-                    self._status = PipelineStatus.HEALTHY
-
-                except Exception as e:
-                    logger.error(f"Pipeline error: {e}")
-                    self._status = PipelineStatus.DEGRADED
-
-                await asyncio.sleep(60)
-
-        except asyncio.CancelledError:
-            pass
-        finally:
-            await self.stop()
+    async def fetch_and_publish(self) -> int:
+        """执行一次 fetch → publish 周期，返回发布的条目数"""
+        data = await self.data_source.fetch()
+        logger.info(f"Fetched {len(data)} items from {self.data_source.get_source_name()}")
+        published = await self.publisher.publish_batch(data)
+        logger.info(f"Published {published} items to {self.config.kafka_topic}")
+        return published
 
     def get_status(self) -> PipelineStatus:
-        """获取管道状态"""
         if self.publisher.metrics.failed_count > 10:
             return PipelineStatus.CIRCUIT_OPEN
         elif self.publisher.metrics.failed_count > 5:
@@ -567,50 +507,11 @@ class DataPipeline:
         return PipelineStatus.HEALTHY
 
     def get_metrics(self) -> Dict[str, Any]:
-        """获取管道指标"""
         return {
             "status": self.get_status().value,
             "publisher": self.publisher.get_metrics().to_dict(),
             "consumer": self.consumer.get_metrics().to_dict()
         }
-
-    @classmethod
-    def create_feature_pipeline(
-        cls,
-        config: PipelineConfig,
-        data_source: DataSource,
-        kafka_bootstrap_servers: str = None
-    ) -> "DataPipeline":
-        """
-        创建特征计算管道
-
-        consumer 的 message_handler 委托给 feature_matrix_runtime 进行特征计算，
-        而不是在 consumer 中直接执行特征计算逻辑。
-        消息格式需包含 type="feature_computation" 字段以触发路由。
-        """
-        async def _feature_runtime_handler(message: Dict[str, Any]) -> None:
-            from runtime.feature_matrix_runtime import get_feature_matrix_runtime
-
-            symbol = message.get("symbol", "")
-            mode = message.get("mode", "live")
-
-            if not symbol:
-                logger.error("Feature pipeline handler: message missing 'symbol'")
-                return
-
-            runtime = get_feature_matrix_runtime(symbol=symbol, mode=mode)
-
-            if not runtime.is_running():
-                await runtime.start()
-
-            await runtime.compute_features(message)
-
-        return cls(
-            config=config,
-            data_source=data_source,
-            kafka_bootstrap_servers=kafka_bootstrap_servers,
-            message_handler=_feature_runtime_handler
-        )
 
 
 def create_rss_pipeline(

@@ -1,10 +1,20 @@
 """
 Data Lake Schemas (ClickHouse)
 数据湖分层存储表结构
+
+所有 TTL 值从 layer.LAYER_CONFIGS 动态读取，本文件不硬编码任何 TTL。
+修改 TTL 请编辑 layer.py 中的 LAYER_CONFIGS。
 """
 
+from infrastructure.data_lake.layer import DataLayer, get_layer_config
+
+
+def _ttl(layer: DataLayer) -> str:
+    return f"INTERVAL {get_layer_config(layer).ttl_days} DAY"
+
+
 DATA_LAKE_TABLE_SCHEMAS = {
-    "lake_raw_trades": """
+    "lake_raw_trades": f"""
         CREATE TABLE IF NOT EXISTS lake_raw_trades (
             timestamp DateTime,
             exchange String,
@@ -19,10 +29,10 @@ DATA_LAKE_TABLE_SCHEMAS = {
         ) ENGINE = ReplacingMergeTree(ingest_time)
         PARTITION BY toYYYYMMDD(timestamp)
         ORDER BY (exchange, symbol, timestamp, trade_id)
-        TTL timestamp + INTERVAL 90 DAY
+        TTL timestamp + {_ttl(DataLayer.RAW)}
     """,
 
-    "lake_raw_klines": """
+    "lake_raw_klines": f"""
         CREATE TABLE IF NOT EXISTS lake_raw_klines (
             open_time DateTime,
             close_time DateTime,
@@ -40,10 +50,10 @@ DATA_LAKE_TABLE_SCHEMAS = {
         ) ENGINE = MergeTree()
         PARTITION BY toYYYYMM(open_time)
         ORDER BY (exchange, symbol, timeframe, open_time)
-        TTL open_time + INTERVAL 90 DAY
+        TTL open_time + {_ttl(DataLayer.RAW)}
     """,
 
-    "lake_raw_news": """
+    "lake_raw_news": f"""
         CREATE TABLE IF NOT EXISTS lake_raw_news (
             timestamp DateTime,
             source String,
@@ -56,10 +66,10 @@ DATA_LAKE_TABLE_SCHEMAS = {
         ) ENGINE = MergeTree()
         PARTITION BY toYYYYMM(timestamp)
         ORDER BY (source, timestamp)
-        TTL timestamp + INTERVAL 90 DAY
+        TTL timestamp + {_ttl(DataLayer.RAW)}
     """,
 
-    "lake_raw_orderbook": """
+    "lake_raw_orderbook": f"""
         CREATE TABLE IF NOT EXISTS lake_raw_orderbook (
             timestamp DateTime,
             exchange String,
@@ -72,10 +82,10 @@ DATA_LAKE_TABLE_SCHEMAS = {
         ) ENGINE = ReplacingMergeTree(ingest_time)
         PARTITION BY toYYYYMMDD(timestamp)
         ORDER BY (exchange, symbol, timestamp)
-        TTL timestamp + INTERVAL 30 DAY
+        TTL timestamp + {_ttl(DataLayer.RAW)}
     """,
 
-    "lake_normalized_trades": """
+    "lake_normalized_trades": f"""
         CREATE TABLE IF NOT EXISTS lake_normalized_trades (
             timestamp DateTime,
             exchange String,
@@ -89,10 +99,10 @@ DATA_LAKE_TABLE_SCHEMAS = {
         ) ENGINE = ReplacingMergeTree(ingest_time)
         PARTITION BY toYYYYMM(timestamp)
         ORDER BY (exchange, symbol, timestamp, trade_id)
-        TTL timestamp + INTERVAL 180 DAY
+        TTL timestamp + {_ttl(DataLayer.NORMALIZED)}
     """,
 
-    "lake_normalized_klines": """
+    "lake_normalized_klines": f"""
         CREATE TABLE IF NOT EXISTS lake_normalized_klines (
             open_time DateTime,
             close_time DateTime,
@@ -110,10 +120,10 @@ DATA_LAKE_TABLE_SCHEMAS = {
         ) ENGINE = ReplacingMergeTree(ingest_time)
         PARTITION BY toYYYYMM(open_time)
         ORDER BY (exchange, symbol, timeframe, open_time)
-        TTL open_time + INTERVAL 180 DAY
+        TTL open_time + {_ttl(DataLayer.NORMALIZED)}
     """,
 
-    "lake_aggregated_klines": """
+    "lake_aggregated_klines": f"""
         CREATE TABLE IF NOT EXISTS lake_aggregated_klines (
             open_time DateTime,
             close_time DateTime,
@@ -132,10 +142,10 @@ DATA_LAKE_TABLE_SCHEMAS = {
         ) ENGINE = ReplacingMergeTree(ingest_time)
         PARTITION BY toYYYYMM(open_time)
         ORDER BY (exchange, symbol, timeframe, open_time)
-        TTL open_time + INTERVAL 365 DAY
+        TTL open_time + {_ttl(DataLayer.AGGREGATED)}
     """,
 
-    "lake_aggregated_vwap": """
+    "lake_aggregated_vwap": f"""
         CREATE TABLE IF NOT EXISTS lake_aggregated_vwap (
             timestamp DateTime,
             exchange String,
@@ -149,10 +159,10 @@ DATA_LAKE_TABLE_SCHEMAS = {
         ) ENGINE = MergeTree()
         PARTITION BY toYYYYMM(timestamp)
         ORDER BY (exchange, symbol, timeframe, timestamp)
-        TTL timestamp + INTERVAL 365 DAY
+        TTL timestamp + {_ttl(DataLayer.AGGREGATED)}
     """,
 
-    "lake_aggregated_footprint": """
+    "lake_aggregated_footprint": f"""
         CREATE TABLE IF NOT EXISTS lake_aggregated_footprint (
             timestamp DateTime,
             exchange String,
@@ -167,10 +177,10 @@ DATA_LAKE_TABLE_SCHEMAS = {
         ) ENGINE = MergeTree()
         PARTITION BY toYYYYMM(timestamp)
         ORDER BY (exchange, symbol, timeframe, timestamp, price_level)
-        TTL timestamp + INTERVAL 180 DAY
+        TTL timestamp + {_ttl(DataLayer.AGGREGATED)}
     """,
 
-    "lake_feature_technical": """
+    "lake_feature_technical": f"""
         CREATE TABLE IF NOT EXISTS lake_feature_technical (
             timestamp DateTime,
             exchange String,
@@ -199,10 +209,10 @@ DATA_LAKE_TABLE_SCHEMAS = {
         ) ENGINE = MergeTree()
         PARTITION BY toYYYYMM(timestamp)
         ORDER BY (exchange, symbol, timeframe, timestamp)
-        TTL timestamp + INTERVAL 180 DAY
+        TTL timestamp + {_ttl(DataLayer.FEATURE)}
     """,
 
-    "lake_feature_factor": """
+    "lake_feature_factor": f"""
         CREATE TABLE IF NOT EXISTS lake_feature_factor (
             timestamp DateTime,
             exchange String,
@@ -220,10 +230,10 @@ DATA_LAKE_TABLE_SCHEMAS = {
         ) ENGINE = MergeTree()
         PARTITION BY toYYYYMM(timestamp)
         ORDER BY (exchange, symbol, timestamp)
-        TTL timestamp + INTERVAL 180 DAY
+        TTL timestamp + {_ttl(DataLayer.FEATURE)}
     """,
 
-    "lake_signal_trading": """
+    "lake_signal_trading": f"""
         CREATE TABLE IF NOT EXISTS lake_signal_trading (
             timestamp DateTime,
             exchange String,
@@ -239,10 +249,10 @@ DATA_LAKE_TABLE_SCHEMAS = {
         ) ENGINE = MergeTree()
         PARTITION BY toYYYYMM(timestamp)
         ORDER BY (exchange, symbol, timestamp)
-        TTL timestamp + INTERVAL 365 DAY
+        TTL timestamp + {_ttl(DataLayer.SIGNAL)}
     """,
 
-    "lake_signal_fusion": """
+    "lake_signal_fusion": f"""
         CREATE TABLE IF NOT EXISTS lake_signal_fusion (
             timestamp DateTime,
             exchange String,
@@ -257,10 +267,10 @@ DATA_LAKE_TABLE_SCHEMAS = {
         ) ENGINE = MergeTree()
         PARTITION BY toYYYYMM(timestamp)
         ORDER BY (exchange, symbol, timestamp)
-        TTL timestamp + INTERVAL 365 DAY
+        TTL timestamp + {_ttl(DataLayer.SIGNAL)}
     """,
 
-    "lake_replay_events": """
+    "lake_replay_events": f"""
         CREATE TABLE IF NOT EXISTS lake_replay_events (
             timestamp DateTime,
             event_type String,
@@ -272,10 +282,10 @@ DATA_LAKE_TABLE_SCHEMAS = {
         ) ENGINE = MergeTree()
         PARTITION BY toYYYYMM(timestamp)
         ORDER BY (event_type, source, timestamp)
-        TTL timestamp + INTERVAL 730 DAY
+        TTL timestamp + {_ttl(DataLayer.REPLAY)}
     """,
 
-    "lake_replay_snapshots": """
+    "lake_replay_snapshots": f"""
         CREATE TABLE IF NOT EXISTS lake_replay_snapshots (
             timestamp DateTime,
             snapshot_type String,
@@ -286,7 +296,7 @@ DATA_LAKE_TABLE_SCHEMAS = {
         ) ENGINE = MergeTree()
         PARTITION BY toYYYYMM(timestamp)
         ORDER BY (snapshot_type, symbol, timestamp)
-        TTL timestamp + INTERVAL 730 DAY
+        TTL timestamp + {_ttl(DataLayer.REPLAY)}
     """,
 }
 

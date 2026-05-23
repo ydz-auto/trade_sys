@@ -19,8 +19,8 @@ Trading Service - 交易服务
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from infrastructure.cache.redis_client import RedisClient, init_redis
-from infrastructure.logging import get_logger
+from application.queries.infrastructure_queries import get_redis_client, init_redis
+from domain.logging import get_logger
 
 logger = get_logger("trading_service")
 
@@ -28,44 +28,43 @@ logger = get_logger("trading_service")
 class TradingService:
 
     def __init__(self):
-        self._redis: Optional[RedisClient] = None
+        self._redis = None
 
     async def ensure_connection(self):
-        if self._redis is None or not self._redis.is_connected:
+        if self._redis is None:
+            self._redis = await init_redis()
+        elif hasattr(self._redis, 'is_connected') and not self._redis.is_connected:
             self._redis = await init_redis()
 
     @property
-    def redis(self) -> RedisClient:
+    def redis(self):
         if self._redis is None:
             raise RuntimeError("Redis not connected")
         return self._redis
 
     async def get_positions(self) -> List[Dict]:
-        from runtime.bus.runtime_bus import get_runtime_bus
+        from application.queries.portfolio import get_portfolio_state
 
-        bus = get_runtime_bus()
         try:
-            state = bus.get_state("portfolio")
+            state = await get_portfolio_state()
             return state.get("positions", [])
         except Exception:
             return []
 
     async def get_accounts(self) -> Dict:
-        from runtime.bus.runtime_bus import get_runtime_bus
+        from application.queries.portfolio import get_portfolio_state
 
-        bus = get_runtime_bus()
         try:
-            state = bus.get_state("portfolio")
+            state = await get_portfolio_state()
             return state.get("accounts", {})
         except Exception:
             return {}
 
     async def get_open_orders(self) -> List[Dict]:
-        from runtime.bus.runtime_bus import get_runtime_bus
+        from application.queries.execution import get_execution_state
 
-        bus = get_runtime_bus()
         try:
-            state = bus.get_state("execution")
+            state = await get_execution_state()
             orders = state.get("orders", {})
             return [
                 o for o in orders.values()
@@ -75,10 +74,7 @@ class TradingService:
             return []
 
     async def place_order(self, order_data: Dict) -> Dict:
-        from runtime.bus.runtime_bus import get_runtime_bus
-        from domain.execution.models import OrderSide, OrderType as DomainOrderType, MarketType, Exchange
-
-        bus = get_runtime_bus()
+        from application.commands.bus_commands import publish_command
 
         order_id = f"ord_{datetime.now().timestamp()}"
         symbol = order_data["symbol"]
@@ -87,10 +83,9 @@ class TradingService:
         exchange = order_data.get("exchange", "binance")
         market_type = order_data.get("market_type", "spot")
 
-        await bus.publish_command(
-            command="create_order",
-            target="execution_runtime",
-            params={
+        await publish_command(
+            command_type="create_order",
+            data={
                 "symbol": symbol,
                 "side": side,
                 "quantity": quantity,
@@ -101,7 +96,7 @@ class TradingService:
                 "leverage": order_data.get("leverage", 1),
                 "client_order_id": order_id,
             },
-            source="api.trading",
+            target="execution_runtime",
         )
 
         return {
@@ -115,9 +110,7 @@ class TradingService:
         }
 
     async def close_position(self, close_data: Dict) -> Dict:
-        from runtime.bus.runtime_bus import get_runtime_bus
-
-        bus = get_runtime_bus()
+        from application.commands.bus_commands import publish_command
 
         symbol = close_data["symbol"]
         quantity = close_data.get("quantity")
@@ -132,14 +125,13 @@ class TradingService:
         if not position_id:
             raise ValueError(f"Position not found for {symbol}")
 
-        await bus.publish_command(
-            command="close_position",
-            target="portfolio_runtime",
-            params={
+        await publish_command(
+            command_type="close_position",
+            data={
                 "position_id": position_id,
                 "quantity": quantity,
             },
-            source="api.trading",
+            target="portfolio_runtime",
         )
 
         return {
@@ -150,9 +142,8 @@ class TradingService:
         }
 
     async def set_leverage(self, data: Dict) -> Dict:
-        from runtime.bus.runtime_bus import get_runtime_bus
+        from application.commands.bus_commands import publish_command
 
-        bus = get_runtime_bus()
         symbol = data["symbol"]
         leverage = data["leverage"]
 
@@ -166,14 +157,13 @@ class TradingService:
         if not position_id:
             raise ValueError(f"Position not found for {symbol}")
 
-        await bus.publish_command(
-            command="set_leverage",
-            target="portfolio_runtime",
-            params={
+        await publish_command(
+            command_type="set_leverage",
+            data={
                 "position_id": position_id,
                 "leverage": leverage,
             },
-            source="api.trading",
+            target="portfolio_runtime",
         )
 
         return {
@@ -185,9 +175,8 @@ class TradingService:
         }
 
     async def set_stop_loss_take_profit(self, data: Dict) -> Dict:
-        from runtime.bus.runtime_bus import get_runtime_bus
+        from application.commands.bus_commands import publish_command
 
-        bus = get_runtime_bus()
         symbol = data["symbol"]
 
         positions = await self.get_positions()
@@ -200,17 +189,16 @@ class TradingService:
         if not position_id:
             raise ValueError(f"Position not found for {symbol}")
 
-        await bus.publish_command(
-            command="set_stop_loss_take_profit",
-            target="portfolio_runtime",
-            params={
+        await publish_command(
+            command_type="set_stop_loss_take_profit",
+            data={
                 "position_id": position_id,
                 "stop_loss_pct": data.get("stop_loss_pct"),
                 "take_profit_pct": data.get("take_profit_pct"),
                 "stop_loss_price": data.get("stop_loss_price"),
                 "take_profit_price": data.get("take_profit_price"),
             },
-            source="api.trading",
+            target="portfolio_runtime",
         )
 
         return {
@@ -221,9 +209,8 @@ class TradingService:
         }
 
     async def adjust_position(self, data: Dict) -> Dict:
-        from runtime.bus.runtime_bus import get_runtime_bus
+        from application.commands.bus_commands import publish_command
 
-        bus = get_runtime_bus()
         symbol = data["symbol"]
 
         positions = await self.get_positions()
@@ -236,15 +223,14 @@ class TradingService:
         if not position_id:
             raise ValueError(f"Position not found for {symbol}")
 
-        await bus.publish_command(
-            command="adjust_position",
-            target="portfolio_runtime",
-            params={
+        await publish_command(
+            command_type="adjust_position",
+            data={
                 "position_id": position_id,
                 "new_quantity": data.get("new_quantity"),
                 "new_leverage": data.get("new_leverage"),
             },
-            source="api.trading",
+            target="portfolio_runtime",
         )
 
         return {
@@ -255,13 +241,12 @@ class TradingService:
         }
 
     async def get_trading_status(self) -> Dict:
-        from runtime.bus.runtime_bus import get_runtime_bus
-
-        bus = get_runtime_bus()
+        from application.queries.portfolio import get_portfolio_state
+        from application.queries.execution import get_execution_state
 
         try:
-            portfolio_state = bus.get_state("portfolio")
-            exec_state = bus.get_state("execution")
+            portfolio_state = await get_portfolio_state()
+            exec_state = await get_execution_state()
         except Exception:
             portfolio_state = {}
             exec_state = {}
@@ -286,15 +271,13 @@ class TradingService:
         }
 
     async def health_check(self) -> Dict:
-        from runtime.bus.runtime_bus import get_runtime_bus
+        from application.commands.bus_commands import publish_command
 
-        bus = get_runtime_bus()
         try:
-            await bus.publish_command(
-                command="health_check",
+            await publish_command(
+                command_type="health_check",
+                data={},
                 target="portfolio_runtime",
-                params={},
-                source="api.trading",
             )
             return {
                 "status": "healthy",

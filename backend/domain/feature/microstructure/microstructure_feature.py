@@ -17,7 +17,7 @@ from datetime import datetime
 import pandas as pd
 import numpy as np
 
-from infrastructure.logging import get_logger
+from domain.logging import get_logger
 
 logger = get_logger("feature.microstructure")
 

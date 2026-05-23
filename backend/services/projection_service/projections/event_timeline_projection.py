@@ -26,7 +26,7 @@ from collections import defaultdict
 from .base import BaseProjection
 from ..state_keys import ProjectionKeys, ProjectionChannels
 from infrastructure.messaging import Topics
-from infrastructure.messaging.schema import EventType
+from infrastructure.messaging.schema.base_event import PipelineEventType
 
 
 class EventTimelineProjection(BaseProjection):

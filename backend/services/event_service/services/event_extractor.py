@@ -12,7 +12,7 @@ from datetime import datetime
 from infrastructure.logging import get_logger
 logger = get_logger("event_service.extractor")
 
-from shared.llm_client import LLMServiceClient
+from infrastructure.llm.client import LLMServiceClient
 from .schemas import (
     Event,
     DataSource,

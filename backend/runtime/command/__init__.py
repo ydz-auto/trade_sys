@@ -5,7 +5,7 @@ Runtime Command Module - Runtime 命令模块
 - RuntimeCommandBus: 命令总线
 - RuntimeCommandType: 命令类型定义
 """
-from .command_bus import (
+from application.commands.runtime_command_bus import (
     CommandType,
     RuntimeCommand,
     CommandResult,
@@ -14,7 +14,7 @@ from .command_bus import (
     execute_command,
 )
 
-from .runtime_commands import (
+from domain.runtime_commands import (
     RuntimeCommandType,
     RuntimeCommand as RuntimeCommandDef,
     COMMAND_SCHEMAS,

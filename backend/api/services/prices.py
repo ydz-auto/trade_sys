@@ -9,8 +9,8 @@ import json
 from datetime import datetime
 from typing import Dict, Any, Optional
 from ..schemas import PriceComparisonResponse, PriceSourceStatusResponse
-from infrastructure.cache import get_redis_client
-from infrastructure.logging import get_logger
+from application.queries.infrastructure_queries import get_redis_client_sync
+from domain.logging import get_logger
 
 logger = get_logger("api.prices")
 
@@ -22,7 +22,7 @@ def _is_mock_mode() -> bool:
 
 async def _get_price_from_redis(symbol: str, exchange: str) -> Optional[Dict[str, Any]]:
     """从 Redis 获取价格数据"""
-    redis = get_redis_client()
+    redis = get_redis_client_sync()
     if not redis:
         return None
     

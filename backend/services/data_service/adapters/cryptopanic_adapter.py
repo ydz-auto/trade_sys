@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-from shared.contracts import StandardEvent, EventType, Sentiment, Source, create_news_event
+from domain.contracts import StandardEvent, EventType, Sentiment, Source, create_news_event
 from infrastructure.logging import get_logger
 from infrastructure.resilience import CircuitBreaker, CircuitBreakerConfig, RetryPolicy, RetryConfig
 

@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 import pandas as pd
 
-from infrastructure.logging import get_logger
+from domain.logging import get_logger
 from domain.feature.materializer import (
     UnifiedFeatureMatrix,
     HistoricalFeatureMaterializer,

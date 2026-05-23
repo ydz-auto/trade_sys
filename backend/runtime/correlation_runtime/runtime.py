@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from runtime.base import BaseRuntime, RuntimeConfig
 from infrastructure.logging import get_logger
-from infrastructure.runtime_clock import get_clock, ClockMode
+from infrastructure.runtime_clock import get_clock, ClockMode, now_ms
 from infrastructure.feature_availability import get_systematic_guard
 from infrastructure.label_isolation import get_label_store
 from infrastructure.storage.immutable_snapshot import get_immutable_snapshot_store
@@ -65,6 +65,9 @@ class CorrelationRuntime(BaseRuntime):
         self._gpu_available = False
         self._gpu_correlation_engine = None
 
+        self._state: Dict[str, Any] = {}
+        self._feature_data: Dict[str, Any] = {}
+
     async def initialize(self) -> None:
         self.logger.info("Initializing Correlation Runtime...")
 
@@ -86,7 +89,7 @@ class CorrelationRuntime(BaseRuntime):
 
     async def _init_gpu(self):
         try:
-            from shared.acceleration import is_gpu_available, get_accelerator_info
+            from infrastructure.acceleration import is_gpu_available, get_accelerator_info
             info = get_accelerator_info()
             self._gpu_available = info['is_gpu']
             if self._gpu_available:
@@ -99,7 +102,7 @@ class CorrelationRuntime(BaseRuntime):
             self.logger.warning(f"GPU init failed: {e}")
 
     def _create_gpu_correlation_engine(self):
-        from shared.acceleration import torch, device
+        from infrastructure.acceleration import torch, device
 
         class GPUCorrelationEngine:
             def __init__(self):
@@ -181,12 +184,16 @@ class CorrelationRuntime(BaseRuntime):
         return result
 
     def _publish_to_runtime_bus(self, symbol: str, timeframe: str, result: Dict) -> None:
+        self._state.update({
+            f"{symbol}:{timeframe}": result,
+            "last_update": datetime.fromtimestamp(now_ms() / 1000).isoformat(),
+        })
         from runtime.bus.runtime_bus import get_runtime_bus
         try:
             bus = get_runtime_bus()
             bus.publish_state_update("correlation", {
                 f"{symbol}:{timeframe}": result,
-                "last_update": datetime.now().isoformat(),
+                "last_update": datetime.fromtimestamp(now_ms() / 1000).isoformat(),
             })
         except Exception as e:
             self.logger.debug(f"Could not publish to runtime_bus: {e}")
@@ -197,12 +204,9 @@ class CorrelationRuntime(BaseRuntime):
         timeframe: str,
         news_data: Optional[List[Dict]] = None,
     ) -> Dict[str, Any]:
-        from runtime.bus.runtime_bus import get_runtime_bus
-        from shared.replay.market_event_emitter import MarketEventEmitter, EmitterConfig, EmitMode
+        from runtime.replay_runtime.shared_replay.market_event_emitter import MarketEventEmitter, EmitterConfig, EmitMode
 
-        bus = get_runtime_bus()
-        data_source_state = bus.get_state("data")
-        feature_data = data_source_state.get("features", {}).get(symbol)
+        feature_data = self._feature_data.get(symbol)
 
         if not feature_data:
             emitter = MarketEventEmitter(EmitterConfig(
@@ -247,7 +251,7 @@ class CorrelationRuntime(BaseRuntime):
             "feature_names": feature_names,
             "strong_correlations": strong_correlations,
             "gpu_accelerated": True,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.fromtimestamp(now_ms() / 1000).isoformat(),
         }
 
     async def _run_analysis_cpu(
@@ -255,18 +259,14 @@ class CorrelationRuntime(BaseRuntime):
         symbol: str,
         timeframe: str,
     ) -> Dict[str, Any]:
-        from runtime.bus.runtime_bus import get_runtime_bus
-
-        bus = get_runtime_bus()
-        data_state = bus.get_state("data")
-        feature_data = data_state.get("features", {}).get(symbol)
+        feature_data = self._feature_data.get(symbol)
 
         if not feature_data:
             return {
                 "symbol": symbol,
                 "timeframe": timeframe,
                 "error": "Feature data not available via runtime_bus",
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.fromtimestamp(now_ms() / 1000).isoformat(),
             }
 
         feature_matrix = feature_data.get("feature_matrix", [])
@@ -280,7 +280,7 @@ class CorrelationRuntime(BaseRuntime):
                 "feature_names": feature_names,
                 "strong_correlations": [],
                 "gpu_accelerated": False,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.fromtimestamp(now_ms() / 1000).isoformat(),
             }
 
         import numpy as np
@@ -303,7 +303,7 @@ class CorrelationRuntime(BaseRuntime):
             "feature_names": feature_names,
             "strong_correlations": strong_correlations,
             "gpu_accelerated": False,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.fromtimestamp(now_ms() / 1000).isoformat(),
         }
 
     async def run(self) -> None:
@@ -313,12 +313,12 @@ class CorrelationRuntime(BaseRuntime):
             while not self.context.is_shutdown_requested():
                 await asyncio.sleep(10)
 
+    def get_state(self) -> Dict[str, Any]:
+        return self._state
+
     def get_latest_result(self, symbol: str, timeframe: str) -> Optional[Dict]:
-        from runtime.bus.runtime_bus import get_runtime_bus
         try:
-            bus = get_runtime_bus()
-            state = bus.get_state("correlation")
-            return state.get(f"{symbol}:{timeframe}")
+            return self._state.get(f"{symbol}:{timeframe}")
         except Exception:
             return None
 

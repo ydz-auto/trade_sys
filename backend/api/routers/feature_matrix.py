@@ -72,14 +72,12 @@ async def batch_update_weights(update: BatchWeightUpdate):
 
 @router.post("/feature-matrix/backtest/trigger")
 async def trigger_backtest(symbol: str = Query(default="BTCUSDT")):
-    from runtime.bus.runtime_bus import get_runtime_bus
+    from application.commands.bus_commands import publish_command
 
-    bus = get_runtime_bus()
-    await bus.publish_command(
-        command="run_backtest",
+    await publish_command(
+        command_type="run_backtest",
+        data={"symbol": symbol, "source": "feature_matrix"},
         target="replay_runtime",
-        params={"symbol": symbol, "source": "feature_matrix"},
-        source="api.feature_matrix",
     )
 
     service = get_feature_matrix_service()

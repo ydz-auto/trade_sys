@@ -19,7 +19,7 @@ from infrastructure.resilience import (
     RetryPolicy,
     RetryConfig
 )
-from shared.llm_client import LLMServiceClient
+from infrastructure.llm.client import LLMServiceClient
 from domain.event.event_type import EventType
 from domain.event.direction import Direction
 

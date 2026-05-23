@@ -1,4 +1,4 @@
-"""
+﻿"""
 Middleware 配置
 从 shared.config 导入基础配置，业务配置保留在此
 """
@@ -6,7 +6,7 @@ Middleware 配置
 from typing import Optional
 from dataclasses import dataclass, field
 
-from shared.config.defaults.infrastructure import (
+from infrastructure.config.defaults.infrastructure import (
     MIDDLEWARE_CONFIGS,
     KAFKA_TOPICS,
     MIDDLEWARE_SERVICE_DEPENDENCIES,

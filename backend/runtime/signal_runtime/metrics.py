@@ -12,6 +12,8 @@ from datetime import datetime
 from typing import Any, Dict
 import time
 
+from infrastructure.runtime_clock import now_ms
+
 
 @dataclass
 class SignalMetricsData:
@@ -24,7 +26,7 @@ class SignalMetricsData:
     total_processing_time_ms: float = 0.0
     max_processing_time_ms: float = 0.0
     
-    start_time: float = field(default_factory=time.time)
+    start_time: float = field(default_factory=lambda: now_ms() / 1000)
 
 
 class SignalMetrics:
@@ -62,12 +64,12 @@ class SignalMetrics:
     
     def start_processing_timer(self) -> None:
         """开始计时"""
-        self._processing_start = time.time()
+        self._processing_start = now_ms() / 1000
     
     def stop_processing_timer(self) -> float:
         """停止计时，返回毫秒"""
         if self._processing_start > 0:
-            duration_ms = (time.time() - self._processing_start) * 1000
+            duration_ms = (now_ms() / 1000 - self._processing_start) * 1000
             self.record_event_processed(duration_ms)
             self._processing_start = 0.0
             return duration_ms
@@ -75,7 +77,7 @@ class SignalMetrics:
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
-        uptime = time.time() - self.data.start_time
+        uptime = now_ms() / 1000 - self.data.start_time
         
         avg_processing_time = 0.0
         if self.data.events_processed > 0:

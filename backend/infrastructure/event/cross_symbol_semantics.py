@@ -357,6 +357,8 @@ def get_cross_symbol_semantics(
     instance_id: str = "default",
 ) -> CrossSymbolEventSemantics:
     """获取跨品种事件语义实例"""
+    if symbols is None:
+        symbols = []
     key = f"{instance_id}_{'_'.join(sorted(symbols))}"
     if key not in _semantics_instances:
         _semantics_instances[key] = CrossSymbolEventSemantics(symbols)

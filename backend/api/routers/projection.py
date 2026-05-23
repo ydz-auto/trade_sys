@@ -79,14 +79,12 @@ async def get_metrics(
 async def refresh_projection(
     symbol: str = Query(default="BTCUSDT", description="币种"),
 ) -> Dict[str, Any]:
-    from runtime.bus.runtime_bus import get_runtime_bus
+    from application.commands.bus_commands import publish_command
 
-    bus = get_runtime_bus()
-    await bus.publish_command(
-        command="refresh_projection",
+    await publish_command(
+        command_type="refresh_projection",
+        data={"symbol": symbol},
         target="projection_runtime",
-        params={"symbol": symbol},
-        source="api.projection",
     )
 
     return {

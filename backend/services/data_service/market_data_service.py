@@ -1,4 +1,4 @@
-"""
+﻿"""
 统一的 MarketDataService 单例
 管理所有数据采集器，确保只有一个数据源采集中心
 """
@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from infrastructure.logging import get_logger
-from shared.config import get_datasource_config_manager
+from infrastructure.config import get_datasource_config_manager
 
 from .collectors import (
     ExchangeCollector,

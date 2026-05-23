@@ -1,6 +1,5 @@
 """
-Deterministic Replay Engine - 确定性回放引擎
-保证相同输入产生相同输出
+Low-level deterministic primitives. FrozenClock removed - use infrastructure.runtime_clock.RuntimeClock instead
 """
 
 import hashlib
@@ -11,25 +10,9 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import RuntimeClock, ClockMode
 
 logger = get_logger("infrastructure.replay.deterministic")
-
-
-class FrozenClock:
-    """冻结时钟，消除时间依赖"""
-
-    def __init__(self, current_time: int):
-        self._current_time = current_time
-
-    def now(self) -> int:
-        return self._current_time
-
-    def advance(self, delta_ms: int) -> None:
-        self._current_time += delta_ms
-
-    @property
-    def current_time(self) -> int:
-        return self._current_time
 
 
 @dataclass
@@ -38,7 +21,7 @@ class DeterministicContext:
 
     session_id: str
     seed: int
-    frozen_clock: FrozenClock
+    frozen_clock: RuntimeClock
     step_counter: int = 0
     execution_log: List[Dict] = field(default_factory=list)
     _random: Any = field(default=None, repr=False)
@@ -87,7 +70,7 @@ class DeterministicReplayEngine:
         context = DeterministicContext(
             session_id=session_id,
             seed=self.seed,
-            frozen_clock=FrozenClock(0),
+            frozen_clock=RuntimeClock(mode=ClockMode.REPLAY),
         )
         self._contexts[session_id] = context
         self._execution_log[session_id] = []
@@ -174,8 +157,10 @@ class DeterministicReplayEngine:
         self._state_hashes[session_id][state_key] = state_hash
         return state_hash
 
-    def freeze_time(self, timestamp: int) -> FrozenClock:
-        return FrozenClock(timestamp)
+    def freeze_time(self, timestamp: int) -> RuntimeClock:
+        clock = RuntimeClock(mode=ClockMode.REPLAY)
+        clock.advance_to(timestamp)
+        return clock
 
     def create_seeded_random(self, session_id: str) -> Any:
         context = self._contexts.get(session_id)

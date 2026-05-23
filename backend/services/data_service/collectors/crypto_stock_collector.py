@@ -1,4 +1,4 @@
-"""
+﻿"""
 Crypto Stock Collector - 加密货币相关股票采集
 支持：MSTR, COIN, MARA, RIOT, CRCL, HOOD 等 + 弹性能力
 """
@@ -12,8 +12,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from shared.config import get_datasource_config_manager
-from shared.http_client import HTTPClient, HTTPRequest, HTTPMethod
+from infrastructure.config import get_datasource_config_manager
+from infrastructure.http.client import HTTPClient, HTTPRequest, HTTPMethod
 from infrastructure.logging import get_logger
 from .base_collector import BaseCollector, CollectorResult
 from infrastructure.resilience import CircuitBreakerConfig, RetryConfig

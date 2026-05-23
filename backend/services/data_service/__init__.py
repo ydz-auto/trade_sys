@@ -35,7 +35,7 @@ AI Native Trading System 的数据层
 """
 
 # 导出共享合约（从 shared/contracts 导入，保持向后兼容）
-from shared.contracts import (
+from domain.contracts import (
     StandardEvent,
     EventType,
     Sentiment,

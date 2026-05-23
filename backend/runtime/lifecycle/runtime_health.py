@@ -15,6 +15,7 @@ import asyncio
 
 from runtime.orchestrator.registry import RuntimeState, get_runtime_registry
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import now_ms
 
 logger = get_logger("runtime.health")
 
@@ -154,10 +155,10 @@ class RuntimeHealthSystem:
             metadata = {}
             
             if hasattr(info.instance, 'health_check'):
-                start = datetime.now()
+                start = datetime.fromtimestamp(now_ms() / 1000)
                 try:
                     result = await info.instance.health_check()
-                    latency_ms = (datetime.now() - start).total_seconds() * 1000
+                    latency_ms = (datetime.fromtimestamp(now_ms() / 1000) - start).total_seconds() * 1000
                     healthy = result.get("healthy", True)
                     error = result.get("error")
                     metadata = result.get("metadata", {})
@@ -181,7 +182,7 @@ class RuntimeHealthSystem:
                 runtime_id=runtime_id,
                 status=status,
                 latency_ms=latency_ms,
-                last_heartbeat=datetime.now(),
+                last_heartbeat=datetime.fromtimestamp(now_ms() / 1000),
                 consecutive_failures=consecutive_failures,
                 error=error,
                 metadata=metadata,
@@ -254,7 +255,7 @@ class RuntimeHealthSystem:
             level=level,
             runtime_id=runtime_id,
             message=message,
-            timestamp=datetime.now(),
+            timestamp=datetime.fromtimestamp(now_ms() / 1000),
         )
         
         self._alerts.append(alert)

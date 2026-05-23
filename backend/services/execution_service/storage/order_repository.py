@@ -8,8 +8,8 @@ from typing import Dict, List, Optional
 import json
 
 from domain.execution.models import Order, OrderStatus
-from shared.state.types import StateType
-from shared.state.manager import StateManager, get_state_manager
+from infrastructure.state.types import StateType
+from infrastructure.state.manager import StateManager, get_state_manager
 from infrastructure.logging import get_logger
 
 logger = get_logger("execution_service.storage.order_repository")

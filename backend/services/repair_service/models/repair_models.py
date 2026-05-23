@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from enum import Enum
 
-from shared.contracts import Timeframe
+from domain.contracts import Timeframe
 
 
 class GapStatus(str, Enum):

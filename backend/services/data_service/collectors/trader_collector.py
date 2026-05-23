@@ -1,4 +1,4 @@
-"""
+﻿"""
 Trader Data Collector - 交易员/KOL数据采集
 支持：Twitter KOL + Dune Analytics + Nansen 链上数据 + 弹性能力
 """
@@ -12,9 +12,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from shared.config import get_datasource_config_manager, KOL_TRADER_LIST
-from shared.llm_client import LLMServiceClient
-from shared.http_client import HTTPClient, HTTPRequest, HTTPMethod
+from infrastructure.config import get_datasource_config_manager, KOL_TRADER_LIST
+from infrastructure.llm.client import LLMServiceClient
+from infrastructure.http.client import HTTPClient, HTTPRequest, HTTPMethod
 from infrastructure.logging import get_logger
 from .base_collector import BaseCollector, CollectorResult
 from infrastructure.resilience import CircuitBreakerConfig, RetryConfig

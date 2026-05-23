@@ -1,4 +1,4 @@
-"""
+﻿"""
 增强版新闻采集器 - 支持 LLM 资源池 + 多级降级 + 弹性能力
 """
 
@@ -19,7 +19,7 @@ from infrastructure.resilience import CircuitBreakerConfig, RetryConfig
 
 # 导入新闻源配置
 try:
-    from shared.config.defaults.business.news_sources import RSS_NEWS_SOURCES
+    from infrastructure.config.defaults.business.news_sources import RSS_NEWS_SOURCES
     HAS_NEWS_CONFIG = True
 except ImportError:
     HAS_NEWS_CONFIG = False

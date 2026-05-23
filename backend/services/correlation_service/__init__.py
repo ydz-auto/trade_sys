@@ -1,4 +1,4 @@
-"""
+﻿"""
 Correlation Service - 多数据源相关性分析定时任务
 
 对接现有 TaskScheduler，定时执行相关性分析。
@@ -27,7 +27,7 @@ from infrastructure.logging import get_logger
 
 logger = get_logger("correlation_service")
 
-from shared.config import get_config_manager
+from infrastructure.config import get_config_manager
 
 warnings.warn(
     "CorrelationWorker is superseded by CorrelationRuntime. "
@@ -52,6 +52,7 @@ class CorrelationWorker:
         output_dir: Optional[str] = None,
         kafka_enabled: Optional[bool] = None,
         storage_enabled: Optional[bool] = None,
+        correlation_runtime=None,
     ):
         self.symbols = symbols or _get_config("correlation.symbols", ["BTC", "ETH"])
         self.timeframes = timeframes or _get_config("correlation.timeframes", ["1h", "4h"])
@@ -64,7 +65,7 @@ class CorrelationWorker:
 
         self._broker = None
         self._running = False
-        self._runtime = None
+        self._runtime = correlation_runtime
 
         logger.info(
             f"CorrelationWorker initialized: symbols={self.symbols}, "
@@ -73,16 +74,16 @@ class CorrelationWorker:
         )
 
     async def initialize(self):
-        from runtime.correlation_runtime.runtime import get_correlation_runtime
-
-        self._runtime = get_correlation_runtime()
+        if self._runtime is None:
+            from runtime.correlation_runtime.runtime import get_correlation_runtime
+            self._runtime = get_correlation_runtime()
         if self._runtime.state.value == "uninitialized":
             await self._runtime.initialize()
 
         if self.kafka_enabled:
             try:
                 from infrastructure.messaging import get_broker
-                from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+                from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
                 kafka_bootstrap = _get_config("kafka.bootstrap_servers", KAFKA_BOOTSTRAP_SERVERS)
                 self._broker = get_broker(kafka_bootstrap)
                 logger.info("Kafka broker connected for correlation results")

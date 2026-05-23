@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import numpy as np
 
-from infrastructure.logging import get_logger
+from domain.logging import get_logger
 from domain.feature.materializer.schema_registry import get_schema_registry, FeatureCategory
 
 logger = get_logger("feature.materializer.matrix_builder")
@@ -157,11 +157,12 @@ class UnifiedMatrixBuilder:
     - _align_and_fill_batch_gpu() GPU 批量前向填充（大数据量）
     """
     
-    def __init__(self, symbol: str, interval_ms: int = 60000, n_workers: int = 4):
+    def __init__(self, symbol: str, interval_ms: int = 60000, n_workers: int = 4, accelerator=None):
         self.symbol = symbol
         self.interval_ms = interval_ms
         self.schema_registry = get_schema_registry()
         self.n_workers = n_workers
+        self._accelerator = accelerator
         
         self.timestamps: List[int] = []
         self.feature_vector: Dict[str, List[float]] = {}
@@ -178,11 +179,17 @@ class UnifiedMatrixBuilder:
             self.available_ats[feature_name] = []
     
     def _init_gpu(self):
-        try:
-            from shared.acceleration import is_gpu_available
-            self._gpu_available = is_gpu_available()
-        except Exception:
-            self._gpu_available = False
+        if self._accelerator is not None:
+            try:
+                self._gpu_available = self._accelerator.is_gpu_available()
+            except Exception:
+                self._gpu_available = False
+        else:
+            try:
+                from infrastructure.acceleration import is_gpu_available
+                self._gpu_available = is_gpu_available()
+            except Exception:
+                self._gpu_available = False
     
     def set_timestamps(self, timestamps: List[int]):
         """设置时间戳序列"""
@@ -283,7 +290,13 @@ class UnifiedMatrixBuilder:
     ) -> List[float]:
         """GPU 批量前向填充（大数据量时使用）"""
         try:
-            from shared.acceleration import torch, device, to_gpu, to_cpu
+            if self._accelerator is not None:
+                torch = self._accelerator.torch
+                device = self._accelerator.device
+                to_gpu = self._accelerator.to_gpu
+                to_cpu = self._accelerator.to_cpu
+            else:
+                from infrastructure.acceleration import torch, device, to_gpu, to_cpu
             
             ts_array = np.array(self.timestamps, dtype=np.int64)
             ts_tensor = to_gpu(ts_array)

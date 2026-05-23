@@ -45,6 +45,7 @@ def _run_single_backtest_sync(
     import pandas as pd
     import numpy as np
     from datetime import datetime
+    from pathlib import Path
     
     if isinstance(data_path, Path):
         data_path = str(data_path)
@@ -63,9 +64,53 @@ def _run_single_backtest_sync(
     
     df = pd.read_parquet(path)
     
-    start_dt = pd.to_datetime(start_time)
-    end_dt = pd.to_datetime(end_time)
-    df = df[(df["timestamp"] >= start_dt) & (df["timestamp"] <= end_dt)]
+    # 统一时间处理逻辑：检测时间列类型并转换
+    if "timestamp_ms" in df.columns:
+        # 已经是 int64 ms 格式
+        timestamp_col = "timestamp_ms"
+    elif "timestamp" in df.columns:
+        # 可能是 pd.Timestamp，需要转换
+        timestamp_col = "timestamp"
+        df[timestamp_col] = pd.to_datetime(df[timestamp_col])
+        df["timestamp_ms"] = df[timestamp_col].astype("int64") // 10**6
+        timestamp_col = "timestamp_ms"
+    elif "open_time" in df.columns:
+        timestamp_col = "open_time"
+        # 检查 open_time 格式
+        if pd.api.types.is_datetime64_any_dtype(df[timestamp_col]):
+            df["timestamp_ms"] = df[timestamp_col].astype("int64") // 10**6
+        else:
+            df["timestamp_ms"] = df[timestamp_col]
+        timestamp_col = "timestamp_ms"
+    else:
+        return {
+            "params": params,
+            "score": -float('inf'),
+            "result": None,
+            "error": "No timestamp column found in data",
+        }
+    
+    # 使用时间权威系统转换 start/end 时间
+    # 这里我们实现一个简单的转换，因为在子进程中无法导入完整模块
+    def _simple_normalize_time_ms(time_val):
+        if isinstance(time_val, int):
+            if time_val < 10**12:
+                return time_val * 1000
+            return time_val
+        elif isinstance(time_val, float):
+            return int(time_val * 1000)
+        elif isinstance(time_val, str):
+            try:
+                dt = pd.to_datetime(time_val)
+                return int(dt.timestamp() * 1000)
+            except:
+                return 0
+        return 0
+    
+    start_ms = _simple_normalize_time_ms(start_time)
+    end_ms = _simple_normalize_time_ms(end_time)
+    
+    df = df[(df[timestamp_col] >= start_ms) & (df[timestamp_col] <= end_ms)]
     
     if len(df) == 0:
         return {
@@ -469,12 +514,16 @@ class OptimizationService:
                         f"Parallel optimization (multiprocess): {len(param_combinations)} combos, "
                         f"max_workers={max_concurrent}"
                     )
+                    # 传递已经转换好的 int64 ms 时间给子进程
+                    start_time_for_mp = str(opt_start_ms) if isinstance(opt_start_ms, int) else str(opt_start_ms)
+                    end_time_for_mp = str(opt_end_ms) if isinstance(opt_end_ms, int) else str(opt_end_ms)
+                    
                     loop = asyncio.get_event_loop()
                     completed = await loop.run_in_executor(
                         None,
                         self._run_parallel_multiprocess,
                         engine, opt_data_path, task.symbol, task.strategy_config.strategy_id,
-                        task.config.optimization_start, task.config.optimization_end,
+                        start_time_for_mp, end_time_for_mp,
                         param_combinations, max_concurrent, task.config.metric
                     )
                 else:

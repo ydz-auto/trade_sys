@@ -1,0 +1,381 @@
+(tradeagent) PS E:\00_crypto\00_code> .\start.ps1 --mixed
+Starting mixed mode...
+
+Mixed mode includes:
+  - Infrastructure (Kafka, Redis) in Docker
+  - Python Runtime running directly
+  - API Server (FastAPI)
+  - Frontend dev server (Vite)
+
+Step 1/4: Starting infrastructure...
+Starting infrastructure (KRaft mode)...
+Step 1/2: Starting services...
+[+] up 3/3
+ ✔ Network deploy_kafka-network Created                                                                                                                                                                                                                                                                         0.0s
+ ✔ Container redis              Started                                                                                                                                                                                                                                                                         0.3s
+ ✔ Container kafka              Started                                                                                                                                                                                                                                                                         0.4s
+Step 2/2: Waiting for services...
+OK: Redis ready
+Waiting... (0/30)
+Waiting... (2/30)
+Waiting... (4/30)
+Waiting... (6/30)
+Waiting... (8/30)
+Waiting... (10/30)
+OK: Kafka ready
+Starting Kafka UI...
+[+] up 2/2
+ ✔ Container kafka    Healthy                                                                                                                                                                                                                                                                                   0.6s
+ ✔ Container kafka-ui Started                                                                                                                                                                                                                                                                                   0.8s
+
+Infrastructure started:
+  Kafka: localhost:9092
+  Redis: localhost:6379
+  Kafka UI: http://localhost:8080
+
+Step 2/4: Starting all Python Runtimes...
+Starting all Runtimes...
+
+Starting Feature Computation Runtime...
+OK: Feature Computation Runtime started (PID: 40448)
+  Log file: E:\00_crypto\00_code\backend\logs\feature.log
+
+Starting AI Narrative Runtime...
+OK: AI Narrative Runtime started (PID: 12008)
+  Log file: E:\00_crypto\00_code\backend\logs\narrative.log
+
+2026-05-23 11:52:19 INFO [storage.feature_matrix] Storage directories initialized at e:\00_crypto\00_code\backend\data_lake\feature_matrix
+E:\02_code_build_envirenment\20251204_anaconda3\envs\tradeagent\python.exe: No module named runtime.feature_runtime.__main__; 'runtime.feature_runtime' is a package and cannot be directly executed
+Starting Data Ingestion Runtime...
+OK: Data Ingestion Runtime started (PID: 34144)
+  Log file: E:\00_crypto\00_code\backend\logs\ingestion.log
+
+2026-05-23 11:52:23 INFO [storage.feature_matrix] Storage directories initialized at e:\00_crypto\00_code\backend\data_lake\feature_matrix
+2026-05-23 11:52:23 INFO [narrative] Runtime state changed: initializing
+2026-05-23 11:52:23 INFO [narrative] Windows platform detected, skipping signal handlers
+2026-05-23 11:52:23 INFO [narrative] Initializing Narrative Runtime with time-causal infrastructure...
+2026-05-23 11:52:23 INFO [narrative] Narrative Runtime initialized successfully
+2026-05-23 11:52:23 INFO [narrative] Runtime state changed: running
+2026-05-23 11:52:23 INFO [narrative] Runtime narrative started
+2026-05-23 11:52:23 INFO [narrative] Starting Narrative Runtime...
+2026-05-23 11:52:23,650 INFO     - FastStream app starting...
+2026-05-23 11:52:23 INFO [aiokafka.consumer.subscription_state] Updating subscribed topics to: frozenset({'tradeagent.decisions.all'})
+2026-05-23 11:52:23 INFO [aiokafka.consumer.consumer] Subscribed to topic(s): {'tradeagent.decisions.all'}
+2026-05-23 11:52:23 INFO [aiokafka.consumer.group_coordinator] Metadata for topic has changed from {} to {'tradeagent.decisions.all': 3}.
+2026-05-23 11:52:23 INFO [aiokafka.consumer.subscription_state] Updating subscribed topics to: frozenset({'tradeagent.signals'})
+2026-05-23 11:52:23 INFO [aiokafka.consumer.consumer] Subscribed to topic(s): {'tradeagent.signals'}
+2026-05-23 11:52:23 INFO [aiokafka.consumer.group_coordinator] Metadata for topic has changed from {} to {'tradeagent.signals': 3}.
+2026-05-23 11:52:23 INFO [aiokafka.consumer.subscription_state] Updating subscribed topics to: frozenset({'tradeagent.events'})
+2026-05-23 11:52:23 INFO [aiokafka.consumer.consumer] Subscribed to topic(s): {'tradeagent.events'}
+2026-05-23 11:52:23 INFO [aiokafka.consumer.group_coordinator] Metadata for topic has changed from {} to {'tradeagent.events': 3}.
+2026-05-23 11:52:23,727 INFO     - FastStream app started successfully! To exit, press CTRL+C
+Starting Order Execution Runtime...
+2026-05-23 11:52:26 INFO [storage.feature_matrix] Storage directories initialized at e:\00_crypto\00_code\backend\data_lake\feature_matrix
+OK: Order Execution Runtime started (PID: 40488)
+  Log file: E:\00_crypto\00_code\backend\logs\execution.log
+
+2026-05-23 11:52:27 INFO [ingestion] Runtime state changed: initializing
+2026-05-23 11:52:27 INFO [ingestion] Windows platform detected, skipping signal handlers
+2026-05-23 11:52:27 INFO [ingestion] Initializing Ingestion Runtime with time-causal infrastructure...
+2026-05-23 11:52:28 INFO [collectors.news] Loading 8 news sources from config
+2026-05-23 11:52:28 INFO [collectors.news] LLM Pool initialized successfully
+2026-05-23 11:52:28 INFO [ingestion] News collector initialized
+2026-05-23 11:52:28 WARNING [adapters.odaily] odaily-skill not found. Will return empty data.
+2026-05-23 11:52:28 INFO [ingestion] Odaily adapter initialized
+2026-05-23 11:52:28 INFO [llm_scorer] LLMScoringEngine initialized
+2026-05-23 11:52:28 INFO [event_service.odaily_consumer] LLM Scorer integrated into OdailyConsumer
+2026-05-23 11:52:28 INFO [event_service.odaily_consumer] Redis client initialized
+2026-05-23 11:52:28 INFO [event_service.odaily_consumer] OdailyConsumer initialized
+2026-05-23 11:52:28 INFO [ingestion] Odaily consumer initialized
+2026-05-23 11:52:28 INFO [ingestion] Aggregator initialized
+2026-05-23 11:52:28 INFO [publisher.tradeagent.events] Publisher started: tradeagent.events
+2026-05-23 11:52:28 INFO [ingestion] Kafka publisher initialized
+2026-05-23 11:52:28 WARNING [ingestion] WebSocket init failed: No module named 'websockets'
+2026-05-23 11:52:28 INFO [ingestion] Twitter Push collector initialized on localhost:8765
+2026-05-23 11:52:28 WARNING [ingestion] Twitter Cookie Monitor: No cookie auth configured, skipping
+2026-05-23 11:52:28 INFO [ingestion] Ingestion Runtime initialized successfully
+2026-05-23 11:52:28 INFO [ingestion] Runtime state changed: running
+2026-05-23 11:52:28 INFO [ingestion] Runtime ingestion started
+2026-05-23 11:52:28 INFO [ingestion] Starting Ingestion Runtime main loop...
+2026-05-23 11:52:28 INFO [event_service.odaily_consumer] OdailyConsumer connected to Kafka topic: raw.odaily
+2026-05-23 11:52:28 INFO [ingestion] Odaily consumer started
+2026-05-23 11:52:28 INFO [ingestion] Twitter Push server started on port 8765
+2026-05-23 11:52:28 INFO [ingestion] Collecting news from all sources...
+2026-05-23 11:52:29 INFO [event_service.odaily_consumer] Starting Odaily consumer...
+2026-05-23 11:52:29 ERROR [ingestion] Twitter Push server error: No module named 'websockets'
+2026-05-23 11:52:29 INFO [aiokafka.consumer.subscription_state] Updating subscribed topics to: frozenset({'tradeagent.raw.news.odaily'})
+2026-05-23 11:52:29 INFO [aiokafka.consumer.consumer] Subscribed to topic(s): {'tradeagent.raw.news.odaily'}
+2026-05-23 11:52:29 INFO [aiokafka.consumer.group_coordinator] Metadata for topic has changed from {} to {'tradeagent.raw.news.odaily': 3}.
+Starting CQRS Projection Runtime...
+2026-05-23 11:52:30 INFO [httpx] HTTP Request: GET https://cointelegraph.com/rss "HTTP/1.1 200 OK"
+2026-05-23 11:52:30 INFO [collectors.news] [cointelegraph] Fetched 10 news
+OK: CQRS Projection Runtime started (PID: 39408)
+  Log file: E:\00_crypto\00_code\backend\logs\projection.log
+
+2026-05-23 11:52:31 INFO [storage.feature_matrix] Storage directories initialized at e:\00_crypto\00_code\backend\data_lake\feature_matrix
+2026-05-23 11:52:31 INFO [execution] Runtime state changed: initializing
+2026-05-23 11:52:31 INFO [execution] Windows platform detected, skipping signal handlers
+2026-05-23 11:52:31 INFO [execution] Initializing Execution Runtime with time-causal infrastructure...
+2026-05-23 11:52:31 INFO [consumer.tradeagent-execution] Starting consumer (attempt 1/15)...
+2026-05-23 11:52:31 INFO [consumer.tradeagent-execution] Bootstrap servers: localhost:9092
+2026-05-23 11:52:31 INFO [consumer.tradeagent-execution] Topics: ['tradeagent.decisions.all']
+2026-05-23 11:52:31 INFO [aiokafka.consumer.subscription_state] Updating subscribed topics to: frozenset({'tradeagent.decisions.all'})
+2026-05-23 11:52:31 INFO [aiokafka.consumer.group_coordinator] Discovered coordinator 1 for group tradeagent-execution
+2026-05-23 11:52:31 INFO [aiokafka.consumer.group_coordinator] Revoking previously assigned partitions set() for group tradeagent-execution
+2026-05-23 11:52:31 INFO [aiokafka.consumer.group_coordinator] (Re-)joining group tradeagent-execution
+2026-05-23 11:52:31 INFO [aiokafka.consumer.group_coordinator] Joined group 'tradeagent-execution' (generation 20) with member_id aiokafka-0.14.0-04804e18-2770-475e-b43b-1d8ec5f6ff8b
+2026-05-23 11:52:31 INFO [aiokafka.consumer.group_coordinator] Elected group leader -- performing partition assignments using roundrobin
+2026-05-23 11:52:31 INFO [aiokafka.consumer.group_coordinator] Successfully synced group tradeagent-execution with generation 20
+2026-05-23 11:52:31 INFO [aiokafka.consumer.group_coordinator] Setting newly assigned partitions {TopicPartition(topic='tradeagent.decisions.all', partition=0), TopicPartition(topic='tradeagent.decisions.all', partition=1), TopicPartition(topic='tradeagent.decisions.all', partition=2)} for group tradeagent-execution
+2026-05-23 11:52:31 INFO [consumer.tradeagent-execution] ✅ Consumer started successfully: ['tradeagent.decisions.all']
+2026-05-23 11:52:31 INFO [publisher.tradeagent.orders] Publisher started: tradeagent.orders
+2026-05-23 11:52:31 INFO [httpx] HTTP Request: GET https://cryptonews.com/news/feed/ "HTTP/1.1 200 OK"
+2026-05-23 11:52:32 WARNING [execution] Execution engine init failed: No module named 'sqlalchemy'
+2026-05-23 11:52:32 INFO [execution] Order manager initialized
+2026-05-23 11:52:32 WARNING [execution] Risk engine init failed: No module named 'sqlalchemy'
+2026-05-23 11:52:32 INFO [execution] Execution Runtime initialized successfully
+2026-05-23 11:52:32 INFO [execution] Runtime state changed: running
+2026-05-23 11:52:32 INFO [execution] Runtime execution started
+2026-05-23 11:52:32 INFO [execution] Starting Execution Runtime main loop...
+2026-05-23 11:52:32 INFO [collectors.news] [cryptonews] Fetched 10 news
+2026-05-23 11:52:32 INFO [httpx] HTTP Request: GET https://www.theblock.co/rss.xml "HTTP/1.1 200 OK"
+2026-05-23 11:52:32 INFO [collectors.news] [theblock] Fetched 10 news
+2026-05-23 11:52:32 INFO [httpx] HTTP Request: GET https://decrypt.co/feed "HTTP/1.1 200 OK"
+2026-05-23 11:52:32 INFO [collectors.news] [decrypt] Fetched 10 news
+2026-05-23 11:52:33 INFO [httpx] HTTP Request: GET https://bitcoinist.com/feed/ "HTTP/1.1 200 OK"
+2026-05-23 11:52:33 INFO [collectors.news] [bitcoinist] Fetched 8 news
+Starting Signal Generation Runtime...
+2026-05-23 11:52:34 INFO [httpx] HTTP Request: GET https://defiprime.com/feed.xml "HTTP/1.1 200 OK"
+2026-05-23 11:52:34 INFO [collectors.news] [defiprime] Fetched 5 news
+OK: Signal Generation Runtime started (PID: 41508)
+  Log file: E:\00_crypto\00_code\backend\logs\signal.log
+
+2026-05-23 11:52:35 INFO [storage.feature_matrix] Storage directories initialized at e:\00_crypto\00_code\backend\data_lake\feature_matrix
+2026-05-23 11:52:35 INFO [trading_mode.manager] TradingModeManager initialized with mode: paper
+2026-05-23 11:52:35 INFO [runtime.state_store] RuntimeStateStore initialized (read-only aggregation, no business state)
+2026-05-23 11:52:35 INFO [projection] Runtime state changed: initializing
+2026-05-23 11:52:35 INFO [projection] Windows platform detected, skipping signal handlers
+2026-05-23 11:52:35 INFO [projection] Initializing Projection Runtime with time-causal infrastructure...
+2026-05-23 11:52:35 INFO [projection] Redis connected for pub/sub
+2026-05-23 11:52:35 INFO [projection] Connecting to Kafka at: localhost:9092
+Starting Replay Runtime...
+2026-05-23 11:52:39 INFO [storage.feature_matrix] Storage directories initialized at e:\00_crypto\00_code\backend\data_lake\feature_matrix
+2026-05-23 11:52:39 INFO [infrastructure.runtime_clock] Runtime clock mode set to: ClockMode.LIVE
+2026-05-23 11:52:39 INFO [infrastructure.label_isolation] Label store mode set to: runtime
+2026-05-23 11:52:39 INFO [signal_runtime] Time-Causal Signal Runtime initialized for []
+2026-05-23 11:52:39 INFO [signal_runtime] Signal runtime started
+OK: Replay Runtime started (PID: 35212)
+  Log file: E:\00_crypto\00_code\backend\logs\replay.log
+
+2026-05-23 11:52:39 INFO [httpx] HTTP Request: GET https://www.odaily.news/feed "HTTP/1.1 200 OK"
+2026-05-23 11:52:40 INFO [collectors.news] [odaily] Fetched 0 news
+2026-05-23 11:52:40 INFO [httpx] HTTP Request: GET https://cointelegraph.com/rss "HTTP/1.1 200 OK"
+2026-05-23 11:52:40 INFO [collectors.news] [cointelegraph_regulation] Fetched 10 news
+2026-05-23 11:52:40 INFO [collectors.news] After dedup: 53 news
+2026-05-23 11:52:40 WARNING [llm.pool] [智谱AI] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [硅基流动] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [DeepSeek] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [智谱AI] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [硅基流动] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [DeepSeek] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [智谱AI] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [硅基流动] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [DeepSeek] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [智谱AI] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [硅基流动] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [DeepSeek] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [智谱AI] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [硅基流动] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [DeepSeek] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [百度千帆] Failed: OpenAI client not available
+2026-05-23 11:52:40 WARNING [llm.pool] [阿里百炼] Failed: OpenAI client not available
+2026-05-23 11:52:40 INFO [consumer.tradeagent-projection] Starting consumer (attempt 1/15)...
+2026-05-23 11:52:40 INFO [consumer.tradeagent-projection] Bootstrap servers: localhost:9092
+2026-05-23 11:52:40 INFO [consumer.tradeagent-projection] Topics: ['tradeagent.events', 'tradeagent.factors']
+2026-05-23 11:52:40 INFO [aiokafka.consumer.subscription_state] Updating subscribed topics to: frozenset({'tradeagent.factors', 'tradeagent.events'})
+2026-05-23 11:52:40 INFO [aiokafka.consumer.group_coordinator] Discovered coordinator 1 for group tradeagent-projection
+2026-05-23 11:52:40 INFO [aiokafka.consumer.group_coordinator] Revoking previously assigned partitions set() for group tradeagent-projection
+2026-05-23 11:52:40 INFO [aiokafka.consumer.group_coordinator] (Re-)joining group tradeagent-projection
+2026-05-23 11:52:40 INFO [aiokafka.consumer.group_coordinator] Joined group 'tradeagent-projection' (generation 16) with member_id aiokafka-0.14.0-3a040933-d000-4a12-90cb-41f400f58d11
+2026-05-23 11:52:40 INFO [aiokafka.consumer.group_coordinator] Elected group leader -- performing partition assignments using roundrobin
+2026-05-23 11:52:40 INFO [aiokafka.consumer.group_coordinator] Successfully synced group tradeagent-projection with generation 16
+2026-05-23 11:52:40 INFO [aiokafka.consumer.group_coordinator] Setting newly assigned partitions {TopicPartition(topic='tradeagent.factors', partition=0), TopicPartition(topic='tradeagent.factors', partition=1), TopicPartition(topic='tradeagent.events', partition=2), TopicPartition(topic='tradeagent.factors', partition=2), TopicPartition(topic='tradeagent.events', partition=0), TopicPartition(topic='tradeagent.events', partition=1)} for group tradeagent-projection
+2026-05-23 11:52:40 INFO [consumer.tradeagent-projection] ✅ Consumer started successfully: ['tradeagent.events', 'tradeagent.factors']
+2026-05-23 11:52:40 INFO [projection] Kafka consumer initialized successfully
+2026-05-23 11:52:40 INFO [projection.dashboard] Initializing dashboard projection...
+2026-05-23 11:52:40 INFO [projection.dashboard] dashboard: Redis connected
+2026-05-23 11:52:40 INFO [projection.dashboard] dashboard: Schema registry loaded
+2026-05-23 11:52:40 INFO [projection.dashboard] dashboard projection initialized
+2026-05-23 11:52:40 INFO [projection.dashboard] Dashboard state loaded from Redis
+2026-05-23 11:52:40 INFO [resilience.multi_channel] MultiChannelDataManager initialized with 7 channels
+2026-05-23 11:52:40 INFO [projection.dashboard] Multi-channel manager initialized
+2026-05-23 11:52:40 INFO [projection.dashboard] Price snapshot task started
+2026-05-23 11:52:40 INFO [projection] Initialized: dashboard
+2026-05-23 11:52:40 INFO [projection.decision] Initializing decision projection...
+2026-05-23 11:52:40 INFO [projection.decision] decision: Redis connected
+2026-05-23 11:52:40 INFO [projection.decision] decision: Schema registry loaded
+2026-05-23 11:52:40 INFO [projection.decision] decision projection initialized
+2026-05-23 11:52:41 INFO [projection.decision] Decision projection initialized
+2026-05-23 11:52:41 INFO [projection] Initialized: decision
+2026-05-23 11:52:41 INFO [projection.risk] Initializing risk projection...
+2026-05-23 11:52:41 INFO [projection.risk] risk: Redis connected
+2026-05-23 11:52:41 INFO [projection.risk] risk: Schema registry loaded
+2026-05-23 11:52:41 INFO [projection.risk] risk projection initialized
+2026-05-23 11:52:41 INFO [projection.risk] Risk projection initialized
+2026-05-23 11:52:41 INFO [projection] Initialized: risk
+2026-05-23 11:52:41 INFO [projection.position] Initializing position projection...
+2026-05-23 11:52:41 INFO [projection.position] position: Redis connected
+2026-05-23 11:52:41 INFO [projection.position] position: Schema registry loaded
+2026-05-23 11:52:41 INFO [projection.position] position projection initialized
+2026-05-23 11:52:41 INFO [projection.position] Position projection initialized
+2026-05-23 11:52:41 INFO [projection] Initialized: position
+2026-05-23 11:52:41 INFO [projection.timeline] Initializing timeline projection...
+2026-05-23 11:52:41 INFO [projection.timeline] timeline: Redis connected
+2026-05-23 11:52:41 INFO [projection.timeline] timeline: Schema registry loaded
+2026-05-23 11:52:41 INFO [projection.timeline] timeline projection initialized
+2026-05-23 11:52:41 INFO [projection.timeline] Event timeline projection initialized
+2026-05-23 11:52:41 INFO [projection] Initialized: timeline
+2026-05-23 11:52:41 INFO [projection] Projection Runtime initialized successfully
+2026-05-23 11:52:41 INFO [projection] Runtime state changed: running
+2026-05-23 11:52:41 INFO [projection] Runtime projection started
+2026-05-23 11:52:41 INFO [projection] Starting Projection Runtime main loop...
+2026-05-23 11:52:41 INFO [httpx] HTTP Request: GET https://api.binance.com/api/v3/ticker/24hr?symbol=BTC "HTTP/1.1 400 Bad Request"
+2026-05-23 11:52:41 WARNING [resilience.multi_channel] Binance REST fetch failed for BTC: Client error '400 Bad Request' for url 'https://api.binance.com/api/v3/ticker/24hr?symbol=BTC'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-05-23 11:52:41 INFO [httpx] HTTP Request: POST http://localhost:11434/api/chat "HTTP/1.1 502 Bad Gateway"
+2026-05-23 11:52:41 WARNING [llm.pool] [Ollama 本地] Failed: Server error '502 Bad Gateway' for url 'http://localhost:11434/api/chat'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+2026-05-23 11:52:41 WARNING [llm.pool] [百度千帆] Failed: OpenAI client not available
+2026-05-23 11:52:41 WARNING [llm.pool] [阿里百炼] Failed: OpenAI client not available
+2026-05-23 11:52:41 INFO [httpx] HTTP Request: GET https://api.bybit.com/v5/market/tickers?category=spot&symbol=BTC "HTTP/1.1 200 OK"
+2026-05-23 11:52:42 INFO [httpx] HTTP Request: GET https://api.gateio.ws/api/v4/spot/tickers?currency_pair=BTC_USDT "HTTP/1.1 200 OK"
+2026-05-23 11:52:42 INFO [httpx] HTTP Request: GET https://api.binance.com/api/v3/ticker/24hr?symbol=ETH "HTTP/1.1 400 Bad Request"
+2026-05-23 11:52:42 WARNING [resilience.multi_channel] Binance REST fetch failed for ETH: Client error '400 Bad Request' for url 'https://api.binance.com/api/v3/ticker/24hr?symbol=ETH'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-05-23 11:52:42 INFO [httpx] HTTP Request: GET https://api.bybit.com/v5/market/tickers?category=spot&symbol=ETH "HTTP/1.1 200 OK"
+2026-05-23 11:52:42 INFO [httpx] HTTP Request: POST http://localhost:11434/api/chat "HTTP/1.1 502 Bad Gateway"
+2026-05-23 11:52:42 WARNING [llm.pool] [Ollama 本地] Failed: Server error '502 Bad Gateway' for url 'http://localhost:11434/api/chat'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+2026-05-23 11:52:42 WARNING [llm.pool] [百度千帆] Failed: OpenAI client not available
+2026-05-23 11:52:42 WARNING [llm.pool] [阿里百炼] Failed: OpenAI client not available
+2026-05-23 11:52:43 INFO [httpx] HTTP Request: GET https://api.gateio.ws/api/v4/spot/tickers?currency_pair=ETH_USDT "HTTP/1.1 200 OK"
+2026-05-23 11:52:43 INFO [httpx] HTTP Request: GET https://api.binance.com/api/v3/ticker/24hr?symbol=SOL "HTTP/1.1 400 Bad Request"
+2026-05-23 11:52:43 WARNING [resilience.multi_channel] Binance REST fetch failed for SOL: Client error '400 Bad Request' for url 'https://api.binance.com/api/v3/ticker/24hr?symbol=SOL'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-05-23 11:52:43 WARNING [resilience.multi_channel] Channel BINANCE_REST marked as unavailable
+Starting Market Regime Runtime...
+2026-05-23 11:52:43 INFO [httpx] HTTP Request: GET https://api.bybit.com/v5/market/tickers?category=spot&symbol=SOL "HTTP/1.1 200 OK"
+2026-05-23 11:52:43 WARNING [resilience.multi_channel] Channel BYBIT_REST marked as unavailable
+2026-05-23 11:52:44 INFO [httpx] HTTP Request: GET https://api.gateio.ws/api/v4/spot/tickers?currency_pair=SOL_USDT "HTTP/1.1 200 OK"
+2026-05-23 11:52:44 INFO [httpx] HTTP Request: POST http://localhost:11434/api/chat "HTTP/1.1 502 Bad Gateway"
+2026-05-23 11:52:44 WARNING [llm.pool] [Ollama 本地] Failed: Server error '502 Bad Gateway' for url 'http://localhost:11434/api/chat'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+2026-05-23 11:52:44 WARNING [llm.pool] [百度千帆] Failed: OpenAI client not available
+2026-05-23 11:52:44 WARNING [llm.pool] [阿里百炼] Failed: OpenAI client not available
+2026-05-23 11:52:44 WARNING [llm.pool] [百度千帆] Failed: OpenAI client not available
+2026-05-23 11:52:44 WARNING [llm.pool] [阿里百炼] Failed: OpenAI client not available
+2026-05-23 11:52:44 INFO [collectors.news] LLM Pool stats: {"zhipu": {"pool_id": "zhipu", "state": "OPEN", "failure_count": 5, "last_failure_time": 1779508360.387916}, "siliconflow": {"pool_id": "siliconflow", "state": "OPEN", "failure_count": 5, "last_failure_time": 1779508360.39312}, "deepseek": {"pool_id": "deepseek", "state": "OPEN", "failure_count": 5, "last_failure_time": 1779508360.3951383}, "qianfan": {"pool_id": "qianfan", "state": "OPEN", "failure_count": 5, "last_failure_time": 1779508364.0743077}, "dashscope": {"pool_id": "dashscope", "state": "OPEN", "failure_count": 5, "last_failure_time": 1779508364.0743077}, "ollama": {"pool_id": "ollama", "state": "OPEN", "failure_count": 3, "last_failure_time": 1779508364.0699413}, "keyword": {"pool_id": "keyword", "state": "CLOSED", "failure_count": 0, "last_failure_time": null}}
+2026-05-23 11:52:44 INFO [collectors.news] Total collected: 50 news
+2026-05-23 11:52:44 INFO [ingestion] Collected 50 standard news
+2026-05-23 11:52:44 ERROR [ingestion] Failed to publish news event: 'float' object has no attribute 'isoformat'
+2026-05-23 11:52:44 ERROR [ingestion] Failed to publish news event: 'float' object has no attribute 'isoformat'
+2026-05-23 11:52:44 ERROR [ingestion] Failed to publish news event: 'float' object has no attribute 'isoformat'
+2026-05-23 11:52:44 ERROR [ingestion] Failed to publish news event: 'float' object has no attribute 'isoformat'
+2026-05-23 11:52:44 ERROR [ingestion] Failed to publish news event: 'float' object has no attribute 'isoformat'
+2026-05-23 11:52:44 ERROR [ingestion] Failed to publish news event: 'float' object has no attribute 'isoformat'
+2026-05-23 11:52:44 ERROR [ingestion] Failed to publish news event: 'float' object has no attribute 'isoformat'
+2026-05-23 11:52:44 ERROR [ingestion] Failed to publish news event: 'float' object has no attribute 'isoformat'
+2026-05-23 11:52:44 ERROR [ingestion] Failed to publish news event: 'float' object has no attribute 'isoformat'
+2026-05-23 11:52:44 ERROR [ingestion] Failed to publish news event: 'float' object has no attribute 'isoformat'
+2026-05-23 11:52:44 INFO [ingestion] Published 10 news events to Kafka
+2026-05-23 11:52:44 INFO [ingestion] Collecting from Odaily skill...
+2026-05-23 11:52:44 WARNING [ingestion] No Odaily events collected
+2026-05-23 11:52:44 INFO [storage.feature_matrix] Storage directories initialized at e:\00_crypto\00_code\backend\data_lake\feature_matrix
+OK: Market Regime Runtime started (PID: 35080)
+  Log file: E:\00_crypto\00_code\backend\logs\regime.log
+
+2026-05-23 11:52:44 INFO [httpx] HTTP Request: GET https://api.gateio.ws/api/v4/spot/tickers?currency_pair=DOGE_USDT "HTTP/1.1 200 OK"
+2026-05-23 11:52:44 INFO [replay_runtime] ============================================================
+2026-05-23 11:52:44 INFO [replay_runtime] Replay Runtime - Complete Kernel
+2026-05-23 11:52:44 INFO [replay_runtime] ============================================================
+2026-05-23 11:52:44 INFO [infrastructure.runtime_clock] Runtime clock mode set to: ClockMode.REPLAY
+2026-05-23 11:52:44 INFO [infrastructure.label_isolation] Label store mode set to: research
+2026-05-23 11:52:44 INFO [replay_runtime] Time-Causal Replay Runtime initialized for BTCUSDT
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "E:\00_crypto\00_code\backend\runtime\replay_runtime\__main__.py", line 9, in <module>
+    asyncio.run(main())
+  File "E:\02_code_build_envirenment\20251204_anaconda3\envs\tradeagent\Lib\asyncio\runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "E:\02_code_build_envirenment\20251204_anaconda3\envs\tradeagent\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\02_code_build_envirenment\20251204_anaconda3\envs\tradeagent\Lib\asyncio\base_events.py", line 654, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "E:\00_crypto\00_code\backend\runtime\replay_runtime\runtime.py", line 657, in main
+    runtime.attach_feature_runtime(get_feature_matrix_runtime())
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: get_feature_matrix_runtime() missing 1 required positional argument: 'symbol'
+2026-05-23 11:52:48 INFO [storage.feature_matrix] Storage directories initialized at e:\00_crypto\00_code\backend\data_lake\feature_matrix
+Starting Portfolio Management Runtime...
+E:\02_code_build_envirenment\20251204_anaconda3\envs\tradeagent\python.exe: No module named runtime.regime_runtime.__main__; 'runtime.regime_runtime' is a package and cannot be directly executed
+OK: Portfolio Management Runtime started (PID: 33288)
+  Log file: E:\00_crypto\00_code\backend\logs\portfolio.log
+
+2026-05-23 11:52:54 INFO [storage.feature_matrix] Storage directories initialized at e:\00_crypto\00_code\backend\data_lake\feature_matrix
+Starting Correlation Analysis Runtime...
+E:\02_code_build_envirenment\20251204_anaconda3\envs\tradeagent\python.exe: No module named runtime.portfolio_runtime.__main__; 'runtime.portfolio_runtime' is a package and cannot be directly executed
+OK: Correlation Analysis Runtime started (PID: 29900)
+  Log file: E:\00_crypto\00_code\backend\logs\correlation.log
+
+All Runtimes started
+
+Step 3/4: Starting API Server...
+API Server started
+
+Step 4/4: Starting frontend dev server...
+2026-05-23 11:52:59 INFO [storage.feature_matrix] Storage directories initialized at e:\00_crypto\00_code\backend\data_lake\feature_matrix
+2026-05-23 11:52:59 INFO [correlation] Runtime state changed: initializing
+2026-05-23 11:52:59 INFO [correlation] Windows platform detected, skipping signal handlers
+2026-05-23 11:52:59 INFO [correlation] Initializing Correlation Runtime...
+2026-05-23 11:53:00 INFO [correlation] GPU enabled: cuda
+2026-05-23 11:53:00 INFO [pipeline.scheduler] Registered task: Correlation [BTC 1h] (interval=3600s, priority=NORMAL)
+2026-05-23 11:53:00 INFO [pipeline.scheduler] Registered task: Correlation [BTC 4h] (interval=3600s, priority=NORMAL)
+2026-05-23 11:53:00 INFO [pipeline.scheduler] Registered task: Correlation [ETH 1h] (interval=3600s, priority=NORMAL)
+2026-05-23 11:53:00 INFO [pipeline.scheduler] Registered task: Correlation [ETH 4h] (interval=3600s, priority=NORMAL)
+2026-05-23 11:53:00 INFO [correlation] Correlation Runtime initialized
+2026-05-23 11:53:00 INFO [correlation] Runtime state changed: running
+2026-05-23 11:53:00 INFO [correlation] Runtime correlation started
+2026-05-23 11:53:00 INFO [correlation] Starting Correlation Runtime...
+2026-05-23 11:53:00 INFO [pipeline.scheduler] Scheduler started
+2026-05-23 11:53:00 INFO [pipeline.scheduler] Scheduler started
+2026-05-23 11:53:00 ERROR [pipeline.scheduler] Task Correlation [BTC 1h] failed: 'SystematicAvailabilityGuard' object has no attribute 'check_data_availability'
+2026-05-23 11:53:00 WARNING [pipeline.scheduler] Task Correlation [BTC 1h] failed: 'SystematicAvailabilityGuard' object has no attribute 'check_data_availability'
+2026-05-23 11:53:00 ERROR [pipeline.scheduler] Task Correlation [BTC 4h] failed: 'SystematicAvailabilityGuard' object has no attribute 'check_data_availability'
+2026-05-23 11:53:00 WARNING [pipeline.scheduler] Task Correlation [BTC 4h] failed: 'SystematicAvailabilityGuard' object has no attribute 'check_data_availability'
+2026-05-23 11:53:00 ERROR [pipeline.scheduler] Task Correlation [ETH 1h] failed: 'SystematicAvailabilityGuard' object has no attribute 'check_data_availability'
+2026-05-23 11:53:00 WARNING [pipeline.scheduler] Task Correlation [ETH 1h] failed: 'SystematicAvailabilityGuard' object has no attribute 'check_data_availability'
+2026-05-23 11:53:00 ERROR [pipeline.scheduler] Task Correlation [ETH 4h] failed: 'SystematicAvailabilityGuard' object has no attribute 'check_data_availability'
+2026-05-23 11:53:00 WARNING [pipeline.scheduler] Task Correlation [ETH 4h] failed: 'SystematicAvailabilityGuard' object has no attribute 'check_data_availability'
+2026-05-23 11:53:00 INFO [storage.feature_matrix] Storage directories initialized at e:\00_crypto\00_code\backend\data_lake\feature_matrix
+Frontend started
+
+==========================================
+      Mixed mode started successfully
+==========================================
+
+Services:
+  Frontend:       http://localhost:3000
+  API Server:   http://localhost:8001
+  API Docs:     http://localhost:8001/docs
+  Kafka UI:     http://localhost:8080
+
+Management:
+  Check status: .\start.ps1 --status
+  View logs:    .\start.ps1 --logs
+  Stop all:    .\start.ps1 --stop
+(tradeagent) PS E:\00_crypto\00_code\backend> INFO:     Will watch for changes in these directories: ['E:\\00_crypto\\00_code\\backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)

@@ -13,15 +13,17 @@ Primitives provided here:
 5. State hashing
 
 For high-level replay orchestration use runtime.replay_runtime.runtime.TimeCausalReplayRuntime.
+
+Boundary:
+    infrastructure.replay.engine  → low-level primitives (this file)
+    runtime.replay_runtime        → high-level orchestration (event loop, handlers, lifecycle)
 """
 
-import asyncio
 import json
 import hashlib
 import random
-import warnings
 from typing import Dict, List, Optional, Any, Callable, AsyncIterator
-from datetime import datetime, timedelta
+from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 import uuid
@@ -210,11 +212,7 @@ class ReplayEngine:
         self._time_travel_points: List[TimeTravelPoint] = []
         self._strategy_states: Dict[str, StrategyState] = {}
 
-        self._handlers: Dict[str, List[Callable]] = {}
         self._state_snapshots: List[Dict[str, Any]] = []
-
-        self._running = False
-        self._paused = False
 
     async def initialize(self) -> None:
         self.data_lake = await DataLakeManager().initialize()
@@ -364,83 +362,6 @@ class ReplayEngine:
                 break
             yield event
 
-    async def play(self) -> None:
-        warnings.warn(
-            "ReplayEngine.play() is deprecated. High-level replay orchestration "
-            "should use runtime.replay_runtime.runtime.TimeCausalReplayRuntime. "
-            "For low-level iteration use emit_next_event() or get_events_iterator().",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if not self._context:
-            raise RuntimeError("No replay session created")
-
-        if self._context.state not in [ReplayState.READY, ReplayState.PAUSED]:
-            raise RuntimeError(f"Invalid state: {self._context.state}")
-
-        self._context.state = ReplayState.PLAYING
-        self._running = True
-        self._paused = False
-
-        logger.info(f"Starting replay: {self._context.session_id}")
-
-        try:
-            async for event in self.get_events_iterator():
-                if not self._running:
-                    break
-
-                while self._paused:
-                    await asyncio.sleep(0.1)
-
-                if self.config.mode == ReplayMode.REALTIME:
-                    await asyncio.sleep(0.001 / self.config.speed)
-                elif self.config.mode == ReplayMode.STEP:
-                    await asyncio.sleep(0.1)
-
-            if self._running:
-                self._context.state = ReplayState.COMPLETED
-                logger.info(f"Replay completed: {self._context.processed_events} events")
-
-        except Exception as e:
-            self._context.state = ReplayState.FAILED
-            logger.error(f"Replay failed: {e}")
-            raise
-
-    def register_handler(
-        self,
-        event_type: str,
-        handler: Callable[[Dict[str, Any], ReplayContext], Any],
-    ) -> None:
-        warnings.warn(
-            "ReplayEngine.register_handler() is deprecated. Event processing "
-            "should be handled by runtime.replay_runtime.runtime.TimeCausalReplayRuntime.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if event_type not in self._handlers:
-            self._handlers[event_type] = []
-        self._handlers[event_type].append(handler)
-
-    async def pause(self) -> None:
-        self._paused = True
-        if self._context:
-            self._context.state = ReplayState.PAUSED
-        logger.info("Replay paused")
-
-    async def resume(self) -> None:
-        self._paused = False
-        if self._context:
-            self._context.state = ReplayState.PLAYING
-        logger.info("Replay resumed")
-
-    async def stop(self) -> None:
-        self._running = False
-        self._paused = False
-        logger.info("Replay stopped")
-
-    async def run(self) -> None:
-        await self.play()
-
     async def time_travel(
         self,
         target_time: datetime,
@@ -551,25 +472,6 @@ class ReplayEngine:
         self._strategy_states[strategy_id] = state
         logger.debug(f"Saved strategy state: {strategy_id} @ {state.timestamp}")
         return state
-
-    async def rewind_strategy(
-        self,
-        strategy_id: str,
-        to_time: datetime,
-    ) -> Optional[StrategyState]:
-        if strategy_id not in self._strategy_states:
-            return None
-
-        current_state = self._strategy_states[strategy_id]
-
-        if to_time > current_state.timestamp:
-            logger.warning("Cannot rewind to future time")
-            return None
-
-        await self.time_travel(to_time)
-
-        logger.info(f"Rewound strategy {strategy_id} to {to_time}")
-        return current_state
 
     async def _save_checkpoint(self) -> None:
         if not self._context:
@@ -692,11 +594,6 @@ class ReplayEngine:
             return False
 
     async def close(self) -> None:
-        self._running = False
-
-        if self._state_snapshots:
-            pass
-
         if self.data_lake:
             await self.data_lake.close()
 

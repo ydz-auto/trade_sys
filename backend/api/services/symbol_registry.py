@@ -5,10 +5,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import logging
 
-from services.strategy_service.symbol_registry import (
-    SymbolStrategyRegistry,
-    get_symbol_registry,
-)
+from application.queries.service_queries import get_symbol_registry
 from ..schemas.symbol_registry import (
     SymbolConfigItem,
     StrategyPerformanceItem,

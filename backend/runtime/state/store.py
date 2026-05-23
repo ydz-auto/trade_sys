@@ -1,33 +1,41 @@
 """
-Runtime State Store - 运行态状态存储
+Runtime State Store - 运行态状态只读聚合视图
 
 核心职责:
-1. 统一所有系统状态
-2. 作为 Frontend 的唯一状态来源
-3. 支持按 namespace 隔离
-4. 时间因果一致性保障
+1. 聚合各 Runtime 的状态，作为 Frontend 的唯一读取来源
+2. 不可变快照
+3. 订阅通知
 
-状态结构:
-    RuntimeStateStore
-    ├─ market_state
-    ├─ signal_state
-    ├─ execution_state
-    ├─ portfolio_state
-    ├─ risk_state
-    └─ runtime_mode
+状态归属 (Single Source of Truth):
+    market_state    → RuntimeContext (market context)
+    signal_state    → SignalRuntime
+    execution_state → ExecutionRuntime
+    portfolio_state → PortfolioRuntime
+    risk_state      → RuntimeContext (risk context)
+    runtime_state   → RuntimeOrchestrator
+    feature_state   → FeatureRuntime / FeatureMatrixRuntime
+    correlation     → CorrelationRuntime
+    projection      → ProjectionRuntime
+    replay          → ReplayRuntime
+
+本 Store 不持有业务状态，只聚合读取。
+写入通过 register_state_provider() 注册状态提供者。
 """
+
 from typing import Dict, Any, Optional, Callable
 from datetime import datetime
 from dataclasses import dataclass, field
-import asyncio
 import json
 
 from domain.trading_mode import TradingMode, get_trading_mode_manager
 from infrastructure.logging import get_logger
-from infrastructure.runtime_clock import get_clock, ClockMode
+from infrastructure.runtime_clock import get_clock, now_ms
 from infrastructure.storage.immutable_snapshot import get_immutable_snapshot_store
 
 logger = get_logger("runtime.state_store")
+
+
+StateProvider = Callable[[], Dict[str, Any]]
 
 
 @dataclass
@@ -49,126 +57,111 @@ class RuntimeStateStore:
     def __init__(self):
         if hasattr(self, '_initialized') and self._initialized:
             return
-        
+
         self._initialized = True
         self._mode_manager = get_trading_mode_manager()
-        
-        # 时间因果基础设施集成
+
         self._clock = get_clock()
         self._immutable_snapshot_store = get_immutable_snapshot_store("state")
-        
-        self._state: Dict[str, Dict[str, Any]] = {
-            "market": {},
-            "signal": {},
-            "execution": {},
-            "portfolio": {},
-            "risk": {},
+
+        self._providers: Dict[str, StateProvider] = {}
+
+        self._runtime_meta: Dict[str, Dict[str, Any]] = {
             "runtime": {},
-            "feature": {},
-            "behaviour": {},
         }
-        
-        self._isolated_state: Dict[TradingMode, Dict[str, Dict[str, Any]]] = {
-            TradingMode.BACKTEST: {k: {} for k in self._state.keys()},
-            TradingMode.PAPER: {k: {} for k in self._state.keys()},
-            TradingMode.LIVE: {k: {} for k in self._state.keys()},
-        }
-        
+
         self._subscribers: Dict[str, list[Callable]] = {}
-        
+
         self._snapshots: list[StateSnapshot] = []
         self._max_snapshots = 1000
-        
+
         self._version = 0
         self._last_update: Optional[datetime] = None
-        
+
         self._stats = {
             "updates": 0,
             "snapshots": 0,
             "subscriber_calls": 0,
+            "reads": 0,
         }
-        
-        logger.info("RuntimeStateStore initialized with time-causal infrastructure")
 
-    def _get_state_dict(self, use_namespace: bool = True) -> Dict[str, Dict[str, Any]]:
-        if use_namespace:
-            mode = self._mode_manager.mode
-            return self._isolated_state[mode]
-        return self._state
+        self._register_default_providers()
 
-    def set(self, state_type: str, key: str, value: Any, use_namespace: bool = True) -> None:
-        state_dict = self._get_state_dict(use_namespace)
-        
-        if state_type not in state_dict:
-            state_dict[state_type] = {}
-        
-        state_dict[state_type][key] = value
-        
-        self._version += 1
-        self._last_update = datetime.now()
-        self._stats["updates"] += 1
-        
-        self._notify_subscribers(state_type, key, value)
+        logger.info("RuntimeStateStore initialized (read-only aggregation, no business state)")
 
-    def get(self, state_type: str, key: str, use_namespace: bool = True) -> Any:
-        state_dict = self._get_state_dict(use_namespace)
-        return state_dict.get(state_type, {}).get(key)
+    def _register_default_providers(self) -> None:
+        self._providers["execution"] = self._make_provider("runtime.execution_runtime.runtime", "get_execution_runtime")
+        self._providers["portfolio"] = self._make_provider("runtime.portfolio_runtime", "get_portfolio_runtime")
+        self._providers["signal"] = self._make_provider("runtime.signal_runtime.runtime", "get_signal_runtime")
+        self._providers["feature"] = self._make_provider("runtime.feature_matrix_runtime", "get_feature_matrix_runtime")
+        self._providers["correlation"] = self._make_provider("runtime.correlation_runtime.runtime", "get_correlation_runtime")
+        self._providers["projection"] = self._make_provider("runtime.projection_runtime.runtime", "get_projection_runtime")
+        self._providers["replay"] = self._make_provider("runtime.replay_runtime.runtime", "get_replay_runtime")
+        self._providers["market"] = self._make_provider("runtime.context.runtime_context", "get_runtime_context")
+        self._providers["risk"] = self._make_provider("runtime.context.runtime_context", "get_runtime_context")
+
+    def _make_provider(self, module_path: str, getter_name: str) -> StateProvider:
+        def _provider() -> Dict[str, Any]:
+            try:
+                import importlib
+                module = importlib.import_module(module_path)
+                getter = getattr(module, getter_name)
+                runtime = getter()
+                if hasattr(runtime, 'get_state'):
+                    return runtime.get_state()
+                elif hasattr(runtime, 'to_dict'):
+                    return runtime.to_dict()
+            except Exception as e:
+                logger.debug(f"State provider [{module_path}.{getter_name}] failed: {e}")
+            return {}
+        return _provider
+
+    def register_provider(self, state_type: str, provider: StateProvider) -> None:
+        self._providers[state_type] = provider
+        logger.info(f"Registered state provider: {state_type}")
 
     def get_state(self, state_type: str, use_namespace: bool = True) -> Dict[str, Any]:
-        state_dict = self._get_state_dict(use_namespace)
-        return state_dict.get(state_type, {}).copy()
+        self._stats["reads"] += 1
+
+        if state_type == "runtime":
+            return self._runtime_meta.get("runtime", {}).copy()
+
+        provider = self._providers.get(state_type)
+        if provider:
+            return provider()
+
+        return {}
 
     def get_all_state(self, use_namespace: bool = True) -> Dict[str, Any]:
-        state_dict = self._get_state_dict(use_namespace)
-        return {k: v.copy() for k, v in state_dict.items()}
+        self._stats["reads"] += 1
 
-    def update(self, state_type: str, data: Dict[str, Any], use_namespace: bool = True) -> None:
-        state_dict = self._get_state_dict(use_namespace)
-        
-        if state_type not in state_dict:
-            state_dict[state_type] = {}
-        
-        state_dict[state_type].update(data)
-        
-        current_time = self._clock.now()
+        result = {}
+        for state_type in self._providers:
+            result[state_type] = self._providers[state_type]()
+
+        result["runtime"] = self._runtime_meta.get("runtime", {}).copy()
+
+        return result
+
+    def set_runtime_state(self, data: Dict[str, Any]) -> None:
+        self._runtime_meta["runtime"].update(data)
+
+        current_time = datetime.fromtimestamp(now_ms() / 1000)
         self._version += 1
         self._last_update = current_time
         self._stats["updates"] += 1
-        
-        # 保存不可变快照到基础设施
+
         if self._immutable_snapshot_store:
             snapshot_data = {
-                "state_type": state_type,
+                "state_type": "runtime",
                 "data": data.copy(),
                 "clock_mode": self._clock.mode.value,
-                "version": self._version
+                "version": self._version,
             }
             self._immutable_snapshot_store.save(snapshot_data, timestamp=current_time)
-        
+
         for key, value in data.items():
-            self._notify_subscribers(state_type, key, value)
-
-    def clear(self, state_type: str, use_namespace: bool = True) -> None:
-        state_dict = self._get_state_dict(use_namespace)
-        state_dict[state_type] = {}
-
-    def set_market_state(self, data: Dict[str, Any]) -> None:
-        self.update("market", data)
-
-    def set_signal_state(self, data: Dict[str, Any]) -> None:
-        self.update("signal", data)
-
-    def set_execution_state(self, data: Dict[str, Any]) -> None:
-        self.update("execution", data)
-
-    def set_portfolio_state(self, data: Dict[str, Any]) -> None:
-        self.update("portfolio", data)
-
-    def set_risk_state(self, data: Dict[str, Any]) -> None:
-        self.update("risk", data)
-
-    def set_runtime_state(self, data: Dict[str, Any]) -> None:
-        self.update("runtime", data)
+            self._notify_subscribers("runtime", key, value)
 
     def get_market_state(self) -> Dict[str, Any]:
         return self.get_state("market")
@@ -214,20 +207,20 @@ class RuntimeStateStore:
             data = self.get_state(state_type)
         else:
             data = self.get_all_state()
-        
+
         snapshot = StateSnapshot(
-            timestamp=datetime.now(),
+            timestamp=datetime.fromtimestamp(now_ms() / 1000),
             state_type=state_type or "all",
             data=data,
             version=self._version,
         )
-        
+
         self._snapshots.append(snapshot)
         self._stats["snapshots"] += 1
-        
+
         if len(self._snapshots) > self._max_snapshots:
             self._snapshots = self._snapshots[-self._max_snapshots:]
-        
+
         return snapshot
 
     def get_snapshots(self, state_type: Optional[str] = None, limit: int = 100) -> list[StateSnapshot]:
@@ -237,13 +230,11 @@ class RuntimeStateStore:
         return snapshots
 
     def restore_snapshot(self, snapshot: StateSnapshot) -> None:
-        if snapshot.state_type == "all":
-            for state_type, data in snapshot.data.items():
-                self.update(state_type, data)
-        else:
-            self.update(snapshot.state_type, snapshot.data)
-        
-        logger.info(f"Restored snapshot: {snapshot.state_type} @ {snapshot.timestamp}")
+        raise NotImplementedError(
+            "restore_snapshot() is not supported. "
+            "State restore should be done via individual Runtime.restore(), not via StateStore. "
+            "StateStore is a read-only aggregation view."
+        )
 
     def to_json(self) -> str:
         return json.dumps({
@@ -258,7 +249,7 @@ class RuntimeStateStore:
             "version": self._version,
             "last_update": self._last_update.isoformat() if self._last_update else None,
             "mode": self._mode_manager.mode.value,
-            "state_types": list(self._state.keys()),
+            "registered_providers": list(self._providers.keys()),
             "subscribers": {k: len(v) for k, v in self._subscribers.items()},
             "snapshots": len(self._snapshots),
             "stats": self._stats.copy(),
@@ -269,13 +260,6 @@ def get_runtime_state_store() -> RuntimeStateStore:
     return RuntimeStateStore()
 
 
-def set_state(state_type: str, key: str, value: Any) -> None:
-    store = get_runtime_state_store()
-    store.set(state_type, key, value)
-
-
 def get_state(state_type: str, key: str = None) -> Any:
     store = get_runtime_state_store()
-    if key:
-        return store.get(state_type, key)
     return store.get_state(state_type)

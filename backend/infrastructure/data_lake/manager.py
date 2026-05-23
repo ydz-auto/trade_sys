@@ -57,7 +57,7 @@ class QueryRequest:
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     
-    limit: int = 1000
+    limit: int = 0
     offset: int = 0
     
     filters: Dict[str, Any] = field(default_factory=dict)
@@ -92,11 +92,16 @@ class DataLakeManager:
     提供分层数据存储和管理能力
     """
     
-    def __init__(self):
+    def __init__(
+        self,
+        buffer_size: int = 1000,
+        default_query_limit: int = 1000,
+    ):
         self.clickhouse: Optional[ClickHouseManager] = None
         self._initialized = False
         self._lineage_buffer: List[DataLineage] = []
-        self._buffer_size = 1000
+        self._buffer_size = buffer_size
+        self._default_query_limit = default_query_limit
     
     async def initialize(self) -> None:
         """初始化"""
@@ -146,7 +151,7 @@ class DataLakeManager:
             lineage = DataLineage(
                 data_id=event_id,
                 layer=request.layer,
-                category=DataCategory.MARKET,
+                category=request.data.get("category", DataCategory.MARKET),
                 source_layer=request.source_layer,
                 source_ids=request.source_ids,
             )
@@ -212,6 +217,9 @@ class DataLakeManager:
         if not self._initialized:
             await self.initialize()
         
+        if request.limit == 0:
+            request.limit = self._default_query_limit
+
         conditions = []
         params: Dict[str, Any] = {}
         

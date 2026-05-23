@@ -1,4 +1,4 @@
-"""
+﻿"""
 Binance WebSocket Adapter - 核心市场数据源
 
 这是系统最核心的数据源，提供：
@@ -28,7 +28,7 @@ from enum import Enum
 import websockets
 from websockets.client import connect
 
-from shared.contracts import StandardEvent, Source, EventType
+from domain.contracts import StandardEvent, Source, EventType
 from infrastructure.logging import get_logger
 from infrastructure.resilience import (
     get_data_fallback_manager,
@@ -36,7 +36,7 @@ from infrastructure.resilience import (
     DataChannelType,
     PriceData
 )
-from shared.config.defaults.infrastructure.external_apis import EXCHANGE_WS_APIS
+from infrastructure.config.defaults.infrastructure.external_apis import EXCHANGE_WS_APIS
 
 logger = get_logger("binance_ws.adapter")
 

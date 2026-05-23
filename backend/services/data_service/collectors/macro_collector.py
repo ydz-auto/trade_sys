@@ -1,4 +1,4 @@
-"""
+﻿"""
 Macro Collector - 宏观数据采集（增强版）
 支持：多源融合（Yahoo Finance + Metals.live + CME + 金十数据）+ 弹性能力
 """
@@ -13,8 +13,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from shared.config import get_datasource_config_manager
-from shared.http_client import HTTPClient, HTTPRequest, HTTPMethod
+from infrastructure.config import get_datasource_config_manager
+from infrastructure.http.client import HTTPClient, HTTPRequest, HTTPMethod
 from infrastructure.logging import get_logger
 from .base_collector import BaseCollector, CollectorResult, SourceConfig
 from infrastructure.resilience import CircuitBreakerConfig, RetryConfig
@@ -160,7 +160,7 @@ class MacroSourceCollector:
 
     async def _collect_jinshi(self, asset: str) -> Optional[MacroData]:
         try:
-            from shared.llm_client import LLMServiceClient
+            from infrastructure.llm.client import LLMServiceClient
             llm_client = LLMServiceClient()
 
             url = self.config.get("scrape_url", "https://m.jin10.com/")

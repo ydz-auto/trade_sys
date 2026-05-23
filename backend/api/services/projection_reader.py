@@ -8,29 +8,23 @@ import json
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
-from infrastructure.cache.redis_client import RedisClient, get_redis_client, init_redis
-from infrastructure.logging import get_logger
-from services.projection_service.state_keys import ProjectionKeys
+from application.queries.infrastructure_queries import get_redis_client_sync, init_redis
+from domain.logging import get_logger
+from application.queries.service_queries import get_projection_keys
 
 logger = get_logger("api.projection_reader")
 
 
 class ProjectionReader:
-    """
-    Projection 读取器
-    
-    API 层通过此类读取 Runtime 状态
-    """
-    
+
     def __init__(self):
-        self.redis: Optional[RedisClient] = None
+        self.redis = None
         self._initialized = False
     
     async def initialize(self) -> None:
-        """初始化 Redis 连接"""
         if self._initialized:
             return
-        
+
         try:
             self.redis = await init_redis()
             self._initialized = True
@@ -38,6 +32,9 @@ class ProjectionReader:
         except Exception as e:
             logger.warning(f"ProjectionReader init failed: {e}")
             self.redis = None
+
+    def _keys(self):
+        return get_projection_keys()
     
     async def _get_json(self, key: str) -> Optional[Dict[str, Any]]:
         """获取 JSON 数据"""
@@ -68,7 +65,7 @@ class ProjectionReader:
     
     async def get_dashboard_state(self) -> Dict[str, Any]:
         """获取 Dashboard 状态"""
-        state = await self._get_json(ProjectionKeys.dashboard_state())
+        state = await self._get_json(self._keys().dashboard_state())
         
         if state:
             return state

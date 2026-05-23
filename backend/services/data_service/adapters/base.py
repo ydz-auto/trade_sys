@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 
-from shared.contracts import StandardEvent, Sentiment
+from domain.contracts import StandardEvent, Sentiment
 from infrastructure.logging import get_logger
 from infrastructure.resilience import (
     CircuitBreaker,

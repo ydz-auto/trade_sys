@@ -1,4 +1,4 @@
-"""
+﻿"""
 ETF Collector - ETF资金流数据采集（增强版）
 支持：多源融合（Farside + SoSoValue + CoinGlass + LLM爬虫）+ 弹性能力
 """
@@ -13,9 +13,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from shared.config import get_datasource_config_manager
-from shared.http_client import HTTPClient, HTTPRequest, HTTPMethod
-from shared.llm_client import LLMServiceClient
+from infrastructure.config import get_datasource_config_manager
+from infrastructure.http.client import HTTPClient, HTTPRequest, HTTPMethod
+from infrastructure.llm.client import LLMServiceClient
 from infrastructure.logging import get_logger
 from .base_collector import BaseCollector, CollectorResult, MultiSourceCollector, SourceConfig
 from infrastructure.resilience import CircuitBreakerConfig, RetryConfig
@@ -147,7 +147,7 @@ class ETFSourceCollector:
             llm_client = LLMServiceClient()
             url = self.config.get("scrape_url", "https://farside.co.in/bitcoin-etf-flow")
 
-            from shared.llm_client import HTTPClient, HTTPRequest, HTTPMethod
+            from infrastructure.http.client import HTTPClient, HTTPRequest, HTTPMethod
             http = HTTPClient()
             request = HTTPRequest(url=url, timeout=30.0)
 

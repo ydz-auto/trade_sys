@@ -7,7 +7,8 @@ Event Service - 业务逻辑处理器
 from typing import Optional, Dict, Any
 
 from infrastructure.logging import get_logger
-from infrastructure.messaging.schema import RawData, Event
+from infrastructure.messaging.schema.raw_data import RawData
+from infrastructure.messaging.schema.event import Event
 from domain.event import EventType, Direction, get_direction
 
 logger = get_logger("event_service.handlers")

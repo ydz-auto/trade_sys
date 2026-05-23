@@ -1,4 +1,4 @@
-"""
+﻿"""
 Ingestion Runtime - 数据采集运行时
 
 职责（仅运行时编排）：
@@ -34,9 +34,9 @@ from runtime.shared import (
     RuntimeHealthCheck,
 )
 from infrastructure.messaging import Topics
-from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 from dataclasses import dataclass, field
-from infrastructure.runtime_clock import get_clock
+from infrastructure.runtime_clock import get_clock, now_ms
 from infrastructure.feature_availability import get_systematic_guard
 from infrastructure.label_isolation import get_label_store
 from infrastructure.storage.immutable_snapshot import get_immutable_snapshot_store
@@ -305,21 +305,21 @@ class IngestionRuntime(BaseRuntime):
             self.logger.error(f"Error processing Telegram event: {e}")
     
     async def _on_price_update(self, event):
-        """处理价格更新"""
         try:
+            from infrastructure.messaging.schema.base_event import MarketEvent, EventSource
             symbol = event.metadata.get("symbol", "").upper()
             price = event.metadata.get("mark_price", 0)
             
             self.metrics.increment("price_updates")
             
             if self.publisher:
-                await self.publisher.publish({
-                    "event_type": "price_update",
-                    "symbol": symbol,
-                    "price": price,
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "source": "binance_websocket",
-                })
+                market_event = MarketEvent(
+                    source=EventSource.INGESTION_RUNTIME,
+                    symbol=symbol,
+                    price=price,
+                    event_time_ms=now_ms(),
+                )
+                await self.publisher.publish(market_event)
             
         except Exception as e:
             self.logger.error(f"Error processing price update: {e}")
@@ -482,7 +482,7 @@ class IngestionRuntime(BaseRuntime):
                             if msg_type == "ping":
                                 await websocket.send(json.dumps({
                                     "type": "pong",
-                                    "timestamp": datetime.now().timestamp()
+                                    "timestamp": now_ms() / 1000
                                 }))
                             elif msg_type == "tweet":
                                 tweet_data = data.get("data", {})
@@ -600,22 +600,16 @@ class IngestionRuntime(BaseRuntime):
                 self.logger.error(f"Odaily collection error: {e}")
     
     async def _publish_news_events(self, news_items: list) -> None:
-        """将新闻事件发布到Kafka - 支持时间因果一致性"""
-        from datetime import datetime
-        import uuid
-        
-        current_time = self._clock.now()
-        
+        from infrastructure.messaging.schema.base_event import RawDataEvent, EventSource
+
         for news in news_items:
             try:
-                event = {
-                    "event_id": f"evt_{uuid.uuid4().hex[:16]}",
-                    "trace_id": f"trc_{uuid.uuid4().hex[:16]}",
-                    "event_type": "news",
-                    "source": "ingestion_runtime",
-                    "timestamp": current_time.isoformat(),
-                    "clock_mode": self._clock.mode.value,
-                    "data": {
+                event = RawDataEvent(
+                    source=EventSource.INGESTION_RUNTIME,
+                    symbol=getattr(news, "affected_symbols", ["BTCUSDT"])[0] if getattr(news, "affected_symbols", None) else "BTCUSDT",
+                    event_time_ms=now_ms(),
+                    data_type="news",
+                    data={
                         "id": news.id,
                         "title": news.title,
                         "content": news.content,
@@ -626,12 +620,13 @@ class IngestionRuntime(BaseRuntime):
                         "sentiment_score": news.sentiment_score,
                         "event_type": news.event_type,
                         "affected_symbols": news.affected_symbols,
-                    }
-                }
+                    },
+                    data_source=news.source,
+                    clock_mode=self._clock.mode.value,
+                )
                 
-                # 保存不可变快照
                 if self._snapshot_store:
-                    self._snapshot_store.save(event, timestamp=current_time)
+                    self._snapshot_store.save(event.to_dict(), timestamp=now_ms())
                 
                 await self.publisher.publish(event, key=news.id)
                 
@@ -639,45 +634,38 @@ class IngestionRuntime(BaseRuntime):
                 self.logger.error(f"Failed to publish news event: {e}")
     
     async def _publish_odaily_events(self, odaily_events: list) -> None:
-        """将Odaily事件发布到Kafka (raw.odaily topic) - 支持时间因果一致性
-        
-        数据流: 采集层 → Kafka(raw.odaily) → OdailyConsumer(LLM增强) → Redis → API
-        """
-        from datetime import datetime
-        import uuid
-        
-        current_time = self._clock.now()
+        from infrastructure.messaging.schema.base_event import RawDataEvent, EventSource
+
         original_topic = self.publisher.config.topic
         self.publisher.config.topic = Topics.raw_odaily()
         
         try:
-            for event in odaily_events:
+            for odaily in odaily_events:
                 try:
-                    event_dict = {
-                        "event_id": f"evt_{uuid.uuid4().hex[:16]}",
-                        "trace_id": f"trc_{uuid.uuid4().hex[:16]}",
-                        "event_type": "odaily_raw",
-                        "source": "clawhub_odaily",
-                        "timestamp": current_time.isoformat(),
-                        "clock_mode": self._clock.mode.value,
-                        "data": {
-                            "id": event.id,
-                            "title": event.title,
-                            "content": event.content,
-                            "source": event.source,
-                            "sentiment": event.sentiment,
-                            "importance": event.importance,
-                            "symbols": event.symbols,
-                            "tags": event.tags,
-                            "metadata": event.metadata,
-                        }
-                    }
+                    event = RawDataEvent(
+                        source=EventSource.INGESTION_RUNTIME,
+                        symbol=getattr(odaily, "symbols", ["BTCUSDT"])[0] if getattr(odaily, "symbols", None) else "BTCUSDT",
+                        event_time_ms=now_ms(),
+                        data_type="odaily",
+                        data={
+                            "id": odaily.id,
+                            "title": odaily.title,
+                            "content": odaily.content,
+                            "source": odaily.source,
+                            "sentiment": odaily.sentiment,
+                            "importance": odaily.importance,
+                            "symbols": odaily.symbols,
+                            "tags": odaily.tags,
+                            "metadata": odaily.metadata,
+                        },
+                        data_source="clawhub_odaily",
+                        clock_mode=self._clock.mode.value,
+                    )
                     
-                    # 保存不可变快照
                     if self._snapshot_store:
-                        self._snapshot_store.save(event_dict, timestamp=current_time)
+                        self._snapshot_store.save(event.to_dict(), timestamp=now_ms())
                     
-                    await self.publisher.publish(event_dict, key=event.id)
+                    await self.publisher.publish(event, key=odaily.id)
                     
                 except Exception as e:
                     self.logger.error(f"Failed to publish Odaily event: {e}")

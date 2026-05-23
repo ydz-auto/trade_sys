@@ -1,4 +1,4 @@
-"""
+﻿"""
 Runtime Contract - 统一的运行时契约
 
 所有 runtime 必须继承 BaseRuntime 并实现：
@@ -24,7 +24,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from infrastructure.logging import get_logger
 from infrastructure.logging.logger import LoggerFactory
-from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+from infrastructure.runtime_clock import now_ms
+from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 
 class RuntimeState(Enum):
@@ -101,7 +102,7 @@ class RuntimeContext:
         """运行时长（秒）"""
         if self.start_time is None:
             return 0.0
-        end = self.end_time or datetime.now()
+        end = self.end_time or datetime.fromtimestamp(now_ms() / 1000)
         return (end - self.start_time).total_seconds()
     
     def request_shutdown(self) -> None:
@@ -245,7 +246,7 @@ class BaseRuntime(ABC):
         
         try:
             await self._set_state(RuntimeState.INITIALIZING)
-            self.context.start_time = datetime.now()
+            self.context.start_time = datetime.fromtimestamp(now_ms() / 1000)
             
             await self._setup_signal_handlers()
             await self.initialize()
@@ -266,7 +267,7 @@ class BaseRuntime(ABC):
             await self._set_state(RuntimeState.STOPPING)
             await self._run_shutdown_handlers()
             await self.shutdown()
-            self.context.end_time = datetime.now()
+            self.context.end_time = datetime.fromtimestamp(now_ms() / 1000)
             await self._set_state(RuntimeState.STOPPED)
             self.logger.info(f"Runtime {self.name} stopped. Uptime: {self.context.uptime_seconds:.1f}s")
     

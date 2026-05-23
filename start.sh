@@ -27,21 +27,12 @@ show_help() {
     echo "  -f, --frontend     启动前端开发服务器"
     echo "  -a, --all          启动所有服务 (后端Docker + 前端)"
     echo "  -r, --replay       启动回放引擎 (需要指定时间范围)"
-    echo "  -g, --governor     启动 Runtime Governor (独立进程)"
     echo "  --gpu              启动 GPU 加速服务"
     echo "  --gpu-status       查看 GPU 状态"
     echo "  -s, --stop         停止所有服务"
     echo "  -t, --status       查看服务状态"
     echo "  -l, --logs         查看后端日志"
     echo "  -h, --help         显示帮助信息"
-    echo ""
-    echo "Runtime Governor:"
-    echo "  系统运行时治理层，包含:"
-    echo "    - 优先级事件队列 (P0-P4)"
-    echo "    - 推送降级控制器 (NORMAL/DEGRADED/SAFE_MODE/CRITICAL)"
-    echo "    - 熔断器管理 (ai_runtime, exchange_api, database...)"
-    echo "    - 订阅管理器 (共享订阅，防重复)"
-    echo "    - WebSocket 运行时 (推送节流)"
     echo ""
     echo "回放引擎参数 (通过环境变量或命令行):"
     echo "  REPLAY_START_TIME  回放开始时间 (ISO格式，如: 2026-01-01T00:00:00)"
@@ -55,7 +46,6 @@ show_help() {
     echo "  $0 --backend                  # 启动后端Docker"
     echo "  $0 --frontend                 # 启动前端"
     echo "  $0 --all                      # 启动所有服务"
-    echo "  $0 --governor                 # 启动 Runtime Governor"
     echo "  $0 --replay                   # 交互式启动回放引擎"
     echo "  REPLAY_START_TIME=2026-01-01T00:00:00 REPLAY_END_TIME=2026-01-02T00:00:00 $0 --replay"
     echo "  $0 --logs -f                  # 查看实时日志"
@@ -189,48 +179,6 @@ start_replay() {
     ./dev.sh start replay
 }
 
-start_governor() {
-    echo -e "${BLUE}正在启动 Runtime Governor...${NC}"
-    echo ""
-    
-    echo -e "${CYAN}Runtime Governor 是系统运行时治理层:${NC}"
-    echo "  - 优先级事件队列 (P0-P4)"
-    echo "  - 推送降级控制器 (6种运行模式)"
-    echo "  - 熔断器管理 (7个预定义熔断器)"
-    echo "  - 订阅管理器 (共享订阅，防重复)"
-    echo "  - WebSocket 运行时 (推送节流)"
-    echo ""
-    
-    cd "$SCRIPT_DIR/backend"
-    
-    if pgrep -f "governor_runtime" > /dev/null; then
-        echo -e "${YELLOW}Runtime Governor 已在运行${NC}"
-        return 0
-    fi
-    
-    echo -e "${GREEN}启动 Runtime Governor...${NC}"
-    nohup python -m runtime.governor_runtime > "$SCRIPT_DIR/backend/logs/governor.log" 2>&1 &
-    local pid=$!
-    sleep 2
-    
-    if ps -p $pid > /dev/null; then
-        echo -e "${GREEN}✓ Runtime Governor 启动成功 (PID: $pid)${NC}"
-        echo ""
-        echo -e "${CYAN}API 端点:${NC}"
-        echo "  Stats:           http://localhost:8001/api/v1/runtime/stats"
-        echo "  Mode:            http://localhost:8001/api/v1/runtime/mode"
-        echo "  Circuit Breakers: http://localhost:8001/api/v1/runtime/circuit-breakers"
-        echo "  Subscriptions:   http://localhost:8001/api/v1/runtime/subscriptions"
-        echo "  Queue:           http://localhost:8001/api/v1/runtime/queue"
-        echo ""
-        echo "  日志文件: $SCRIPT_DIR/backend/logs/governor.log"
-    else
-        echo -e "${RED}✗ Runtime Governor 启动失败${NC}"
-        echo "  查看日志: tail -f $SCRIPT_DIR/backend/logs/governor.log"
-        return 1
-    fi
-}
-
 start_gpu() {
     echo -e "${BLUE}正在启动 GPU 加速服务...${NC}"
     echo ""
@@ -271,8 +219,6 @@ stop_all() {
     pkill -f "vite|node.*frontend" 2>/dev/null
     
     pkill -f "api_server.py" 2>/dev/null
-    
-    pkill -f "governor_runtime" 2>/dev/null
 
     cd "$SCRIPT_DIR/backend"
     echo -e "${CYAN}停止 Python Runtime...${NC}"
@@ -286,15 +232,6 @@ stop_all() {
 
 show_status() {
     echo -e "${BLUE}查看服务状态:${NC}"
-    echo ""
-
-    echo -e "${YELLOW}Runtime Governor:${NC}"
-    if pgrep -f "governor_runtime" > /dev/null; then
-        echo -e "${GREEN}✓ Runtime Governor 运行中${NC}"
-        echo "  API: http://localhost:8001/api/v1/runtime/stats"
-    else
-        echo -e "${RED}✗ Runtime Governor 未运行${NC}"
-    fi
     echo ""
 
     echo -e "${YELLOW}前端服务:${NC}"
@@ -358,9 +295,6 @@ case "${1:-help}" in
         ;;
     -r|--replay)
         start_replay
-        ;;
-    -g|--governor)
-        start_governor
         ;;
     --gpu)
         start_gpu

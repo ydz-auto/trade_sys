@@ -49,7 +49,7 @@ class StrategyParam(Base):
     source: Mapped[str] = mapped_column(String(20), default=ParamSource.DEFAULT.value)
     version: Mapped[int] = mapped_column(Integer, default=1)
     
-    metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    param_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column("metadata", JSON, nullable=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -112,7 +112,7 @@ class StrategyParamHistory(Base):
     
     source: Mapped[str] = mapped_column(String(20), default=ParamSource.DEFAULT.value)
     
-    metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    param_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column("metadata", JSON, nullable=True)
     
     change_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     

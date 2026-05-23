@@ -1,4 +1,4 @@
-"""
+﻿"""
 Social Media Collector - 社交媒体数据采集
 支持：Twitter/X, Reddit, Telegram + 弹性能力
 """
@@ -12,8 +12,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from shared.config import get_datasource_config_manager
-from shared.llm_client import LLMServiceClient
+from infrastructure.config import get_datasource_config_manager
+from infrastructure.llm.client import LLMServiceClient
 from infrastructure.logging import get_logger
 from .base_collector import BaseCollector, CollectorResult
 from infrastructure.resilience import CircuitBreakerConfig, RetryConfig

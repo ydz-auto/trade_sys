@@ -137,13 +137,13 @@ class RuntimeSupervisor:
                 self._health_status[runtime_id] = RuntimeHealth(
                     runtime_id=runtime_id,
                     healthy=healthy,
-                    last_check=datetime.now(),
+                    last_check=datetime.fromtimestamp(now_ms() / 1000),
                     consecutive_failures=0,
                 )
             else:
                 health = self._health_status[runtime_id]
                 health.healthy = healthy
-                health.last_check = datetime.now()
+                health.last_check = datetime.fromtimestamp(now_ms() / 1000)
                 health.metadata = health_data
                 
                 if not healthy:
@@ -193,7 +193,7 @@ class RuntimeSupervisor:
         
         last_recovery = self._last_recovery.get(runtime_id)
         if last_recovery:
-            elapsed = (datetime.now() - last_recovery).total_seconds()
+            elapsed = (datetime.fromtimestamp(now_ms() / 1000) - last_recovery).total_seconds()
             if elapsed < self._config.recovery_cooldown:
                 return
         
@@ -205,9 +205,18 @@ class RuntimeSupervisor:
         success = await self._lifecycle.recover(runtime_id)
         
         if success:
+            try:
+                from runtime.recovery import get_runtime_recovery
+                recovery = get_runtime_recovery()
+                info_obj = self._registry.get(runtime_id)
+                runtime_name = info_obj.runtime_type.value if info_obj else None
+                await recovery.recover_runtime(runtime_id, runtime_name=runtime_name)
+            except Exception as e:
+                logger.debug(f"Event replay recovery skipped for {runtime_id}: {e}")
+
             self._stats["successful_recoveries"] += 1
             self._recovery_attempts[runtime_id] = 0
-            self._last_recovery[runtime_id] = datetime.now()
+            self._last_recovery[runtime_id] = datetime.fromtimestamp(now_ms() / 1000)
             await self._send_alert("info", runtime_id, "Runtime recovered successfully")
         else:
             self._stats["failed_recoveries"] += 1
@@ -221,7 +230,7 @@ class RuntimeSupervisor:
         
         cb = self._circuit_breakers[runtime_id]
         cb.is_open = True
-        cb.open_since = datetime.now()
+        cb.open_since = datetime.fromtimestamp(now_ms() / 1000)
         cb.failure_count += 1
         
         self._stats["circuit_breaker_trips"] += 1
@@ -238,7 +247,7 @@ class RuntimeSupervisor:
             return False
         
         if cb.open_since:
-            elapsed = (datetime.now() - cb.open_since).total_seconds()
+            elapsed = (datetime.fromtimestamp(now_ms() / 1000) - cb.open_since).total_seconds()
             if elapsed >= self._config.circuit_breaker_timeout:
                 cb.is_open = False
                 logger.info(f"Circuit breaker reset for {runtime_id}")
@@ -257,7 +266,7 @@ class RuntimeSupervisor:
             "level": level,
             "runtime_id": runtime_id,
             "message": message,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.fromtimestamp(now_ms() / 1000).isoformat(),
         }
         
         for handler in self._alert_handlers:

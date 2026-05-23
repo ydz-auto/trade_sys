@@ -1,10 +1,10 @@
-"""
+﻿"""
 告警配置
 从 shared.config 导入
 """
 
-from shared.config.enums import AlertSeverity, AlertCategory
-from shared.config.defaults.infrastructure import (
+from infrastructure.config.enums import AlertSeverity, AlertCategory
+from infrastructure.config.defaults.infrastructure import (
     ALERTING_CONFIGS,
     ALERT_SEVERITY_CONFIG,
     ALERT_CATEGORIES,

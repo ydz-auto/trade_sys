@@ -14,14 +14,8 @@ Strategy API Service - 策略管理 API 服务
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import uuid
-from infrastructure.logging import get_logger
-
-from services.strategy_service.strategy_param_store import (
-    get_strategy_param_store,
-    StrategyParameters,
-    FeatureRange,
-    StrategyParamStore,
-)
+from domain.logging import get_logger
+from application.queries.service_queries import get_symbol_registry
 
 logger = get_logger("strategy_api_service")
 
@@ -33,10 +27,11 @@ class StrategyAPIService:
         self._discovered_strategies: Dict[str, List[Dict]] = {}
         self._backtest_results: Dict[str, Dict] = {}
         self._active_strategies: Dict[str, Dict] = {}
-        self._param_store: Optional[StrategyParamStore] = None
-    
-    def _get_param_store(self) -> StrategyParamStore:
+        self._param_store = None
+
+    def _get_param_store(self):
         if self._param_store is None:
+            from application.queries.service_queries import get_strategy_param_store
             self._param_store = get_strategy_param_store()
         return self._param_store
 
@@ -50,55 +45,10 @@ class StrategyAPIService:
         Returns:
             发现结果
         """
-        from services.strategy_service.strategy_discovery import StrategyDiscoveryEngine
+        from application.queries.service_queries import discover_strategies as _discover
 
         try:
-            engine = StrategyDiscoveryEngine(
-                symbols=[symbol],
-                min_win_rate=0.52,
-                min_sample_size=50,
-                min_avg_return=0.0001,
-            )
-            df = engine.load_market_data(symbol)
-            
-            if df.empty:
-                return {
-                    "symbol": symbol,
-                    "strategies_found": 0,
-                    "strategies": [],
-                    "error": "No market data available",
-                    "timestamp": datetime.now().isoformat(),
-                }
-            
-            patterns = engine.discover_patterns(df, symbol)
-
-            discovered = []
-            for pattern in patterns:
-                strategy_id = f"discovered_{symbol}_{pattern.pattern_id}"
-                discovered.append({
-                    "id": strategy_id,
-                    "name": pattern.name,
-                    "description": pattern.description,
-                    "direction": pattern.direction,
-                    "win_rate": pattern.win_rate,
-                    "avg_return": pattern.avg_return,
-                    "sample_size": pattern.sample_size,
-                    "confidence": pattern.confidence,
-                    "strength": pattern.strength.value,
-                    "features": pattern.features,
-                    "conditions": pattern.conditions,
-                    "created_at": pattern.created_at.isoformat(),
-                    "status": "discovered",
-                })
-
-            self._discovered_strategies[symbol] = discovered
-
-            return {
-                "symbol": symbol,
-                "strategies_found": len(discovered),
-                "strategies": discovered,
-                "timestamp": datetime.now().isoformat(),
-            }
+            result = await _discover(symbol)
 
         except Exception as e:
             logger.error(f"Strategy discovery error: {e}")
@@ -155,13 +105,12 @@ class StrategyAPIService:
         Returns:
             回测结果
         """
-        from services.strategy_service.strategy_discovery import StrategyDiscoveryEngine
-        import pandas as pd
+        from application.queries.service_queries import get_strategy_discovery_engine
 
         backtest_id = f"bt_{uuid.uuid4().hex[:8]}"
 
         try:
-            engine = StrategyDiscoveryEngine(
+            engine = get_strategy_discovery_engine(
                 symbols=[symbol],
                 min_win_rate=0.52,
                 min_sample_size=50,
@@ -252,10 +201,11 @@ class StrategyAPIService:
         return [p.to_dict() for p in params_list]
 
     async def get_strategy_config(self, strategy_id: str, symbol: str) -> Optional[Dict[str, Any]]:
-        """获取策略配置"""
         params = await self._get_param_store().get_param(symbol, strategy_id)
         if params:
             return params.to_dict()
+        from application.queries.domain_queries import get_feature_range_class
+        FeatureRange = get_feature_range_class()
         return {
             "strategy_id": strategy_id,
             "symbol": symbol,
@@ -275,9 +225,11 @@ class StrategyAPIService:
         symbol: str,
         config: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """更新策略配置"""
+        from application.queries.domain_queries import get_strategy_parameters_class, get_feature_range_class
+        StrategyParameters = get_strategy_parameters_class()
+        FeatureRange = get_feature_range_class()
         store = self._get_param_store()
-        
+
         params = await store.get_param(symbol, strategy_id)
         
         if params is None:
@@ -305,20 +257,8 @@ class StrategyAPIService:
         symbol: str,
         feature_range: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """
-        更新历史数据特征范围
-        
-        Args:
-            strategy_id: 策略ID
-            symbol: 币种
-            feature_range: 特征范围配置
-                - start_date: 开始日期
-                - end_date: 结束日期
-                - volatility_range: 波动率范围 (low/medium/high/all)
-                - trend_range: 趋势范围 (up/down/ranging/all)
-                - volume_profile: 成交量特征 (low/medium/high/all)
-                - funding_range: 资金费率范围
-        """
+        from application.queries.domain_queries import get_feature_range_class
+        FeatureRange = get_feature_range_class()
         store = self._get_param_store()
         
         fr = FeatureRange(

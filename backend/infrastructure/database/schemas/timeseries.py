@@ -121,3 +121,27 @@ CORRELATION_SCHEMAS = {
         ORDER BY (symbol, timeframe, timestamp)
     """,
 }
+
+EVENT_JOURNAL_SCHEMA = {
+    "event_journal": """
+        CREATE TABLE IF NOT EXISTS event_journal (
+            event_id String,
+            trace_id String,
+            parent_event_id Nullable(String),
+            schema_version String,
+            event_type String,
+            category String,
+            source String,
+            symbol Nullable(String),
+            event_time_ms Int64,
+            ingest_time_ms Int64,
+            process_time_ms Int64,
+            clock_mode String,
+            metadata String,
+            payload String,
+            created_at Int64
+        ) ENGINE = MergeTree()
+        PARTITION BY toYYYYMM(fromUnixTimestamp64Milli(event_time_ms))
+        ORDER BY (event_type, symbol, event_time_ms, event_id)
+    """,
+}

@@ -17,16 +17,13 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel
 
-from infrastructure.logging import get_logger
-from domain.feature.feature_matrix import (
+from domain.logging import get_logger
+from application.queries.domain_queries import (
     get_historical_feature_matrix,
-    get_available_features
-)
-from domain.feature.materializer import (
-    UnifiedFeatureMatrix,
-    HistoricalFeatureMaterializer,
+    get_available_features,
     get_schema_registry,
-    FeatureCategory
+    get_historical_feature_materializer,
+    get_materializer_feature_category_enum,
 )
 
 logger = get_logger("api.feature")
@@ -102,6 +99,7 @@ async def get_feature_group(
 ):
     """获取单特征组数据"""
     try:
+        FeatureCategory = get_materializer_feature_category_enum()
         category_enum = FeatureCategory(category.lower())
         
         registry = get_schema_registry()
@@ -178,7 +176,7 @@ async def materialize_features(request: MaterializeRequest):
     try:
         logger.info(f"Materializing features for {request.symbol}")
         
-        materializer = HistoricalFeatureMaterializer(DATA_LAKE_ROOT)
+        materializer = get_historical_feature_materializer(DATA_LAKE_ROOT)
         matrix = materializer.materialize_symbol(
             symbol=request.symbol,
             interval_ms=request.interval_ms,

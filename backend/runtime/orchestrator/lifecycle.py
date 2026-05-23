@@ -14,6 +14,7 @@ import asyncio
 
 from .registry import RuntimeState, RuntimeInfo, get_runtime_registry
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import now_ms
 
 logger = get_logger("runtime.lifecycle")
 
@@ -260,7 +261,7 @@ class RuntimeLifecycle:
             runtime_id=runtime_id,
             from_state=from_state,
             to_state=to_state,
-            timestamp=datetime.now(),
+            timestamp=datetime.fromtimestamp(now_ms() / 1000),
             success=success,
             error=error,
         )

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Approval Service - HITL 审批服务
 
 业务逻辑：审批请求管理、状态跟踪
@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, Callable, List, Any
 
 from infrastructure.logging import get_logger
-from shared.config import get_config_manager
+from infrastructure.config import get_config_manager
 from .status import ApprovalRequest, ApprovalStatus, ApprovalType, ApprovalDecision
 
 logger = get_logger("approval_service")

@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List
 from collections import defaultdict
 
+from infrastructure.runtime_clock import now_ms
+
 
 @dataclass
 class MetricValue:
@@ -35,7 +37,7 @@ class RuntimeMetrics:
         self._counters: Dict[str, int] = defaultdict(int)
         self._gauges: Dict[str, float] = defaultdict(float)
         self._histograms: Dict[str, MetricValue] = defaultdict(MetricValue)
-        self._start_time: float = time.time()
+        self._start_time: float = now_ms() / 1000
     
     def increment(self, name: str, delta: int = 1) -> None:
         """增加计数器"""
@@ -86,7 +88,7 @@ class RuntimeMetrics:
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
-        uptime = time.time() - self._start_time
+        uptime = now_ms() / 1000 - self._start_time
         
         return {
             "name": self.name,
@@ -101,7 +103,7 @@ class RuntimeMetrics:
         self._counters.clear()
         self._gauges.clear()
         self._histograms.clear()
-        self._start_time = time.time()
+        self._start_time = now_ms() / 1000
 
 
 class TimingContext:
@@ -113,17 +115,17 @@ class TimingContext:
         self._start: float = 0.0
     
     def __enter__(self):
-        self._start = time.time()
+        self._start = now_ms() / 1000
         return self
     
     def __exit__(self, *args):
-        duration_ms = (time.time() - self._start) * 1000
+        duration_ms = (now_ms() / 1000 - self._start) * 1000
         self.metrics.observe(self.name, duration_ms)
     
     async def __aenter__(self):
-        self._start = time.time()
+        self._start = now_ms() / 1000
         return self
     
     async def __aexit__(self, *args):
-        duration_ms = (time.time() - self._start) * 1000
+        duration_ms = (now_ms() / 1000 - self._start) * 1000
         self.metrics.observe(self.name, duration_ms)

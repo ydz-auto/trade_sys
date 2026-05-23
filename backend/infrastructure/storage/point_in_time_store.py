@@ -29,11 +29,6 @@ import json
 import hashlib
 
 from infrastructure.logging import get_logger
-from shared.replay.feature_availability_guard import (
-    FeatureAvailabilityGuard,
-    FeatureAvailabilityStatus,
-    get_feature_availability_guard,
-)
 
 logger = get_logger("storage.point_in_time_store")
 
@@ -117,11 +112,11 @@ class PointInTimeFeatureStore:
         self,
         symbol: str,
         interval_ms: int = 60000,
-        guard: Optional[FeatureAvailabilityGuard] = None,
+        feature_availability_guard=None,
     ):
         self.symbol = symbol
         self.interval_ms = interval_ms
-        self.guard = guard or get_feature_availability_guard(interval_ms)
+        self._feature_availability_guard = feature_availability_guard
         
         self._records: Dict[int, Dict[str, PointInTimeFeatureRecord]] = {}
         self._feature_index: Dict[str, List[int]] = {}
@@ -133,6 +128,17 @@ class PointInTimeFeatureStore:
         
         self._strict_mode = True
         self._log_access = True
+
+    def _get_guard(self):
+        guard = self._feature_availability_guard
+        if guard is None:
+            from runtime.replay_runtime.shared_replay.feature_availability_guard import (
+                FeatureAvailabilityGuard,
+                get_feature_availability_guard,
+            )
+            guard = get_feature_availability_guard(self.interval_ms)
+            self._feature_availability_guard = guard
+        return guard
         
     def store_feature(
         self,
@@ -164,10 +170,10 @@ class PointInTimeFeatureStore:
             return None
         
         if available_at is None:
-            available_at = self.guard.get_feature_available_at(feature_name, feature_timestamp)
+            available_at = self._get_guard().get_feature_available_at(feature_name, feature_timestamp)
         
         if delay_ms is None:
-            rule = self.guard._rules.get(feature_name)
+            rule = self._get_guard()._rules.get(feature_name)
             delay_ms = rule.delay_ms if rule else 0
         
         record = PointInTimeFeatureRecord(
@@ -256,13 +262,13 @@ class PointInTimeFeatureStore:
             if record is None:
                 continue
             
-            check = self.guard.check_availability(
+            check = self._get_guard().check_availability(
                 feature_name=feature_name,
                 feature_timestamp=record.feature_timestamp,
                 replay_clock=query_time,
             )
             
-            if check.status == FeatureAvailabilityStatus.AVAILABLE:
+            if check.status.value == "available":
                 available_features[feature_name] = record.value
                 feature_timestamps[feature_name] = record.feature_timestamp
                 available_at_times[feature_name] = record.available_at

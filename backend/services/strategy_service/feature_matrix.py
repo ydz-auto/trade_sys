@@ -17,7 +17,6 @@ Feature Matrix
 """
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
-from enum import Enum
 from datetime import datetime
 import pandas as pd
 import numpy as np
@@ -25,33 +24,9 @@ from pathlib import Path
 
 from infrastructure.logging import get_logger
 from infrastructure.data_lake import get_features_path
+from domain.feature.metadata import FeatureCategory, FeatureMetadata
 
 logger = get_logger("feature_matrix")
-
-
-class FeatureCategory(Enum):
-    """特征分类枚举"""
-    RAW = "raw"  # 原始特征
-    DERIVED = "derived"  # 衍生特征（原因子层）
-    MICROSTRUCTURE = "microstructure"  # 微观结构特征
-    CROSS_MARKET = "cross_market"  # 跨市场特征
-    EVENT = "event"  # 事件/叙事特征
-
-
-@dataclass
-class FeatureMetadata:
-    """特征元数据"""
-    name: str
-    name_en: str
-    category: FeatureCategory
-    description: str
-    data_type: str = "float"
-    normalization_range: Optional[tuple] = None  # (min, max)
-    zscore_window: int = 288  # 默认5分钟K线，288根=24小时
-    is_factor: bool = False  # 是否为原因子（兼容保留）
-    source: str = "internal"  # 数据来源
-    default_weight: float = 1.0
-    last_updated: datetime = field(default_factory=datetime.now)
 
 
 class FeatureMatrix:

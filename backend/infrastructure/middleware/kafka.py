@@ -1,4 +1,4 @@
-"""
+﻿"""
 Kafka 消息队列 - FastStream 实现
 支持 Pydantic Schema 校验，自动 OpenAPI 文档
 """
@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any, Callable, Type, Union
 from pydantic import BaseModel
 
 from infrastructure.logging import get_logger
-from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 logger = get_logger("middleware.kafka")
 
 try:

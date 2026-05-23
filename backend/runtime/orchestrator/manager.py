@@ -20,6 +20,7 @@ from runtime.lifecycle.runtime_health import get_health_system, HealthStatus
 from runtime.lifecycle.state_machine import get_state_machine, RuntimeState as LifecycleState
 from runtime.state import get_runtime_state_store
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import now_ms
 
 logger = get_logger("runtime.orchestrator")
 
@@ -120,8 +121,18 @@ class RuntimeOrchestrator:
         
         logger.info("Starting Runtime Orchestrator...")
         
+        try:
+            from infrastructure.messaging.event_journal import get_event_journal
+            journal = await get_event_journal()
+            from runtime.bus.runtime_bus import get_runtime_bus
+            bus = get_runtime_bus()
+            bus.set_journal(journal)
+            logger.info("EventJournal attached to RuntimeBus")
+        except Exception as e:
+            logger.warning(f"EventJournal init skipped: {e}")
+        
         self._is_running = True
-        self._started_at = datetime.now()
+        self._started_at = datetime.fromtimestamp(now_ms() / 1000)
         
         mode = self._mode_manager.mode
         runtime_types = set(self._mode_runtimes.get(mode, []))
@@ -165,13 +176,6 @@ class RuntimeOrchestrator:
         
         self._stats["total_starts"] += 1
         
-        self._state_store.set_runtime_state({
-            "orchestrator_running": True,
-            "started_at": self._started_at.isoformat(),
-            "mode": mode.value,
-            "startup_order": [rt.value for rt in startup_order_types],
-        })
-        
         logger.info(f"Runtime Orchestrator started: {len(results['started'])} runtimes")
         
         return {
@@ -186,6 +190,12 @@ class RuntimeOrchestrator:
             return {"success": False, "error": "Not running"}
         
         logger.info("Stopping Runtime Orchestrator...")
+        
+        try:
+            from infrastructure.messaging.event_journal import stop_event_journal
+            await stop_event_journal()
+        except Exception as e:
+            logger.warning(f"EventJournal stop skipped: {e}")
         
         await self._health_system.stop()
         
@@ -304,7 +314,7 @@ class RuntimeOrchestrator:
         
         uptime = 0.0
         if self._started_at:
-            uptime = (datetime.now() - self._started_at).total_seconds()
+            uptime = (datetime.fromtimestamp(now_ms() / 1000) - self._started_at).total_seconds()
         
         return OrchestratorStatus(
             is_running=self._is_running,

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Odaily Consumer - 消费 raw.odaily topic 并进行增强理解
 
 数据流：
@@ -17,7 +17,7 @@ from datetime import datetime
 from infrastructure.logging import get_logger
 from infrastructure.messaging import Topics
 from infrastructure.cache import get_redis_client
-from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 logger = get_logger("event_service.odaily_consumer")
 

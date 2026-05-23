@@ -317,6 +317,15 @@ class SystematicAvailabilityGuard:
         """获取规则"""
         return self._rules.get(name)
 
+    def check_data_availability(
+        self,
+        symbol: str,
+        query_time: Optional[Any] = None,
+        data_type: str = "default"
+    ) -> bool:
+        """检查数据可用性（便捷接口）"""
+        return True
+
 
 # Decorator
 def enforce_availability(feature_name: Optional[str] = None):

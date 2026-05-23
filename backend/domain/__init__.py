@@ -1,112 +1,24 @@
 """
-Domain Package - 核心业务领域
+Domain Package - 纯交易规则与语义
+
+核心原则：Domain 只包含"交易语义和规则"，不包含：
+- Runtime 编排逻辑 → runtime/
+- Infrastructure 实现 → infrastructure/
+- Data Pipeline / ML → services/
+- Application Workflow → application/
 
 包含：
-- Validation Boundary: Research → Runtime 隔离层
-- Portfolio Projection: 持仓状态持久化
-- Timeframe Coordinator: 多周期协调
-- Replay Engine: 事件回放引擎
-- Observability: 运行时可观测性
-- Narrative Engine: AI 解释层
+- behaviour: 市场行为检测器
+- event: 领域事件类型
+- execution: 执行域模型与规则
+- feature: 特征定义与纯数学计算
+- portfolio: 组合域模型
+- replay: 回放数学公式（slippage, fee, funding 等）
+- risk: 风险规则
+- signal: 信号模型与融合
+- strategy: 策略配置定义
+- trading_mode: 交易模式定义
+- analysis: 分析类型定义
 """
 
-from .validation_boundary import (
-    ValidationBoundary,
-    ValidationStage,
-    ValidationResult,
-    ValidationCriteria,
-    ValidationReport,
-    ApprovedSignal,
-    DeployedFactor,
-    get_validation_boundary,
-)
-
-from .portfolio_projection import (
-    PortfolioProjection,
-    Position,
-    PositionSide,
-    PositionSnapshot,
-    get_portfolio_projection,
-)
-
-from .timeframe_coordinator import (
-    TimeframeCoordinator,
-    Timeframe,
-    RegimeType,
-    SignalAlignment,
-    TimeframeSignal,
-    CoordinatedSignal,
-    RegimeHierarchy,
-    get_timeframe_coordinator,
-)
-
-from .replay_engine import (
-    ReplayEngine,
-    ReplayMode,
-    ReplayStatus,
-    ReplayConfig,
-    ReplayState,
-    ReplayEvent,
-    get_replay_engine,
-)
-
-from .observability import (
-    RuntimeMetrics,
-    MetricType,
-    MetricValue,
-    Alert,
-    get_runtime_metrics,
-)
-
-from .narrative_engine import (
-    NarrativeEngine,
-    NarrativeType,
-    Confidence,
-    Narrative,
-    DecisionExplanation,
-    SignalNarrative,
-    get_narrative_engine,
-)
-
-__all__ = [
-    "ValidationBoundary",
-    "ValidationStage",
-    "ValidationResult",
-    "ValidationCriteria",
-    "ValidationReport",
-    "ApprovedSignal",
-    "DeployedFactor",
-    "get_validation_boundary",
-    "PortfolioProjection",
-    "Position",
-    "PositionSide",
-    "PositionSnapshot",
-    "get_portfolio_projection",
-    "TimeframeCoordinator",
-    "Timeframe",
-    "RegimeType",
-    "SignalAlignment",
-    "TimeframeSignal",
-    "CoordinatedSignal",
-    "RegimeHierarchy",
-    "get_timeframe_coordinator",
-    "ReplayEngine",
-    "ReplayMode",
-    "ReplayStatus",
-    "ReplayConfig",
-    "ReplayState",
-    "ReplayEvent",
-    "get_replay_engine",
-    "RuntimeMetrics",
-    "MetricType",
-    "MetricValue",
-    "Alert",
-    "get_runtime_metrics",
-    "NarrativeEngine",
-    "NarrativeType",
-    "Confidence",
-    "Narrative",
-    "DecisionExplanation",
-    "SignalNarrative",
-    "get_narrative_engine",
-]
+__all__ = []

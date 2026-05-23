@@ -8,7 +8,6 @@ from .store import (
     StateSnapshot,
     RuntimeStateStore,
     get_runtime_state_store,
-    set_state,
     get_state,
 )
 
@@ -16,6 +15,5 @@ __all__ = [
     "StateSnapshot",
     "RuntimeStateStore",
     "get_runtime_state_store",
-    "set_state",
     "get_state",
 ]

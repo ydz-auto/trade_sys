@@ -1,4 +1,4 @@
-"""
+﻿"""
 Kafka Publisher - Kafka 发布器
 发布聚合后的K线到 Kafka
 """
@@ -8,7 +8,7 @@ from typing import Optional, List
 
 from infrastructure.logging import get_logger
 from infrastructure.messaging import get_broker
-from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 from services.aggregation_service.models.candle_model import Candle
 from services.aggregation_service.models.orderbook_model import OrderBookFeature

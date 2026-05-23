@@ -20,12 +20,17 @@ from uuid import UUID
 from runtime.base import BaseRuntime, RuntimeConfig
 from runtime.shared import RuntimeLifecycle, RuntimeMetrics, RuntimeHealthCheck
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import now_ms
 
 from domain.portfolio import Portfolio, Position
 from domain.signal import Signal, SignalRegistry
 
 
 logger = get_logger("portfolio_runtime")
+
+
+def _utcnow() -> datetime:
+    return datetime.utcfromtimestamp(now_ms() / 1000)
 
 
 @dataclass
@@ -60,6 +65,7 @@ class PortfolioRuntime(BaseRuntime):
         
         self.risk_alerts: List[Dict[str, Any]] = []
         self.last_updated: Optional[datetime] = None
+        self._state: Dict[str, Any] = {"positions": [], "accounts": {}}
     
     async def initialize(self) -> None:
         """初始化"""
@@ -85,7 +91,7 @@ class PortfolioRuntime(BaseRuntime):
             return
         
         self.portfolio.update_position(position)
-        self.last_updated = datetime.utcnow()
+        self.last_updated = _utcnow()
         self.metrics.increment("position_updates")
     
     async def close_position(self, symbol: str) -> None:
@@ -95,7 +101,7 @@ class PortfolioRuntime(BaseRuntime):
             return
         
         self.portfolio.close_position(symbol)
-        self.last_updated = datetime.utcnow()
+        self.last_updated = _utcnow()
         self.metrics.increment("position_closes")
     
     async def calculate_exposure(self) -> Dict[str, float]:
@@ -137,7 +143,7 @@ class PortfolioRuntime(BaseRuntime):
                 "type": "leverage_limit",
                 "severity": "critical",
                 "message": f"Leverage {exposure['leverage']:.2f} exceeds limit {self.config.max_leverage}",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": _utcnow().isoformat(),
             }
             alerts.append(alert)
             self.risk_alerts.append(alert)
@@ -148,7 +154,7 @@ class PortfolioRuntime(BaseRuntime):
                 "type": "total_exposure",
                 "severity": "high",
                 "message": f"Total exposure {exposure['total']:.2f} exceeds limit",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": _utcnow().isoformat(),
             }
             alerts.append(alert)
             self.risk_alerts.append(alert)
@@ -161,7 +167,7 @@ class PortfolioRuntime(BaseRuntime):
                     "severity": "high",
                     "symbol": symbol,
                     "message": f"Single symbol {symbol} exposure {exp:.2f} exceeds limit",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": _utcnow().isoformat(),
                 }
                 alerts.append(alert)
                 self.risk_alerts.append(alert)
@@ -174,7 +180,7 @@ class PortfolioRuntime(BaseRuntime):
             "exposure": exposure,
             "alerts": alerts,
             "portfolio_value": self.portfolio.equity,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": _utcnow().isoformat(),
         }
     
     async def allocate_capital(self, signals: List[Signal]) -> Dict[str, float]:
@@ -230,22 +236,39 @@ class PortfolioRuntime(BaseRuntime):
                     "symbol": symbol,
                     "long_signals": [str(s.signal_id) for s in longs],
                     "short_signals": [str(s.signal_id) for s in shorts],
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": _utcnow().isoformat(),
                 })
         
         return conflicts
     
+    def get_state(self) -> Dict[str, Any]:
+        if self.portfolio:
+            positions = []
+            for pos in self.portfolio.positions.values():
+                if hasattr(pos, 'to_dict'):
+                    positions.append(pos.to_dict())
+                elif isinstance(pos, dict):
+                    positions.append(pos)
+            accounts = {}
+            if hasattr(self.portfolio, 'portfolio_id'):
+                accounts[self.portfolio.portfolio_id] = {
+                    "balance": getattr(self.portfolio, 'equity', 0),
+                    "unrealized_pnl": 0.0,
+                }
+            self._state = {"positions": positions, "accounts": accounts}
+        return self._state
+
     async def run(self) -> None:
         """主循环"""
         logger.info("Starting Portfolio Runtime main loop...")
         
         await self.lifecycle.transition_to_running()
         
-        last_risk_check = datetime.utcnow()
+        last_risk_check = _utcnow()
         
         while not self.context.is_shutdown_requested():
             try:
-                now = datetime.utcnow()
+                now = _utcnow()
                 
                 if (now - last_risk_check).total_seconds() >= self.config.risk_check_interval_seconds:
                     await self.check_risk()

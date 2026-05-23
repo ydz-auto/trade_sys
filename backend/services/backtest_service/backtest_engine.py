@@ -178,8 +178,8 @@ class BacktestEngine:
             return
         
         try:
-            from shared.acceleration import is_gpu_available, get_accelerator_info
-            from domain.feature.torch_calculator import TorchFeatureCalculator
+            from infrastructure.acceleration import is_gpu_available, get_accelerator_info
+            from services.feature_service.torch_calculator import TorchFeatureCalculator
             
             info = get_accelerator_info()
             self._gpu_available = info['is_gpu']
@@ -564,33 +564,14 @@ async def run_parallel_optimization(
     data_path: Optional[Path] = None,
     n_workers: Optional[int] = None,
     enable_gpu: bool = True,
+    optimization_engine=None,
 ) -> List[Any]:
-    """
-    并行参数优化（走 Runtime 主链）
-    
-    使用 OptimizationBacktestEngine（走 ReplayRuntime），
-    asyncio.gather 并行执行多组参数回测。
-    GPU 加速特征计算由 shared/acceleration 自动处理。
-    
-    Args:
-        symbol: 交易对
-        strategy_id: 策略 ID
-        param_grid: 参数组合列表
-        start_time: 开始时间戳
-        end_time: 结束时间戳
-        data_path: 数据路径
-        n_workers: 并行并发数
-        enable_gpu: 是否启用 GPU
-    
-    Returns:
-        回测结果列表
-    """
-    from application.optimization_service.engine import (
-        OptimizationBacktestEngine, BacktestConfig
-    )
-    
-    config = BacktestConfig()
-    engine = OptimizationBacktestEngine(config)
+    if optimization_engine is None:
+        from application.optimization_service.engine import OptimizationBacktestEngine, BacktestConfig as OptBacktestConfig
+        config = OptBacktestConfig()
+        optimization_engine = OptimizationBacktestEngine(config)
+
+    engine = optimization_engine
     
     max_concurrent = n_workers or 4
     semaphore = asyncio.Semaphore(max_concurrent)

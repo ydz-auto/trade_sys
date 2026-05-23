@@ -26,7 +26,7 @@ from typing import Dict, List, Optional, Set, Callable
 from dataclasses import dataclass
 import os
 
-from shared.contracts import StandardEvent, Source, Sentiment, create_news_event
+from domain.contracts import StandardEvent, Source, Sentiment, create_news_event
 from infrastructure.logging import get_logger
 
 logger = get_logger("qq.realtime")

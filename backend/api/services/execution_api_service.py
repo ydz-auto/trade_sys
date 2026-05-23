@@ -17,9 +17,22 @@ Execution API Service - 执行引擎 API 服务
 """
 from typing import Dict, List, Optional, Any
 from datetime import datetime
-from infrastructure.logging import get_logger
-from runtime.execution.router import get_execution_router, safe_execute, ExecutionBlockedError
-from domain.execution.models import OrderRequest, OrderSide, OrderType, OrderStatus, Exchange, MarketType
+from domain.logging import get_logger
+from application.queries.domain_queries import (
+    get_order_side_enum,
+    get_order_type_enum,
+    get_exchange_enum,
+    get_market_type_enum,
+    get_order_status_enum,
+    get_order_request_class,
+)
+
+OrderSide = get_order_side_enum()
+OrderType = get_order_type_enum()
+Exchange = get_exchange_enum()
+MarketType = get_market_type_enum()
+OrderStatus = get_order_status_enum()
+OrderRequest = get_order_request_class()
 
 logger = get_logger("execution_api_service")
 
@@ -64,7 +77,9 @@ class ExecutionAPIService:
         )
 
         try:
-            result = await safe_execute(request)
+            from application.commands.bus_commands import safe_execute_order, get_execution_blocked_error
+            ExecutionBlockedError = get_execution_blocked_error()
+            result = await safe_execute_order(request)
         except ExecutionBlockedError as e:
             return {"success": False, "error": str(e), "reason": e.reason}
         except Exception as e:
@@ -80,25 +95,22 @@ class ExecutionAPIService:
         return {"success": True}
 
     async def get_order(self, order_id: str) -> Optional[Dict[str, Any]]:
-        from runtime.bus.runtime_bus import get_runtime_bus
+        from application.queries.execution import get_execution_state
 
-        bus = get_runtime_bus()
         try:
-            state = bus.get_state("execution")
+            state = await get_execution_state()
             orders = state.get("orders", {})
             return orders.get(order_id)
         except Exception:
             return None
 
     async def cancel_order(self, order_id: str) -> Dict[str, Any]:
-        from runtime.bus.runtime_bus import get_runtime_bus
+        from application.commands.bus_commands import publish_command
 
-        bus = get_runtime_bus()
-        await bus.publish_command(
-            command="cancel_order",
+        await publish_command(
+            command_type="cancel_order",
+            data={"order_id": order_id},
             target="execution_runtime",
-            params={"order_id": order_id},
-            source="api.execution",
         )
         return {"success": True, "order_id": order_id, "dispatch_via": "runtime_bus"}
 
@@ -107,11 +119,10 @@ class ExecutionAPIService:
         symbol: Optional[str] = None,
         exchange: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        from runtime.bus.runtime_bus import get_runtime_bus
+        from application.queries.execution import get_execution_state
 
-        bus = get_runtime_bus()
         try:
-            state = bus.get_state("execution")
+            state = await get_execution_state()
             orders = state.get("orders", {})
             open_orders = [
                 o for o in orders.values()
@@ -130,11 +141,10 @@ class ExecutionAPIService:
         symbol: Optional[str] = None,
         limit: int = 100,
     ) -> List[Dict[str, Any]]:
-        from runtime.bus.runtime_bus import get_runtime_bus
+        from application.queries.execution import get_execution_state
 
-        bus = get_runtime_bus()
         try:
-            state = bus.get_state("execution")
+            state = await get_execution_state()
             orders = state.get("orders", {})
             all_orders = list(orders.values())
             if symbol:
@@ -149,11 +159,10 @@ class ExecutionAPIService:
         symbol: Optional[str] = None,
         exchange: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        from runtime.bus.runtime_bus import get_runtime_bus
+        from application.queries.portfolio import get_portfolio_state
 
-        bus = get_runtime_bus()
         try:
-            state = bus.get_state("portfolio")
+            state = await get_portfolio_state()
             positions = state.get("positions", [])
             if symbol:
                 positions = [p for p in positions if p["symbol"] == symbol]
@@ -168,14 +177,12 @@ class ExecutionAPIService:
         position_id: str,
         quantity: Optional[float] = None,
     ) -> Dict[str, Any]:
-        from runtime.bus.runtime_bus import get_runtime_bus
+        from application.commands.bus_commands import publish_command
 
-        bus = get_runtime_bus()
-        await bus.publish_command(
-            command="close_position",
+        await publish_command(
+            command_type="close_position",
+            data={"position_id": position_id, "quantity": quantity},
             target="portfolio_runtime",
-            params={"position_id": position_id, "quantity": quantity},
-            source="api.execution",
         )
         return {"success": True, "position_id": position_id, "dispatch_via": "runtime_bus"}
 
@@ -184,14 +191,12 @@ class ExecutionAPIService:
         position_id: str,
         updates: Dict[str, Any],
     ) -> Dict[str, Any]:
-        from runtime.bus.runtime_bus import get_runtime_bus
+        from application.commands.bus_commands import publish_command
 
-        bus = get_runtime_bus()
-        await bus.publish_command(
-            command="update_position",
+        await publish_command(
+            command_type="update_position",
+            data={"position_id": position_id, "updates": updates},
             target="portfolio_runtime",
-            params={"position_id": position_id, "updates": updates},
-            source="api.execution",
         )
         return {"success": True, "position_id": position_id, "dispatch_via": "runtime_bus"}
 
@@ -224,7 +229,9 @@ class ExecutionAPIService:
         )
 
         try:
-            result = await safe_execute(request)
+            from application.commands.bus_commands import safe_execute_order, get_execution_blocked_error
+            ExecutionBlockedError = get_execution_blocked_error()
+            result = await safe_execute_order(request)
         except ExecutionBlockedError as e:
             return {
                 "success": False,
@@ -298,12 +305,12 @@ class ExecutionAPIService:
         }
 
     async def get_execution_state(self) -> Dict[str, Any]:
-        from runtime.bus.runtime_bus import get_runtime_bus
+        from application.queries.execution import get_execution_state
+        from application.queries.portfolio import get_portfolio_state
 
-        bus = get_runtime_bus()
         try:
-            exec_state = bus.get_state("execution")
-            portfolio_state = bus.get_state("portfolio")
+            exec_state = await get_execution_state()
+            portfolio_state = await get_portfolio_state()
             return {
                 "state": exec_state.get("state", "unknown"),
                 "last_error": exec_state.get("last_error"),

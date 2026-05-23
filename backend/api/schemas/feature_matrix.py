@@ -4,16 +4,10 @@ Feature Matrix Schemas - Feature Matrix Models
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
 from datetime import datetime
-from enum import Enum
 
+from application.queries.domain_queries import get_feature_category_enum
 
-class FeatureCategory(str, Enum):
-    """特征分类"""
-    RAW = "raw"
-    DERIVED = "derived"
-    MICROSTRUCTURE = "microstructure"
-    CROSS_MARKET = "cross_market"
-    EVENT = "event"
+FeatureCategory = get_feature_category_enum()
 
 
 class FeatureMetadataItem(BaseModel):

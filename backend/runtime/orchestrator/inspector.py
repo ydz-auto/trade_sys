@@ -18,6 +18,7 @@ from .timeline import get_runtime_timeline
 from runtime.state import get_runtime_state_store
 from domain.trading_mode import get_trading_mode_manager
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import now_ms
 
 logger = get_logger("runtime.inspector")
 
@@ -78,7 +79,7 @@ class RuntimeInspector:
         if not info:
             return InspectionResult(
                 runtime_id=runtime_id,
-                timestamp=datetime.now(),
+                timestamp=datetime.fromtimestamp(now_ms() / 1000),
                 healthy=False,
                 state=RuntimeState.STOPPED,
                 issues=["Runtime not found"],
@@ -127,7 +128,7 @@ class RuntimeInspector:
         
         return InspectionResult(
             runtime_id=runtime_id,
-            timestamp=datetime.now(),
+            timestamp=datetime.fromtimestamp(now_ms() / 1000),
             healthy=len(issues) == 0,
             state=info.state,
             issues=issues,
@@ -151,7 +152,7 @@ class RuntimeInspector:
             all_issues.extend([f"[{r.runtime_id}] {issue}" for issue in r.issues])
         
         inspection = SystemInspection(
-            timestamp=datetime.now(),
+            timestamp=datetime.fromtimestamp(now_ms() / 1000),
             mode=self._mode_manager.mode.value,
             total_runtimes=len(runtimes),
             healthy_runtimes=len(healthy),
@@ -229,7 +230,7 @@ class RuntimeInspector:
         
         diagnosis = {
             "runtime_id": runtime_id,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.fromtimestamp(now_ms() / 1000).isoformat(),
             "state": info.state.value,
             "issues": [],
             "recommendations": [],
@@ -267,7 +268,7 @@ class RuntimeInspector:
         registry_stats = self._registry.get_stats()
         
         return {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.fromtimestamp(now_ms() / 1000).isoformat(),
             "mode": self._mode_manager.mode.value,
             "registry": registry_stats,
             "state_store": state_store_stats,

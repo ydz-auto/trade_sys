@@ -1,11 +1,11 @@
-"""
+﻿"""
 Decision Gate - 决策门（集成审批服务）
 """
 
 from enum import Enum
 from typing import Optional, Callable, Any
 from .main import ApprovalService, get_approval_service, ApprovalDecision
-from shared.config.manager import get_config_manager
+from infrastructure.config.manager import get_config_manager
 from infrastructure.logging import get_logger
 
 logger = get_logger("decision_gate")

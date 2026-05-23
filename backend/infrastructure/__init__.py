@@ -11,7 +11,7 @@ Infrastructure - 交易系统基础设施模块
 """
 
 # GPU 加速统一后端
-from shared.acceleration import (
+from infrastructure.acceleration import (
     torch,
     device,
     is_gpu,

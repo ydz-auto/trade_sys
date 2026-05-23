@@ -65,7 +65,7 @@ class NarrativeRuntime(BaseRuntime):
         self.broker = get_broker(self.config.kafka_bootstrap_servers)
         
         try:
-            from domain.narrative_engine import NarrativeEngine
+            from runtime.narrative_runtime.narrative_engine import NarrativeEngine
             self.narrative_engine = NarrativeEngine()
         except Exception as e:
             self.logger.warning(f"Narrative engine not available: {e}")

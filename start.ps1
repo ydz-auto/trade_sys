@@ -10,6 +10,7 @@ $Cyan = [ConsoleColor]::Cyan
 $Reset = [ConsoleColor]::Gray
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$PythonPath = "E:\02_code_build_envirenment\20251204_anaconda3\envs\tradeagent\python.exe"
 
 function Write-Colored {
     param([string]$Message, [ConsoleColor]$Color = $Reset)
@@ -37,7 +38,6 @@ function Show-Help {
     Write-Host "  -f, --frontend     Start frontend dev server"
     Write-Host "  -a, --all          Start all services"
     Write-Host "  -r, --replay       Start replay engine"
-    Write-Host "  -g, --governor     Start Runtime Governor"
     Write-Host "  --gpu              Start GPU acceleration services"
     Write-Host "  --gpu-status       Check GPU status"
     Write-Host "  -s, --stop         Stop all services"
@@ -88,7 +88,7 @@ function Start-Mixed {
     $logDir = Join-Path $ScriptDir "backend\logs"
     $null = New-Item -ItemType Directory -Force -Path $logDir -ErrorAction SilentlyContinue
     $apiLog = Join-Path $logDir "api_server.log"
-    Start-Process python -ArgumentList "api_server.py" -RedirectStandardOutput $apiLog -NoNewWindow -WorkingDirectory "$ScriptDir\backend"
+    Start-Process $PythonPath -ArgumentList "api_server.py" -RedirectStandardOutput $apiLog -NoNewWindow -WorkingDirectory "$ScriptDir\backend"
     Start-Sleep -Seconds 3
     Write-Host "API Server started" -ForegroundColor $Green
     Write-Host ""
@@ -147,23 +147,6 @@ function Start-Frontend {
     Pop-Location
 }
 
-function Start-Governor {
-    Write-Host "Starting Runtime Governor..." -ForegroundColor $Blue
-    Write-Host ""
-    
-    Push-Location "$ScriptDir\backend"
-    $logDir = Join-Path $ScriptDir "backend\logs"
-    $null = New-Item -ItemType Directory -Force -Path $logDir -ErrorAction SilentlyContinue
-    $govLog = Join-Path $logDir "governor.log"
-    
-    Write-Host "Launching Runtime Governor..." -ForegroundColor $Green
-    Start-Process python -ArgumentList "-m runtime.governor_runtime" -RedirectStandardOutput $govLog -RedirectStandardError $govLog -NoNewWindow -WorkingDirectory "$ScriptDir\backend"
-    
-    Write-Host "Runtime Governor started" -ForegroundColor $Green
-    Write-Host "  Log: $govLog"
-    Pop-Location
-}
-
 function Start-GpuServices {
     Write-Host "Starting GPU acceleration services..." -ForegroundColor $Blue
     Write-Host ""
@@ -218,11 +201,6 @@ function Stop-All {
         $wmiProcess -and $wmiProcess.CommandLine -like "*api_server.py*"
     } | Stop-Process -Force -ErrorAction SilentlyContinue
     
-    Get-Process python -ErrorAction SilentlyContinue | Where-Object {
-        $wmiProcess = Get-WmiObject Win32_Process -Filter "ProcessId=$($_.Id)" -ErrorAction SilentlyContinue
-        $wmiProcess -and $wmiProcess.CommandLine -like "*governor_runtime*"
-    } | Stop-Process -Force -ErrorAction SilentlyContinue
-
     Push-Location "$ScriptDir\backend"
     Write-Host "Stopping Python Runtimes..." -ForegroundColor $Cyan
     if (Test-Path "dev.ps1") {
@@ -240,18 +218,6 @@ function Stop-All {
 
 function Show-Status {
     Write-Host "Checking service status..." -ForegroundColor $Blue
-    Write-Host ""
-
-    Write-Host "Runtime Governor:" -ForegroundColor $Yellow
-    $govProcess = Get-Process python -ErrorAction SilentlyContinue | Where-Object {
-        $wmiProcess = Get-WmiObject Win32_Process -Filter "ProcessId=$($_.Id)" -ErrorAction SilentlyContinue
-        $wmiProcess -and $wmiProcess.CommandLine -like "*governor_runtime*"
-    }
-    if ($govProcess) {
-        Write-Host "  Running" -ForegroundColor $Green
-    } else {
-        Write-Host "  Not running" -ForegroundColor $Red
-    }
     Write-Host ""
 
     Write-Host "Frontend Service:" -ForegroundColor $Yellow
@@ -316,8 +282,6 @@ if ($args.Count -eq 0) {
         "--frontend" { Start-Frontend }
         "-a" { Start-Backend-Docker; Start-Frontend }
         "--all" { Start-Backend-Docker; Start-Frontend }
-        "-g" { Start-Governor }
-        "--governor" { Start-Governor }
         "--gpu" { Start-GpuServices }
         "--gpu-status" { Show-GpuStatus }
         "-s" { Stop-All }

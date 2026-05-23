@@ -20,7 +20,7 @@ from .liquidation_cascade import LiquidationCascadeDetector, LiquidationCascadeE
 from .trend_exhaustion import TrendExhaustionDetector, TrendExhaustionEvent
 from .mean_reversion import MeanReversionDetector, MeanReversionEvent
 
-from infrastructure.logging import get_logger
+from domain.logging import get_logger
 
 logger = get_logger("behaviour.detector")
 

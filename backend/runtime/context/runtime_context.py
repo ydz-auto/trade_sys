@@ -4,9 +4,15 @@ Runtime Context - Runtime 共享上下文
 核心职责:
 1. 所有 runtime 共享的上下文
 2. 当前模式、namespace、session
-3. 市场、风险状态
+3. 市场、风险状态 (RuntimeContext 是 market/risk 状态的唯一 Owner)
 4. 配置传递
+
+状态归属:
+    market_state → RuntimeContext (this)
+    risk_state   → RuntimeContext (this)
+    其他状态     → 各自 Runtime
 """
+
 from typing import Dict, Any, Optional
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -14,8 +20,8 @@ import asyncio
 
 from domain.trading_mode import TradingMode, get_trading_mode_manager
 from runtime.isolation import get_runtime_isolation
-from runtime.state import get_runtime_state_store
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import now_ms
 
 logger = get_logger("runtime.context")
 
@@ -60,24 +66,21 @@ class RuntimeContext:
     def __init__(self):
         if hasattr(self, '_initialized') and self._initialized:
             return
-        
+
         self._initialized = True
-        
+
         self._mode_manager = get_trading_mode_manager()
         self._isolation = get_runtime_isolation()
-        self._state_store = get_runtime_state_store()
-        
+
         self._session: Optional[SessionContext] = None
         self._market = MarketContext()
         self._risk = RiskContext()
-        
+
         self._config: Dict[str, Any] = {}
-        self._features: Dict[str, Any] = {}
-        self._cache: Dict[str, Any] = {}
-        
+
         self._lock = asyncio.Lock()
-        
-        logger.info("RuntimeContext initialized")
+
+        logger.info("RuntimeContext initialized (market/risk state owner)")
 
     @property
     def mode(self) -> TradingMode:
@@ -102,16 +105,16 @@ class RuntimeContext:
     def create_session(self, session_id: Optional[str] = None) -> SessionContext:
         import uuid
         session_id = session_id or str(uuid.uuid4())[:8]
-        
+
         self._session = SessionContext(
             session_id=session_id,
             mode=self.mode,
             namespace=self.namespace,
-            started_at=datetime.now(),
+            started_at=datetime.fromtimestamp(now_ms() / 1000),
         )
-        
+
         logger.info(f"Created session: {session_id} (mode={self.mode.value})")
-        
+
         return self._session
 
     def end_session(self) -> None:
@@ -123,62 +126,19 @@ class RuntimeContext:
         for key, value in kwargs.items():
             if hasattr(self._market, key):
                 setattr(self._market, key, value)
-        self._market.last_update = datetime.now()
-        
-        self._state_store.set_market_state({
-            "symbols": self._market.symbols,
-            "primary_symbol": self._market.primary_symbol,
-            "regime": self._market.regime,
-            "volatility": self._market.volatility,
-            "trend": self._market.trend,
-        })
+        self._market.last_update = datetime.fromtimestamp(now_ms() / 1000)
 
     def update_risk(self, **kwargs) -> None:
         for key, value in kwargs.items():
             if hasattr(self._risk, key):
                 setattr(self._risk, key, value)
-        self._risk.last_check = datetime.now()
-        
-        self._state_store.set_risk_state({
-            "level": self._risk.level,
-            "leverage_limit": self._risk.leverage_limit,
-            "position_limit": self._risk.position_limit,
-            "circuit_breaker_active": self._risk.circuit_breaker_active,
-        })
+        self._risk.last_check = datetime.fromtimestamp(now_ms() / 1000)
 
     def set_config(self, key: str, value: Any) -> None:
         self._config[key] = value
 
     def get_config(self, key: str, default: Any = None) -> Any:
         return self._config.get(key, default)
-
-    def set_feature(self, key: str, value: Any) -> None:
-        self._features[key] = value
-
-    def get_feature(self, key: str, default: Any = None) -> Any:
-        return self._features.get(key, default)
-
-    def cache_set(self, key: str, value: Any, ttl: Optional[float] = None) -> None:
-        expiry = None
-        if ttl:
-            expiry = datetime.now().timestamp() + ttl
-        
-        self._cache[key] = {
-            "value": value,
-            "expiry": expiry,
-        }
-
-    def cache_get(self, key: str) -> Optional[Any]:
-        if key not in self._cache:
-            return None
-        
-        entry = self._cache[key]
-        if entry.get("expiry"):
-            if datetime.now().timestamp() > entry["expiry"]:
-                del self._cache[key]
-                return None
-        
-        return entry["value"]
 
     def is_paper_mode(self) -> bool:
         return self.mode == TradingMode.PAPER
@@ -199,6 +159,9 @@ class RuntimeContext:
     def get_event_topic(self, event_type: str) -> str:
         return f"{self.namespace}.{event_type}"
 
+    def get_state(self) -> Dict[str, Any]:
+        return self.to_dict()
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "mode": self.mode.value,
@@ -217,6 +180,8 @@ class RuntimeContext:
             },
             "risk": {
                 "level": self._risk.level,
+                "leverage_limit": self._risk.leverage_limit,
+                "position_limit": self._risk.position_limit,
                 "circuit_breaker_active": self._risk.circuit_breaker_active,
             },
         }

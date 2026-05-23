@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 import numpy as np
 
-from infrastructure.logging import get_logger
+from domain.logging import get_logger
 
 logger = get_logger("risk.market_risk")
 

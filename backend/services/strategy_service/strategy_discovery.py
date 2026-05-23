@@ -23,7 +23,8 @@ from infrastructure.data_lake import get_features_path, get_research_path
 from services.strategy_service.strategies import (
     BaseStrategy, StrategySignal, StrategyType, ActionType
 )
-from services.strategy_service.feature_matrix import FeatureMatrix, FeatureCategory
+from services.strategy_service.feature_matrix import FeatureMatrix
+from domain.feature.metadata import FeatureCategory
 
 logger = get_logger("strategy_discovery")
 

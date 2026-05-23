@@ -11,12 +11,7 @@ import asyncio
 
 from infrastructure.logging import get_logger
 
-from shared.replay import (
-    ReplayOrchestrator,
-    get_replay_orchestrator,
-    ReplayStatus,
-)
-from shared.contracts import Timeframe, Exchange, Candle
+from domain.contracts import Timeframe, Exchange, Candle
 
 logger = get_logger("aggregation_service.replay")
 
@@ -34,7 +29,8 @@ class ReplayRunner:
         symbol: str,
         start_time: int,
         end_time: int,
-        source_timeframe: str = "1m"
+        source_timeframe: str = "1m",
+        replay_orchestrator=None,
     ):
         self.exchange = exchange
         self.symbol = symbol
@@ -42,7 +38,7 @@ class ReplayRunner:
         self.end_time = end_time
         self.source_timeframe = Timeframe(source_timeframe)
 
-        self.orchestrator: Optional[ReplayOrchestrator] = None
+        self.orchestrator = replay_orchestrator
         self._task_id: Optional[str] = None
 
         self.stats = {
@@ -53,11 +49,13 @@ class ReplayRunner:
         }
 
     async def initialize(self):
-        """初始化"""
-        self.orchestrator = await get_replay_orchestrator()
+        if self.orchestrator is None:
+            from runtime.replay_runtime.shared_replay import get_replay_orchestrator
+            self.orchestrator = await get_replay_orchestrator()
 
     async def run(self):
-        """运行回放"""
+        from runtime.replay_runtime.shared_replay import ReplayStatus
+
         logger.info(f"Starting replay: {self.exchange}:{self.symbol} {self.start_time} - {self.end_time}")
 
         task = await self.orchestrator.create_replay_task(

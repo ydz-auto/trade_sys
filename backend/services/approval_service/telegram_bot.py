@@ -1,4 +1,4 @@
-"""
+﻿"""
 Telegram Approval Bot - Telegram 审批 Bot
 """
 
@@ -6,7 +6,7 @@ import os
 from typing import Optional, List, Dict, Any
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from shared.config.manager import get_config_manager
+from infrastructure.config.manager import get_config_manager
 from infrastructure.logging import get_logger
 from ..approval_service.main import get_approval_service, ApprovalService
 

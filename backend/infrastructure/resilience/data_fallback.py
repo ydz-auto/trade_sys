@@ -36,6 +36,7 @@ from infrastructure.resilience.fallback import (
     StaticValueFallback,
     AlternateFunctionFallback
 )
+from infrastructure.config.defaults.infrastructure.external_apis import EXCHANGE_REST_APIS
 
 logger = get_logger("resilience.multi_channel")
 
@@ -132,7 +133,7 @@ class MultiChannelConfig:
                     enabled=True,
                     weight=0.95,
                     endpoints=[
-                        "https://api.binance.com",
+                        EXCHANGE_REST_APIS["binance"]["spot"],
                         "https://api1.binance.com",
                         "https://api2.binance.com"
                     ]
@@ -142,35 +143,35 @@ class MultiChannelConfig:
                     channel_type=DataChannelType.BYBIT_REST,
                     enabled=True,
                     weight=0.8,
-                    endpoints=["https://api.bybit.com"]
+                    endpoints=[EXCHANGE_REST_APIS["bybit"]["api"]]
                 ),
                 ChannelConfig(
                     name="okx_rest",
                     channel_type=DataChannelType.OKX_REST,
                     enabled=True,
                     weight=0.7,
-                    endpoints=["https://www.okx.com"]
+                    endpoints=[EXCHANGE_REST_APIS["okx"]["api"]]
                 ),
                 ChannelConfig(
                     name="gateio_rest",
                     channel_type=DataChannelType.GATEIO_REST,
                     enabled=True,
                     weight=0.6,
-                    endpoints=["https://api.gateio.ws"]
+                    endpoints=[EXCHANGE_REST_APIS["gate"]["api"]]
                 ),
                 ChannelConfig(
                     name="coinbase_rest",
                     channel_type=DataChannelType.COINBASE_REST,
                     enabled=True,
                     weight=0.5,
-                    endpoints=["https://api.exchange.coinbase.com"]
+                    endpoints=[EXCHANGE_REST_APIS["coinbase"]["api"]]
                 ),
                 ChannelConfig(
                     name="coingecko",
                     channel_type=DataChannelType.COINGECKO_REST,
                     enabled=True,
                     weight=0.4,
-                    endpoints=["https://api.coingecko.com"]
+                    endpoints=[EXCHANGE_REST_APIS["coingecko"]["api"]]
                 )
             ],
             mock_mode=False
@@ -250,7 +251,9 @@ class BaseDataFetcher:
 class BinanceRESTFetcher(BaseDataFetcher):
     """Binance REST API 获取器"""
 
-    def __init__(self, endpoint: str = "https://api.binance.com"):
+    def __init__(self, endpoint: str = None):
+        if endpoint is None:
+            endpoint = EXCHANGE_REST_APIS["binance"]["spot"]
         self.endpoint = endpoint
         self._client = None
 
@@ -268,7 +271,10 @@ class BinanceRESTFetcher(BaseDataFetcher):
         try:
             client = await self._get_client()
             if client:
-                url = f"{self.endpoint}/api/v3/ticker/24hr?symbol={symbol.upper()}"
+                binance_symbol = symbol.upper()
+                if not binance_symbol.endswith("USDT"):
+                    binance_symbol = f"{binance_symbol}USDT"
+                url = f"{self.endpoint}/api/v3/ticker/24hr?symbol={binance_symbol}"
                 response = await client.get(url)
                 response.raise_for_status()
                 data = response.json()
@@ -365,6 +371,8 @@ class BybitFetcher(BaseDataFetcher):
         try:
             import httpx
             bybit_symbol = symbol.upper()
+            if not bybit_symbol.endswith("USDT"):
+                bybit_symbol = f"{bybit_symbol}USDT"
             
             url = f"https://api.bybit.com/v5/market/tickers?category=spot&symbol={bybit_symbol}"
             
@@ -534,7 +542,8 @@ class MultiChannelDataManager:
                 continue
 
             if channel.channel_type == DataChannelType.BINANCE_REST:
-                self._fetchers[channel.channel_type] = BinanceRESTFetcher(channel.endpoints[0] if channel.endpoints else "https://api.binance.com")
+                default_endpoint = EXCHANGE_REST_APIS["binance"]["spot"]
+                self._fetchers[channel.channel_type] = BinanceRESTFetcher(channel.endpoints[0] if channel.endpoints else default_endpoint)
             elif channel.channel_type == DataChannelType.BYBIT_REST:
                 self._fetchers[channel.channel_type] = BybitFetcher()
             elif channel.channel_type == DataChannelType.GATEIO_REST:

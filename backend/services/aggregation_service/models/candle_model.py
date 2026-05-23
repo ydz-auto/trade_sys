@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import Optional, Dict, Any, List
 from enum import Enum
 
-from shared.contracts import Exchange, Timeframe, Candle as ContractCandle
+from domain.contracts import Exchange, Timeframe, Candle as ContractCandle
 
 
 class Candle(ContractCandle):

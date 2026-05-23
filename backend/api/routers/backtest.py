@@ -11,6 +11,7 @@ Backtest Router - 回测管理端点
     ReplayRuntime (唯一 execution source)
 """
 from fastapi import APIRouter, HTTPException
+from uuid import uuid4
 
 from ..schemas.backtest import (
     BacktestRequest,
@@ -34,18 +35,15 @@ async def get_manager():
 @router.post("/backtest", response_model=BacktestResult)
 async def create_and_run_backtest(request: BacktestRequest):
     """创建并运行回测 - Router 只转发"""
-    from runtime.bus.runtime_bus import get_runtime_bus
-    from uuid import uuid4
+    from application.commands.bus_commands import publish_command
 
-    bus = get_runtime_bus()
     config = request.config.model_dump()
     backtest_id = str(uuid4())[:8]
 
-    await bus.publish_command(
-        command="run_backtest",
+    await publish_command(
+        command_type="run_backtest",
+        data={"backtest_id": backtest_id, **config},
         target="replay_runtime",
-        params={"backtest_id": backtest_id, **config},
-        source="api.backtest",
     )
 
     manager = await get_manager()
@@ -144,14 +142,12 @@ async def get_backtest(backtest_id: str):
 @router.delete("/backtest/{backtest_id}")
 async def stop_backtest(backtest_id: str):
     """停止回测"""
-    from runtime.bus.runtime_bus import get_runtime_bus
+    from application.commands.bus_commands import publish_command
 
-    bus = get_runtime_bus()
-    await bus.publish_command(
-        command="stop_backtest",
+    await publish_command(
+        command_type="stop_backtest",
+        data={"backtest_id": backtest_id},
         target="replay_runtime",
-        params={"backtest_id": backtest_id},
-        source="api.backtest",
     )
 
     manager = await get_manager()

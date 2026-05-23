@@ -1,7 +1,7 @@
-from typing import Optional, Dict, Any, Callable, Type, Union, TYPE_CHECKING
+﻿from typing import Optional, Dict, Any, Callable, Type, Union, TYPE_CHECKING
 from pydantic import BaseModel
 
-from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 try:
     from faststream import FastStream

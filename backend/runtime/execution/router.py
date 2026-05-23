@@ -32,6 +32,7 @@ from domain.execution.models import (
 )
 from domain.trading_mode import TradingMode, get_trading_mode_manager
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import now_ms
 
 logger = get_logger("execution.router")
 
@@ -90,7 +91,7 @@ class ExecutionRouter:
         return not getattr(self._mode_manager, '_in_replay', False)
 
     def _check_mode_active(self) -> bool:
-        from domain.trading_mode.manager import ModeState
+        from domain.trading_mode import ModeState
         return self._mode_manager.state == ModeState.ACTIVE
 
     def _check_risk_limits(self) -> bool:
@@ -194,7 +195,7 @@ class ExecutionRouter:
         namespace: str,
     ) -> None:
         log_entry = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.fromtimestamp(now_ms() / 1000).isoformat(),
             "namespace": namespace,
             "route": route.value,
             "symbol": request.symbol,

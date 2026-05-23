@@ -15,6 +15,7 @@ import json
 
 from domain.trading_mode import TradingMode, get_trading_mode_manager
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import now_ms
 
 logger = get_logger("runtime.timeline")
 
@@ -106,7 +107,7 @@ class RuntimeTimeline:
 
     def _generate_event_id(self) -> str:
         self._event_counter += 1
-        return f"evt_{self._event_counter}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        return f"evt_{self._event_counter}_{datetime.fromtimestamp(now_ms() / 1000).strftime('%Y%m%d%H%M%S')}"
 
     def record(
         self,
@@ -119,7 +120,7 @@ class RuntimeTimeline:
         event = TimelineEvent(
             event_id=self._generate_event_id(),
             event_type=event_type,
-            timestamp=datetime.now(),
+            timestamp=datetime.fromtimestamp(now_ms() / 1000),
             runtime_id=runtime_id,
             symbol=symbol,
             data=data or {},
@@ -221,7 +222,7 @@ class RuntimeTimeline:
         return [self._event_index[eid] for eid in event_ids if eid in self._event_index]
 
     def create_snapshot(self, duration_seconds: float = 3600) -> TimelineSnapshot:
-        end_time = datetime.now()
+        end_time = datetime.fromtimestamp(now_ms() / 1000)
         start_time = end_time - timedelta(seconds=duration_seconds)
         
         events = [e for e in self._events if e.timestamp >= start_time]
@@ -229,7 +230,7 @@ class RuntimeTimeline:
         self._snapshot_counter += 1
         snapshot = TimelineSnapshot(
             snapshot_id=f"snap_{self._snapshot_counter}",
-            timestamp=datetime.now(),
+            timestamp=datetime.fromtimestamp(now_ms() / 1000),
             events=events,
             mode=self._mode_manager.mode,
             duration_seconds=duration_seconds,
@@ -270,7 +271,7 @@ class RuntimeTimeline:
         events = self.get_events(start_time=start_time, end_time=end_time, limit=self._max_events)
         
         return {
-            "export_time": datetime.now().isoformat(),
+            "export_time": datetime.fromtimestamp(now_ms() / 1000).isoformat(),
             "mode": self._mode_manager.mode.value,
             "event_count": len(events),
             "events": [e.to_dict() for e in events],

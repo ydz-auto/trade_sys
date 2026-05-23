@@ -21,7 +21,7 @@ from datetime import datetime
 from enum import Enum
 
 from infrastructure.logging import get_logger
-from shared.contracts import StandardEvent
+from domain.contracts import StandardEvent
 from services.data_service.kafka_producer import kafka_producer
 
 try:
@@ -94,30 +94,37 @@ class DataSourceManager:
         logger.info(f"Registered source: {name} ({source_type})")
 
     async def _publish_event(self, event: StandardEvent) -> None:
-        """发布事件到 Kafka"""
         try:
+            from infrastructure.messaging.schema.base_event import RawDataEvent, EventSource
+
             if not self._kafka_connected:
                 return
 
-            # 发布到 Kafka
-            data = {
-                "id": event.id,
-                "timestamp": event.timestamp,
-                "source": event.source,
-                "event_type": event.event_type,
-                "title": event.title,
-                "content": event.content,
-                "sentiment": event.sentiment,
-                "importance": event.importance,
-                "symbols": event.symbols,
-                "tags": event.tags,
-                "metadata": event.metadata
-            }
+            raw_event = RawDataEvent(
+                source=EventSource.DATA_SERVICE,
+                symbol=event.symbols[0] if event.symbols else "BTCUSDT",
+                event_time_ms=int(event.timestamp * 1000) if isinstance(event.timestamp, (int, float)) else event.timestamp,
+                data_type="event",
+                data={
+                    "id": event.id,
+                    "timestamp": event.timestamp,
+                    "source": event.source,
+                    "event_type": event.event_type,
+                    "title": event.title,
+                    "content": event.content,
+                    "sentiment": event.sentiment,
+                    "importance": event.importance,
+                    "symbols": event.symbols,
+                    "tags": event.tags,
+                    "metadata": event.metadata,
+                },
+                data_source=event.source,
+            )
 
             key = event.symbols[0] if event.symbols else event.source
 
             await kafka_producer.publish_raw_data(
-                data=data,
+                data=raw_event.to_dict(),
                 symbol=key
             )
 

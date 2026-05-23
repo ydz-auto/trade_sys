@@ -10,7 +10,7 @@ import asyncio
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-from shared.contracts import StandardEvent, EventType, Sentiment, Source, create_whale_event
+from domain.contracts import StandardEvent, EventType, Sentiment, Source, create_whale_event
 from infrastructure.logging import get_logger
 
 from .skill_adapter import SkillAdapter, AdapterConfig

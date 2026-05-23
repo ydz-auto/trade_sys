@@ -14,7 +14,7 @@ from datetime import datetime
 from abc import ABC, abstractmethod
 
 from infrastructure.logging import get_logger
-from shared.contracts import Source
+from domain.contracts import Source
 
 logger = get_logger("event_service.parser")
 

@@ -12,7 +12,6 @@ from .portfolio import Portfolio, PortfolioState, PortfolioMetrics
 from .position import Position, PositionSide, PositionStatus
 from .exposure_manager import ExposureManager, Exposure, ExposureConfig
 from .capital_allocator import CapitalAllocator, CapitalAllocatorConfig, AllocationResult
-from .portfolio_service import PortfolioService, get_portfolio_service
 
 __all__ = [
     "Portfolio",
@@ -27,6 +26,4 @@ __all__ = [
     "CapitalAllocator",
     "CapitalAllocatorConfig",
     "AllocationResult",
-    "PortfolioService",
-    "get_portfolio_service",
 ]

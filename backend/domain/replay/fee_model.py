@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
-from infrastructure.logging import get_logger
+from domain.logging import get_logger
 
 logger = get_logger("replay.fee_model")
 

@@ -12,6 +12,15 @@ from .llm_pool import (
     get_llm_pool
 )
 
+from .client import (
+    LLMProvider,
+    LLMMessage,
+    LLMResponse as LLMClientResponse,
+    StreamChunk,
+    LLMServiceClient,
+    LLMClientPool,
+)
+
 __all__ = [
     "LLMPoolManager",
     "LLMResponse",
@@ -19,5 +28,11 @@ __all__ = [
     "CircuitState",
     "CircuitBreaker",
     "KeywordAnalyzer",
-    "get_llm_pool"
+    "get_llm_pool",
+    "LLMProvider",
+    "LLMMessage",
+    "LLMClientResponse",
+    "StreamChunk",
+    "LLMServiceClient",
+    "LLMClientPool",
 ]

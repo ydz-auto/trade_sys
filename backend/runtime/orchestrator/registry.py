@@ -15,6 +15,7 @@ import asyncio
 from domain.trading_mode import TradingMode
 from runtime.types import RuntimeType, RuntimeState
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import now_ms
 
 logger = get_logger("runtime.registry")
 
@@ -143,10 +144,10 @@ class RuntimeRegistry:
         info.error = error
         
         if state == RuntimeState.RUNNING and old_state != RuntimeState.RUNNING:
-            info.started_at = datetime.now()
+            info.started_at = datetime.fromtimestamp(now_ms() / 1000)
             self._stats["total_started"] += 1
         elif state == RuntimeState.STOPPED and old_state != RuntimeState.STOPPED:
-            info.stopped_at = datetime.now()
+            info.stopped_at = datetime.fromtimestamp(now_ms() / 1000)
             self._stats["total_stopped"] += 1
         elif state == RuntimeState.FAILED:
             self._stats["total_failed"] += 1

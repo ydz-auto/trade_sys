@@ -1,4 +1,4 @@
-"""
+﻿"""
 Enhanced RSS Feed Collector - 增强版 RSS 采集器
 支持熔断、降级、重试机制
 """
@@ -27,7 +27,7 @@ from infrastructure.resilience import (
 
 # 导入中文源配置
 try:
-    from shared.config.defaults.business.news_sources import RSS_NEWS_SOURCES
+    from infrastructure.config.defaults.business.news_sources import RSS_NEWS_SOURCES
     HAVE_CONFIG = True
 except ImportError:
     HAVE_CONFIG = False

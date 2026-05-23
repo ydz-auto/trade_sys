@@ -1,4 +1,4 @@
-"""
+﻿"""
 Kafka Consumer - 消费原始数据，转换为事件
 """
 
@@ -8,7 +8,7 @@ from typing import Optional, Callable, Awaitable
 from datetime import datetime
 
 from infrastructure.logging import get_logger
-from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 logger = get_logger("event_service.consumer")
 
 try:

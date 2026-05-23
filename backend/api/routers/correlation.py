@@ -21,10 +21,9 @@ router = APIRouter()
 async def get_correlation_summary(
     symbol: str = Query(default="BTCUSDT", description="币种"),
 ) -> Dict[str, Any]:
-    from runtime.bus.runtime_bus import get_runtime_bus
+    from application.queries.correlation import get_correlation_state
 
-    bus = get_runtime_bus()
-    state = bus.get_state("correlation")
+    state = await get_correlation_state()
 
     if state and state.get("summary"):
         return {"symbol": symbol, "summary": state["summary"], "source": "correlation_runtime"}
@@ -37,10 +36,9 @@ async def get_correlation_matrix(
     symbol: str = Query(default="BTCUSDT", description="币种"),
     window: int = Query(default=30, description="分析窗口（天）"),
 ) -> Dict[str, Any]:
-    from runtime.bus.runtime_bus import get_runtime_bus
+    from application.queries.correlation import get_correlation_state
 
-    bus = get_runtime_bus()
-    state = bus.get_state("correlation")
+    state = await get_correlation_state()
 
     matrix_key = f"matrix_{symbol}_{window}"
     if state and state.get(matrix_key):
@@ -53,10 +51,9 @@ async def get_correlation_matrix(
 async def get_signal_weights(
     symbol: str = Query(default="BTCUSDT", description="币种"),
 ) -> Dict[str, Any]:
-    from runtime.bus.runtime_bus import get_runtime_bus
+    from application.queries.correlation import get_correlation_state
 
-    bus = get_runtime_bus()
-    state = bus.get_state("correlation")
+    state = await get_correlation_state()
 
     weights = state.get("signal_weights", {}) if state else {}
     return {"symbol": symbol, "weights": weights, "source": "correlation_runtime"}
@@ -68,14 +65,12 @@ async def update_signal_weight(
     weight: float = Query(..., ge=0.0, le=1.0),
     reason: Optional[str] = Query(None),
 ) -> Dict[str, Any]:
-    from runtime.bus.runtime_bus import get_runtime_bus
+    from application.commands.bus_commands import publish_command
 
-    bus = get_runtime_bus()
-    await bus.publish_command(
-        command="update_signal_weight",
+    await publish_command(
+        command_type="update_signal_weight",
+        data={"signal_id": signal_id, "weight": weight, "reason": reason},
         target="correlation_runtime",
-        params={"signal_id": signal_id, "weight": weight, "reason": reason},
-        source="api.correlation",
     )
 
     return {
@@ -92,10 +87,9 @@ async def get_full_analysis(
     symbol: str = Query(default="BTCUSDT", description="币种"),
     window: int = Query(default=30, description="分析窗口（天）"),
 ) -> Dict[str, Any]:
-    from runtime.bus.runtime_bus import get_runtime_bus
+    from application.queries.correlation import get_correlation_state
 
-    bus = get_runtime_bus()
-    state = bus.get_state("correlation")
+    state = await get_correlation_state()
 
     analysis_key = f"analysis_{symbol}_{window}"
     if state and state.get(analysis_key):
@@ -115,14 +109,12 @@ async def trigger_analysis(
     window: int = Query(default=30, description="分析窗口"),
     method: str = Query(default="pearson", description="相关性方法"),
 ) -> Dict[str, Any]:
-    from runtime.bus.runtime_bus import get_runtime_bus
+    from application.commands.bus_commands import publish_command
 
-    bus = get_runtime_bus()
-    await bus.publish_command(
-        command="run_correlation_analysis",
+    await publish_command(
+        command_type="run_correlation_analysis",
+        data={"symbol": symbol, "window": window, "method": method},
         target="correlation_runtime",
-        params={"symbol": symbol, "window": window, "method": method},
-        source="api.correlation",
     )
 
     return {
@@ -140,10 +132,9 @@ async def get_analysis_history(
     symbol: str = Query(default="BTCUSDT", description="币种"),
     limit: int = Query(default=10, description="返回数量"),
 ) -> Dict[str, Any]:
-    from runtime.bus.runtime_bus import get_runtime_bus
+    from application.queries.correlation import get_correlation_state
 
-    bus = get_runtime_bus()
-    state = bus.get_state("correlation")
+    state = await get_correlation_state()
 
     history_key = f"history_{symbol}"
     history = state.get(history_key, [])[-limit:] if state and state.get(history_key) else []

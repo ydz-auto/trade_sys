@@ -26,8 +26,8 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from uuid import uuid4
 
-from infrastructure.cache.redis_client import RedisClient, init_redis
-from infrastructure.logging import get_logger
+from application.queries.infrastructure_queries import get_redis_client_sync, init_redis
+from domain.logging import get_logger
 
 logger = get_logger("backtest_manager")
 
@@ -38,14 +38,16 @@ _BACKTEST_LIST_KEY = "backtest:list"
 class BacktestManager:
 
     def __init__(self):
-        self._redis: Optional[RedisClient] = None
+        self._redis = None
 
     async def ensure_connection(self):
-        if self._redis is None or not self._redis.is_connected:
+        if self._redis is None:
+            self._redis = await init_redis()
+        elif hasattr(self._redis, 'is_connected') and not self._redis.is_connected:
             self._redis = await init_redis()
 
     @property
-    def redis(self) -> RedisClient:
+    def redis(self):
         if self._redis is None:
             raise RuntimeError("Redis not connected")
         return self._redis

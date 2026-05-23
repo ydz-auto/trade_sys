@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Set, Callable
 from dataclasses import dataclass
 
-from shared.contracts import StandardEvent, Source, EventType, Sentiment
+from domain.contracts import StandardEvent, Source, EventType, Sentiment
 from infrastructure.logging import get_logger
 
 logger = get_logger("telegram.adapter")

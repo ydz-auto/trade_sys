@@ -10,6 +10,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
+from infrastructure.runtime_clock import now_ms
+
 
 class RuntimePhase(Enum):
     """Runtime 阶段"""
@@ -70,9 +72,9 @@ class RuntimeLifecycle:
         self.state.phase = phase
         
         if phase == RuntimePhase.RUNNING:
-            self.state.started_at = datetime.now()
+            self.state.started_at = datetime.fromtimestamp(now_ms() / 1000)
         elif phase == RuntimePhase.STOPPED:
-            self.state.stopped_at = datetime.now()
+            self.state.stopped_at = datetime.fromtimestamp(now_ms() / 1000)
         
         for handler in self._phase_handlers[phase]:
             try:
@@ -107,7 +109,7 @@ class RuntimeLifecycle:
         """处理错误"""
         self.state.error_count += 1
         self.state.last_error = str(error)
-        self.state.last_error_at = datetime.now()
+        self.state.last_error_at = datetime.fromtimestamp(now_ms() / 1000)
         
         for handler in self._error_handlers:
             try:
@@ -134,7 +136,7 @@ class RuntimeLifecycle:
         """运行时长"""
         if self.state.started_at is None:
             return 0.0
-        end = self.state.stopped_at or datetime.now()
+        end = self.state.stopped_at or datetime.fromtimestamp(now_ms() / 1000)
         return (end - self.state.started_at).total_seconds()
     
     def to_dict(self) -> Dict[str, Any]:

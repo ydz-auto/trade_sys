@@ -110,7 +110,7 @@ def read_parquet_safe(file_path: Union[str, Path]) -> Optional[pd.DataFrame]:
 使用方式：
 
 ```python
-from shared.utils.parquet_reader import read_parquet_safe
+from infrastructure.storage.parquet_reader import read_parquet_safe
 
 df = read_parquet_safe("data_lake/features/1m/symbol=BTCUSDT/year=2024/month=01/data.parquet")
 ```
@@ -176,7 +176,7 @@ Columns: ['datetime', 'mid_price_first', ...]
 
 ## 相关文件
 
-- 解决方案实现：`shared/utils/parquet_reader.py`
+- 解决方案实现：`infrastructure/storage/parquet_reader.py`
 - 测试脚本：`scripts/test_data.py`
 
 ## 日期

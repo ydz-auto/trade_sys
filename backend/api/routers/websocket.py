@@ -5,8 +5,8 @@ WebSocket Router - WebSocket 端点
 import asyncio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from infrastructure.logging import get_logger
-from infrastructure.websocket.gateway import get_ws_gateway
+from domain.logging import get_logger
+from application.queries.infrastructure_queries import get_ws_gateway
 
 logger = get_logger("ws_router")
 

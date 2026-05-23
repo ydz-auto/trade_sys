@@ -22,7 +22,7 @@ import re
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Callable
 
-from shared.contracts import StandardEvent, Source, Sentiment, create_news_event
+from domain.contracts import StandardEvent, Source, Sentiment, create_news_event
 from infrastructure.logging import get_logger
 
 logger = get_logger("telegram.realtime")

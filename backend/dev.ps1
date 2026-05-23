@@ -15,29 +15,33 @@ $Reset = [ConsoleColor]::Gray
 
 $Runtimes = @{
     "ingestion" = "runtime.ingestion_runtime"
+    "feature" = "runtime.feature_runtime"
     "signal" = "runtime.signal_runtime"
     "execution" = "runtime.execution_runtime"
+    "portfolio" = "runtime.portfolio_runtime"
     "projection" = "runtime.projection_runtime"
     "correlation" = "runtime.correlation_runtime"
     "narrative" = "runtime.narrative_runtime"
-    "scheduler" = "runtime.scheduler_runtime"
+    "regime" = "runtime.regime_runtime"
+    "replay" = "runtime.replay_runtime"
 }
 
 $GpuRuntimes = @{
     "gpu-signal" = "runtime.signal_runtime"
-    "gpu-optimization" = "application.optimization_service"
 }
 
 $RuntimeNames = @{
     "ingestion" = "Data Ingestion Runtime"
+    "feature" = "Feature Computation Runtime"
     "signal" = "Signal Generation Runtime"
     "execution" = "Order Execution Runtime"
+    "portfolio" = "Portfolio Management Runtime"
     "projection" = "CQRS Projection Runtime"
     "correlation" = "Correlation Analysis Runtime"
     "narrative" = "AI Narrative Runtime"
-    "scheduler" = "Scheduler Runtime"
+    "regime" = "Market Regime Runtime"
+    "replay" = "Replay Runtime"
     "gpu-signal" = "GPU Signal Runtime"
-    "gpu-optimization" = "GPU Optimization Service"
 }
 
 $LogDir = Join-Path $ScriptDir "logs"
@@ -389,7 +393,7 @@ function Get-GpuStatus {
 import sys
 sys.path.insert(0, '$ScriptDir'.Replace('\', '\\'))
 try:
-    from shared.acceleration import get_accelerator_info
+    from infrastructure.acceleration import get_accelerator_info
     info = get_accelerator_info()
     print(f'  Backend: {info["backend"]}')
     print(f'  Device: {info["device_type"]}')

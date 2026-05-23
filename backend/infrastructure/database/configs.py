@@ -1,4 +1,4 @@
-"""
+﻿"""
 Database Configurations
 数据库连接配置
 从 shared.config 导入
@@ -7,8 +7,8 @@ Database Configurations
 from typing import Optional
 from dataclasses import dataclass
 
-from shared.config.defaults.infrastructure import DATABASE_CONFIGS, CLICKHOUSE_CONFIGS, POOL_CONFIGS
-from shared.config.defaults.infrastructure.cache import CACHE_CONFIGS
+from infrastructure.config.defaults.infrastructure import DATABASE_CONFIGS, CLICKHOUSE_CONFIGS, POOL_CONFIGS
+from infrastructure.config.defaults.infrastructure.cache import CACHE_CONFIGS
 
 
 @dataclass

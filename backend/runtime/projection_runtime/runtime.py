@@ -1,4 +1,4 @@
-"""
+﻿"""
 Projection Runtime - CQRS 投影运行时
 
 职责（仅运行时编排）：
@@ -34,11 +34,11 @@ from runtime.shared import (
 from runtime.state import get_runtime_state_store
 from infrastructure.messaging import Topics
 from infrastructure.messaging.kafka_config import ConsumerGroup
-from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
-from infrastructure.runtime_clock import get_clock, ClockMode
+from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+from infrastructure.runtime_clock import get_clock, ClockMode, now_ms
 from infrastructure.feature_availability import get_systematic_guard
 from infrastructure.label_isolation import get_label_store
-from infrastructure.event.event_ordering import EventOrdering
+from infrastructure.event.event_ordering import EventOrderingDeterminism
 from infrastructure.event.unified_schema import UnifiedEvent
 
 
@@ -84,7 +84,7 @@ class ProjectionRuntime(BaseRuntime):
         self._clock = get_clock()
         self._availability_guard = get_systematic_guard()
         self._label_store = get_label_store()
-        self._event_ordering = EventOrdering()
+        self._event_ordering = EventOrderingDeterminism()
 
         self.lifecycle: Optional[RuntimeLifecycle] = None
         self.metrics: Optional[RuntimeMetrics] = None
@@ -108,7 +108,9 @@ class ProjectionRuntime(BaseRuntime):
 
         try:
             import redis.asyncio as aioredis
-            self._redis = aioredis.from_url("redis://localhost", decode_responses=True)
+            from infrastructure.config.defaults.infrastructure.cache import CACHE_CONFIGS
+            redis_url = CACHE_CONFIGS.get("cache.redis_url", "redis://localhost:6379/0")
+            self._redis = aioredis.from_url(redis_url, decode_responses=True)
             await self._redis.ping()
             self.logger.info("Redis connected for pub/sub")
         except Exception as e:
@@ -243,7 +245,7 @@ class ProjectionRuntime(BaseRuntime):
             if state_type:
                 self._state_store.update(state_type, {
                     "last_event": event,
-                    "last_update": datetime.now().isoformat(),
+                    "last_update": datetime.fromtimestamp(now_ms() / 1000).isoformat(),
                     "last_event_type": event_type,
                 })
         except Exception as e:

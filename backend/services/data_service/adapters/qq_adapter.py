@@ -18,7 +18,7 @@ import random
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-from shared.contracts import (
+from domain.contracts import (
     StandardEvent,
     EventType,
     Sentiment,

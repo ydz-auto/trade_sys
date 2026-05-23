@@ -175,6 +175,10 @@ class RuntimeClock:
         """获取当前可用时间（所有特征计算使用这个）"""
         return self._current_timestamp_ms if self._current_timestamp_ms > 0 else int(time.time() * 1000)
 
+    def now(self) -> float:
+        """获取当前时间（秒时间戳，向后兼容）"""
+        return self.now_ms() / 1000.0
+
     def exchange_now_ms(self) -> int:
         """获取当前交易所时间"""
         return self._exchange_time if self._exchange_time > 0 else self.now_ms()

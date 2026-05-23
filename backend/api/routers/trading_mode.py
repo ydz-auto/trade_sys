@@ -14,10 +14,9 @@ from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 from pydantic import BaseModel, Field
 
-from domain.trading_mode import (
-    TradingMode,
-    get_trading_mode_manager,
-)
+from application.queries.domain_queries import get_trading_mode_manager, get_execution_trading_mode
+
+TradingMode = get_execution_trading_mode()
 
 router = APIRouter(prefix="/trading-mode", tags=["Trading Mode"])
 
@@ -60,21 +59,19 @@ async def get_all_modes() -> Dict[str, Any]:
 
 @router.post("/transition")
 async def transition_mode(request: TransitionRequest) -> Dict[str, Any]:
-    from runtime.command.command_bus import get_command_bus, CommandType
+    from application.commands.mode import switch_mode, get_trading_mode
 
     try:
         target_mode = TradingMode(request.target_mode.lower())
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid mode: {request.target_mode}")
 
-    bus = get_command_bus()
-    cmd_result = await bus.execute(
-        CommandType.SWITCH_MODE,
-        {"target_mode": request.target_mode.lower(), "reason": request.reason, "confirmed": request.confirmed},
-        source="api.trading_mode",
+    cmd_result = await switch_mode(
+        target_mode=request.target_mode.lower(),
+        reason=request.reason,
     )
 
-    if cmd_result.success:
+    if cmd_result.get("success"):
         return {
             "success": True,
             "mode": request.target_mode.lower(),

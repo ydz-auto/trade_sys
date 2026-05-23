@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Set, Callable
 from dataclasses import dataclass, field
 
-from shared.contracts import StandardEvent, Source, EventType, create_tweet_event
+from domain.contracts import StandardEvent, Source, EventType, create_tweet_event
 from infrastructure.logging import get_logger
 
 logger = get_logger("collectors.twitter_push")

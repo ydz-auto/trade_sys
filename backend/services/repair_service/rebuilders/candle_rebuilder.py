@@ -11,12 +11,7 @@ import asyncio
 
 from infrastructure.logging import get_logger
 
-from shared.replay import (
-    ReplayOrchestrator,
-    get_replay_orchestrator,
-    RebuildStatus,
-)
-from shared.contracts import Timeframe, Candle
+from domain.contracts import Timeframe, Candle
 
 logger = get_logger("repair_service.rebuilder")
 
@@ -28,22 +23,17 @@ class CandleRebuilder:
     现在委托给统一的 ReplayOrchestrator
     """
 
-    def __init__(self):
-        self.orchestrator: Optional[ReplayOrchestrator] = None
+    def __init__(self, replay_orchestrator=None):
+        self.orchestrator = replay_orchestrator
 
     async def initialize(self):
-        """初始化"""
-        self.orchestrator = await get_replay_orchestrator()
+        if self.orchestrator is None:
+            from runtime.replay_runtime.shared_replay import get_replay_orchestrator
+            self.orchestrator = await get_replay_orchestrator()
 
     async def rebuild(self, task) -> bool:
-        """重建K线
-        
-        Args:
-            task: RepairTask from repair_service.models
-            
-        Returns:
-            bool: 是否成功
-        """
+        from runtime.replay_runtime.shared_replay import RebuildStatus
+
         gap = task.gap
         
         rebuild_task = await self.orchestrator.create_rebuild_task(

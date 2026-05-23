@@ -97,8 +97,8 @@ class DataLakeStorageConfig(BaseModel):
     smb_host: str = "192.168.1.14"
     smb_share: str = "00_crypto"
     smb_path: str = "00_code/backend/data_lake"
-    local_path: str = "./data_lake"
-    use_smb: bool = True
+    local_path: str = "e:/00_crypto/00_code/backend/data_lake"
+    use_smb: bool = False
     
     @property
     def smb_url(self) -> str:

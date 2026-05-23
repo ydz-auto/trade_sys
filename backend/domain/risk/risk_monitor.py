@@ -18,7 +18,7 @@ from .portfolio_risk import PortfolioRiskCalculator, PortfolioRisk
 from .market_risk import MarketRiskMonitor, MarketRiskAssessment
 from .limit_manager import LimitManager, LimitCheckResult
 
-from infrastructure.logging import get_logger
+from domain.logging import get_logger
 
 logger = get_logger("risk.monitor")
 

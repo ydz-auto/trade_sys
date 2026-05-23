@@ -10,6 +10,7 @@ Kafka Consumer Base - 统一 Kafka 消费者基类
 5. 优雅关闭
 """
 
+import os
 import asyncio
 import json
 from abc import ABC, abstractmethod
@@ -19,7 +20,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from infrastructure.logging import get_logger
-from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 try:
     from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
@@ -221,8 +222,8 @@ class BaseKafkaConsumer(ABC):
     async def _consume_loop(self) -> None:
         """消费循环 - 包含错误恢复和自动重连机制"""
         retry_count = 0
-        max_retries = 10
-        base_retry_delay = 5
+        max_retries = int(os.environ.get("KAFKA_CONSUMER_MAX_RETRIES", "10"))
+        base_retry_delay = int(os.environ.get("KAFKA_CONSUMER_RETRY_DELAY", "5"))
         
         while self._running:
             try:

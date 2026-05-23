@@ -38,7 +38,7 @@ from ..schemas import (
 from .storage import get_factors
 from .projection_reader import get_projection_reader
 
-from infrastructure.cache import get_redis_client
+from application.queries.infrastructure_queries import get_redis_client_sync
 
 
 def _is_mock_mode() -> bool:
@@ -97,7 +97,7 @@ async def _build_prices(state: Dict[str, Any]) -> List[PriceItem]:
     
     redis = None
     try:
-        redis = get_redis_client()
+        redis = get_redis_client_sync()
     except Exception:
         pass
     

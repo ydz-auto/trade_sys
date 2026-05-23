@@ -17,6 +17,7 @@ WebSocket Gateway - 实时状态推送
 
 import asyncio
 import json
+import os
 import time
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Set
@@ -27,7 +28,6 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from infrastructure.logging import get_logger
 from infrastructure.cache.redis_client import RedisClient, init_redis
-from services.projection_service.state_keys import ProjectionChannels
 
 logger = get_logger("ws_gateway")
 
@@ -41,14 +41,14 @@ class ConnectionState(str, Enum):
 @dataclass
 class ThrottleConfig:
     """频道节流配置（毫秒）"""
-    prices: int = 100
-    dashboard: int = 1000
-    position: int = 500
-    risk: int = 500
-    signal: int = 1000
+    prices: int = int(os.environ.get("WS_THROTTLE_PRICES_MS", "100"))
+    dashboard: int = int(os.environ.get("WS_THROTTLE_DASHBOARD_MS", "1000"))
+    position: int = int(os.environ.get("WS_THROTTLE_POSITION_MS", "500"))
+    risk: int = int(os.environ.get("WS_THROTTLE_RISK_MS", "500"))
+    signal: int = int(os.environ.get("WS_THROTTLE_SIGNAL_MS", "1000"))
     decision: int = 1000
-    timeline: int = 5000
-    order: int = 100
+    timeline: int = int(os.environ.get("WS_THROTTLE_TIMELINE_MS", "5000"))
+    order: int = int(os.environ.get("WS_THROTTLE_ORDER_MS", "100"))
     
     def get_interval(self, channel: str) -> int:
         channel_type = channel.replace("channel:", "")
@@ -85,7 +85,7 @@ class WSGateway:
     
     DEFAULT_THROTTLE = ThrottleConfig()
     
-    def __init__(self, max_connections: int = 1000):
+    def __init__(self, max_connections: int = int(os.environ.get("WS_MAX_CONNECTIONS", "1000")), projection_keys=None, projection_channels=None):
         self.connections: Dict[str, WSConnection] = {}
         self.channel_subscribers: Dict[str, Set[str]] = {}
         self.redis: Optional[RedisClient] = None
@@ -93,6 +93,8 @@ class WSGateway:
         self._max_connections = max_connections
         self._throttle_state: Dict[str, float] = {}
         self._throttle_config = self.DEFAULT_THROTTLE
+        self._projection_keys = projection_keys
+        self._projection_channels = projection_channels
         self._stats = {
             "total_connections": 0,
             "active_connections": 0,
@@ -175,11 +177,15 @@ class WSGateway:
             logger.info(f"WebSocket disconnected: {connection_id}. Active: {self._stats['active_connections']}")
     
     async def _send_welcome(self, connection: WSConnection) -> None:
-        """发送欢迎消息"""
+        channels = self._projection_channels
+        if channels is None:
+            from services.projection_service.state_keys import ProjectionChannels
+            channels = ProjectionChannels
+
         welcome = {
             "type": "welcome",
             "connection_id": connection.connection_id,
-            "channels": ProjectionChannels.all(),
+            "channels": channels.all(),
             "timestamp": datetime.utcnow().isoformat(),
         }
         await self._send(connection, welcome)
@@ -329,19 +335,22 @@ class WSGateway:
             return
         
         try:
-            from services.projection_service.state_keys import ProjectionKeys
+            keys = self._projection_keys
+            if keys is None:
+                from services.projection_service.state_keys import ProjectionKeys
+                keys = ProjectionKeys
             
             state = {}
             
-            dashboard = await self.redis.get_json(ProjectionKeys.dashboard_state())
+            dashboard = await self.redis.get_json(keys.dashboard_state())
             if dashboard:
                 state["dashboard"] = dashboard
             
-            positions = await self.redis.get_json(ProjectionKeys.position_current())
+            positions = await self.redis.get_json(keys.position_current())
             if positions:
                 state["positions"] = positions
             
-            risk = await self.redis.get_json(ProjectionKeys.risk_state())
+            risk = await self.redis.get_json(keys.risk_state())
             if risk:
                 state["risk"] = risk
             
@@ -355,7 +364,11 @@ class WSGateway:
             await self._send(connection, {"type": "error", "message": str(e)})
     
     async def run_redis_subscriber(self) -> None:
-        """运行 Redis Pub/Sub 订阅者"""
+        channels = self._projection_channels
+        if channels is None:
+            from services.projection_service.state_keys import ProjectionChannels
+            channels = ProjectionChannels
+
         if not self.redis:
             logger.warning("Redis not available, skipping pub/sub")
             return
@@ -363,9 +376,9 @@ class WSGateway:
         while self._running:
             try:
                 pubsub = self.redis.client.pubsub(ignore_subscribe_messages=True)
-                await pubsub.subscribe(*ProjectionChannels.all())
+                await pubsub.subscribe(*channels.all())
                 
-                logger.info(f"Subscribed to Redis channels: {ProjectionChannels.all()}")
+                logger.info(f"Subscribed to Redis channels: {channels.all()}")
                 
                 msg_count = 0
                 async for message in pubsub.listen():
@@ -391,7 +404,7 @@ class WSGateway:
                 logger.error(f"Redis subscriber error: {e}")
                 if self._running:
                     logger.info("Reconnecting to Redis in 5 seconds...")
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(int(os.environ.get("WS_RECONNECT_INTERVAL", "5")))
                 else:
                     break
     

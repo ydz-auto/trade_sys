@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Dict, Any
 
-from shared.contracts import Exchange, Trade as ContractTrade
+from domain.contracts import Exchange, Trade as ContractTrade
 
 
 class Trade(ContractTrade):

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Binance Futures Adapter
 
 Binance USDT-M 合约适配器
@@ -29,7 +29,7 @@ from domain.execution.models import (
 )
 from services.execution_service.adapters.base import BaseExchangeAdapter
 from infrastructure.logging import get_logger
-from shared.config.defaults.infrastructure.external_apis import EXCHANGE_REST_APIS, EXCHANGE_WS_APIS
+from infrastructure.config.defaults.infrastructure.external_apis import EXCHANGE_REST_APIS, EXCHANGE_WS_APIS
 
 logger = get_logger("execution_service.adapters.binance_futures")
 

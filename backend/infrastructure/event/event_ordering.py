@@ -109,6 +109,7 @@ class EventOrderingDeterminism:
         self._sequence_counter = 0
         self._event_buffer: List[OrderedEvent] = []
         self._ordering_log: List[Dict[str, Any]] = []
+        self._last_primary_key: int = 0
     
     def create_ordered_event(
         self,
@@ -295,6 +296,16 @@ class EventOrderingDeterminism:
             "ordering_operations": len(self._ordering_log),
         }
     
+    def validate_event_order(self, event) -> bool:
+        if not hasattr(event, 'timestamp') and not hasattr(event, 'primary_key'):
+            return True
+        event_key = getattr(event, 'timestamp', None) or getattr(event, 'primary_key', 0)
+        if isinstance(event_key, (int, float)):
+            if event_key < self._last_primary_key:
+                return False
+            self._last_primary_key = event_key
+        return True
+
     def reset_sequence(self):
         """重置序列计数器"""
         self._sequence_counter = 0

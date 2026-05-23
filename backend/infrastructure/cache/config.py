@@ -1,4 +1,4 @@
-"""
+﻿"""
 缓存配置和常量
 从 shared.config 导入
 """
@@ -8,8 +8,8 @@ from typing import Optional
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-from shared.config.enums import CacheStrategy
-from shared.config.defaults.infrastructure import (
+from infrastructure.config.enums import CacheStrategy
+from infrastructure.config.defaults.infrastructure import (
     CACHE_CONFIGS,
     CACHE_TTL,
     CACHE_DB_ALLOCATION,

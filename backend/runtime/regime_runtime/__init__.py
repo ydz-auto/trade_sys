@@ -22,9 +22,14 @@ import numpy as np
 from runtime.base import BaseRuntime, RuntimeConfig
 from runtime.shared import RuntimeLifecycle, RuntimeMetrics, RuntimeHealthCheck
 from infrastructure.logging import get_logger
+from infrastructure.runtime_clock import now_ms
 
 
 logger = get_logger("regime_runtime")
+
+
+def _utcnow() -> datetime:
+    return datetime.utcfromtimestamp(now_ms() / 1000)
 
 
 class MarketRegime(str, Enum):
@@ -77,7 +82,7 @@ class RegimeRuntime(BaseRuntime):
         self.current_regime: RegimeState = RegimeState(
             regime=MarketRegime.UNKNOWN,
             confidence=0.0,
-            since=datetime.utcnow(),
+            since=_utcnow(),
             duration_seconds=0.0,
             features={},
             active_strategies=[],
@@ -223,14 +228,14 @@ class RegimeRuntime(BaseRuntime):
             self.regime_history.append({
                 "old_regime": self.current_regime.regime.value,
                 "new_regime": new_regime.value,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": _utcnow().isoformat(),
                 "confidence": confidence,
             })
             
             self.current_regime = RegimeState(
                 regime=new_regime,
                 confidence=confidence,
-                since=datetime.utcnow(),
+                since=_utcnow(),
                 duration_seconds=0.0,
                 features=features,
                 active_strategies=self.strategy_registry.get(new_regime, []),
@@ -238,7 +243,7 @@ class RegimeRuntime(BaseRuntime):
         else:
             self.current_regime.confidence = max(self.current_regime.confidence, confidence)
             self.current_regime.features = features
-            self.current_regime.duration_seconds = (datetime.utcnow() - self.current_regime.since).total_seconds()
+            self.current_regime.duration_seconds = (_utcnow() - self.current_regime.since).total_seconds()
     
     def get_active_strategies(self) -> List[str]:
         """获取当前状态应该启用的策略"""
@@ -257,7 +262,7 @@ class RegimeRuntime(BaseRuntime):
         while not self.context.is_shutdown_requested():
             try:
                 self.current_regime.duration_seconds = (
-                    datetime.utcnow() - self.current_regime.since
+                    _utcnow() - self.current_regime.since
                 ).total_seconds()
                 
                 await asyncio.sleep(self.config.check_interval_seconds)

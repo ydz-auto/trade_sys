@@ -17,13 +17,11 @@ router = APIRouter()
 
 
 async def _dispatch_refresh(command: str, target: str, params: dict):
-    from runtime.bus.runtime_bus import get_runtime_bus
-    bus = get_runtime_bus()
-    await bus.publish_command(
-        command=command,
+    from application.commands.bus_commands import publish_command
+    await publish_command(
+        command_type=command,
+        data=params,
         target=target,
-        params=params,
-        source="api.refresh",
     )
 
 

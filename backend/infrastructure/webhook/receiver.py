@@ -242,7 +242,7 @@ class NewsWebhookHandler:
     async def _analyze_news(self, news_data: Dict) -> Dict:
         """分析新闻"""
         try:
-            from shared.llm_client import LLMServiceClient
+            from infrastructure.llm.client import LLMServiceClient
 
             if not self.llm_client:
                 self.llm_client = LLMServiceClient()

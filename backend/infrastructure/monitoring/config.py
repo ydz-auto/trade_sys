@@ -1,10 +1,10 @@
-"""
+﻿"""
 监控配置和常量定义
 从 shared.config 导入
 """
 
-from shared.config.enums import ServiceStatus
-from shared.config.defaults.infrastructure import (
+from infrastructure.config.enums import ServiceStatus
+from infrastructure.config.defaults.infrastructure import (
     MONITORING_CONFIGS,
     SYSTEM_HEALTH_METRICS,
     TRADING_PERFORMANCE_METRICS,

@@ -19,7 +19,7 @@ from services.execution_service.execution_engine import (
     OrderResult,
     BinanceAdapter,
 )
-from shared.idempotency import get_idempotency_manager, ExecutionStatus
+from infrastructure.idempotency import get_idempotency_manager, ExecutionStatus
 
 
 async def verify_idempotency():

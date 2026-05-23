@@ -607,7 +607,7 @@ class TimeCausalReplayRuntime:
             SessionState: 回测结果
         """
         # 1. 加载策略
-        from runtime.strategy_registry import get_strategy
+        from services.strategy_service.strategy_registry import get_strategy
         self._strategy = get_strategy(strategy_id, params)
         
         # 2. 启动会话
@@ -654,7 +654,7 @@ async def main():
     from runtime.signal_runtime import get_signal_runtime
     from runtime.execution_runtime import get_execution_runtime
     
-    runtime.attach_feature_runtime(get_feature_matrix_runtime())
+    runtime.attach_feature_runtime(get_feature_matrix_runtime(symbol="BTCUSDT"))
     runtime.attach_signal_runtime(get_signal_runtime())
     runtime.attach_execution_runtime(get_execution_runtime())
     

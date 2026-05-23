@@ -9,7 +9,7 @@ from dataclasses import dataclass, asdict
 from infrastructure.logging import get_logger
 logger = get_logger("data_service.tdp_adapter")
 
-from shared.tdp.formatter import TDPFormatter
+from infrastructure.tdp.formatter import TDPFormatter
 
 
 @dataclass

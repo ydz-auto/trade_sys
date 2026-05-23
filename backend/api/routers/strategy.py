@@ -126,14 +126,12 @@ async def update_strategy_config(
 
 @router.post("/strategy/enable/{strategy_id}/{symbol}")
 async def enable_strategy(strategy_id: str, symbol: str):
-    from runtime.bus.runtime_bus import get_runtime_bus
+    from application.commands.bus_commands import publish_command
 
-    bus = get_runtime_bus()
-    await bus.publish_command(
-        command="enable_strategy",
+    await publish_command(
+        command_type="enable_strategy",
+        data={"strategy_id": strategy_id, "symbol": symbol},
         target="signal_runtime",
-        params={"strategy_id": strategy_id, "symbol": symbol},
-        source="api.strategy",
     )
 
     await get_service().enable_strategy(strategy_id, symbol)
@@ -142,14 +140,12 @@ async def enable_strategy(strategy_id: str, symbol: str):
 
 @router.post("/strategy/disable/{strategy_id}/{symbol}")
 async def disable_strategy(strategy_id: str, symbol: str):
-    from runtime.bus.runtime_bus import get_runtime_bus
+    from application.commands.bus_commands import publish_command
 
-    bus = get_runtime_bus()
-    await bus.publish_command(
-        command="disable_strategy",
+    await publish_command(
+        command_type="disable_strategy",
+        data={"strategy_id": strategy_id, "symbol": symbol},
         target="signal_runtime",
-        params={"strategy_id": strategy_id, "symbol": symbol},
-        source="api.strategy",
     )
 
     await get_service().disable_strategy(strategy_id, symbol)
@@ -204,18 +200,9 @@ async def restore_param_version(strategy_id: str, symbol: str, version: int):
 
 @router.get("/strategy/defaults/{strategy_type}")
 async def get_strategy_defaults(strategy_type: str):
-    from domain.strategy.symbol_config import (
-        RSIStrategyParams, MACDStrategyParams, PanicReversalParams,
-        LongLiquidationBounceParams, VolumeClimaxFadeParams, WeakBounceShortParams,
-    )
-    defaults = {
-        "rsi": RSIStrategyParams().__dict__,
-        "macd": MACDStrategyParams().__dict__,
-        "panic_reversal": PanicReversalParams().__dict__,
-        "long_liquidation_bounce": LongLiquidationBounceParams().__dict__,
-        "volume_climax_fade": VolumeClimaxFadeParams().__dict__,
-        "weak_bounce_short": WeakBounceShortParams().__dict__,
-    }
+    from application.queries.domain_queries import get_strategy_default_params
+
+    defaults = get_strategy_default_params()
     if strategy_type not in defaults:
         raise HTTPException(status_code=404, detail=f"Unknown strategy type: {strategy_type}")
     return {"strategy_type": strategy_type, "defaults": defaults[strategy_type]}

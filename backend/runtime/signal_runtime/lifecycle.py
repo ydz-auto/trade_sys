@@ -13,6 +13,8 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 from enum import Enum
 
+from infrastructure.runtime_clock import now_ms
+
 
 class RuntimePhase(Enum):
     STARTING = "starting"
@@ -63,7 +65,7 @@ class SignalLifecycle:
     async def start(self) -> None:
         """启动"""
         self.state.phase = RuntimePhase.STARTING
-        self.state.started_at = datetime.now()
+        self.state.started_at = datetime.fromtimestamp(now_ms() / 1000)
         self.state.phase = RuntimePhase.RUNNING
     
     async def stop(self) -> None:
@@ -79,7 +81,7 @@ class SignalLifecycle:
             except Exception as e:
                 pass
         
-        self.state.stopped_at = datetime.now()
+        self.state.stopped_at = datetime.fromtimestamp(now_ms() / 1000)
         self.state.phase = RuntimePhase.STOPPED
     
     async def handle_error(self, error: Exception) -> None:

@@ -13,8 +13,8 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from infrastructure.cache.redis_client import RedisClient, init_redis
-from infrastructure.logging import get_logger
+from application.queries.infrastructure_queries import get_redis_client_sync, init_redis
+from domain.logging import get_logger
 
 logger = get_logger("config_service")
 
@@ -35,12 +35,11 @@ class ConfigService:
     ENCRYPTION_KEY_ENV = "CONFIG_ENCRYPTION_KEY"
 
     def __init__(self):
-        self._redis: Optional[RedisClient] = None
+        self._redis = None
         self._fernet: Optional[Fernet] = None
 
     async def ensure_connection(self):
-        """确保Redis连接"""
-        if self._redis is None or not self._redis.is_connected:
+        if self._redis is None or (hasattr(self._redis, 'is_connected') and not self._redis.is_connected):
             self._redis = await init_redis()
             self._init_encryption()
             await self._ensure_defaults()
@@ -76,7 +75,7 @@ class ConfigService:
         return self._fernet.decrypt(encrypted.encode()).decode()
 
     @property
-    def redis(self) -> RedisClient:
+    def redis(self):
         if self._redis is None:
             raise RuntimeError("Redis not connected. Call ensure_connection() first.")
         return self._redis
@@ -513,7 +512,7 @@ class ConfigService:
         config["has_auth"] = has_auth
         
         try:
-            from services.data_service.collectors.twitter_cookie_monitor import get_twitter_cookie_monitor
+            from application.queries.service_queries import get_twitter_cookie_monitor
             monitor = get_twitter_cookie_monitor()
             config["stats"] = monitor.get_stats()
         except Exception:
@@ -644,7 +643,8 @@ class ConfigService:
         config["has_api_credentials"] = has_api
         
         try:
-            from services.data_service.collectors.telegram_adapter import TelegramAdapter
+            from application.queries.service_queries import get_telegram_adapter
+            TelegramAdapter = get_telegram_adapter()
             config["stats"] = {"is_running": False}
         except Exception:
             config["stats"] = {}

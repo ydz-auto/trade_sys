@@ -26,7 +26,7 @@ from enum import Enum
 
 import httpx
 
-from shared.contracts import StandardEvent, Source, EventType, Sentiment
+from domain.contracts import StandardEvent, Source, EventType, Sentiment
 from infrastructure.logging import get_logger
 from infrastructure.resilience import (
     CircuitBreaker,

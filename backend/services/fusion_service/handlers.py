@@ -9,7 +9,8 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from infrastructure.logging import get_logger
-from infrastructure.messaging.schema import Event, Signal
+from infrastructure.messaging.schema.event import Event
+from infrastructure.messaging.schema.signal import Signal
 from services.fusion_service import FusionEngine, FusionEvent
 
 logger = get_logger("fusion_service.handlers")

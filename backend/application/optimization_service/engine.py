@@ -134,7 +134,7 @@ class OptimizationBacktestAdapter:
 
     def _init_gpu(self):
         try:
-            from shared.acceleration import is_gpu_available, get_accelerator_info
+            from infrastructure.acceleration import is_gpu_available, get_accelerator_info
             info = get_accelerator_info()
             self._gpu_available = info['is_gpu']
             if self._gpu_available:

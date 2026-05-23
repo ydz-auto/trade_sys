@@ -39,10 +39,12 @@ _pool_instance: Optional[ConnectionPool] = None
 def get_connection_pool() -> ConnectionPool:
     global _pool_instance
     if _pool_instance is None:
+        from infrastructure.database.configs import DatabaseConfig
+        db_config = DatabaseConfig()
         _pool_instance = ConnectionPool(PoolConfig(
             pool_type="default",
-            host="localhost",
-            port=5432,
-            database="tradeagent",
+            host=db_config.host,
+            port=db_config.port,
+            database=db_config.database,
         ))
     return _pool_instance

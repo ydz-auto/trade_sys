@@ -1,4 +1,4 @@
-"""
+﻿"""
 日志处理器
 支持文件、控制台、Elasticsearch等多种输出
 """
@@ -12,7 +12,7 @@ from logging.handlers import RotatingFileHandler as LoggingRotatingFileHandler
 from logging import LogRecord
 import logging
 
-from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 
 class BaseHandler(logging.Handler):

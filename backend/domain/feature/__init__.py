@@ -15,19 +15,9 @@ from .orderbook.spoof_detection import detect_spoofing
 from .orderbook.microprice import calculate_microprice
 from .orderbook.depth_pressure import calculate_depth_pressure
 
-from .generation_guard import (
-    FeatureGenerationContext,
-    FeatureGenerationResult,
-    with_feature_guard,
-    GuardedFeatureExtractor,
-    FeatureExtractionAuditor,
-    get_feature_auditor,
-    audit_all_extractors,
-)
-
 __all__ = [
     "OrderbookImbalance",
-    "WallDetection", 
+    "WallDetection",
     "SweepDetection",
     "SpoofDetection",
     "LiquidityShift",
@@ -40,11 +30,4 @@ __all__ = [
     "detect_spoofing",
     "calculate_microprice",
     "calculate_depth_pressure",
-    "FeatureGenerationContext",
-    "FeatureGenerationResult",
-    "with_feature_guard",
-    "GuardedFeatureExtractor",
-    "FeatureExtractionAuditor",
-    "get_feature_auditor",
-    "audit_all_extractors",
 ]

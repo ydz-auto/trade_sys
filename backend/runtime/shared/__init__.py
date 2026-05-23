@@ -11,8 +11,8 @@ Runtime Shared Components - 统一的运行时组件
 
 from runtime.shared.lifecycle import RuntimeLifecycle, RuntimePhase
 from runtime.shared.metrics import RuntimeMetrics, TimingContext
-from runtime.shared.consumer import RuntimeConsumer, ConsumerConfig
-from runtime.shared.publisher import RuntimePublisher, PublisherConfig
+from infrastructure.messaging.runtime_consumer import RuntimeConsumer, ConsumerConfig
+from infrastructure.messaging.runtime_publisher import RuntimePublisher, PublisherConfig
 from runtime.shared.healthcheck import RuntimeHealthCheck, HealthStatus, HealthCheckResult
 
 __all__ = [

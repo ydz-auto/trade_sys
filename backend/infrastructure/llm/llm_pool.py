@@ -1,4 +1,4 @@
-"""
+﻿"""
 LLM 资源池 - 多级降级 + 熔断器 + 重试
 降级链: 免费API → 本地模型 → 关键词匹配
 """
@@ -16,7 +16,7 @@ from pathlib import Path
 import httpx
 
 from infrastructure.logging import get_logger
-from shared.config.factory import get_infra_config
+from infrastructure.config.factory import get_infra_config
 
 logger = get_logger("llm.pool")
 

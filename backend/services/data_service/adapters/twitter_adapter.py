@@ -17,7 +17,7 @@ import asyncio
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-from shared.contracts import StandardEvent, Source, create_tweet_event
+from domain.contracts import StandardEvent, Source, create_tweet_event
 from infrastructure.logging import get_logger
 
 from .skill_adapter import SkillAdapter, AdapterConfig

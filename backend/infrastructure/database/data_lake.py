@@ -2,10 +2,10 @@
 Data Lake 分层存储管理
 """
 
-from enum import Enum
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Any
 
+from infrastructure.data_lake.layer import DataLayer, LAYER_CONFIGS
 from infrastructure.database.clickhouse import ClickHouseManager
 from infrastructure.database.schemas.data_lake import (
     DATA_LAKE_TABLE_SCHEMAS,
@@ -17,23 +17,17 @@ from infrastructure.logging import get_logger
 logger = get_logger("infrastructure.database.data_lake")
 
 
-class DataLakeLayer(str, Enum):
-    RAW = "raw"
-    NORMALIZED = "normalized"
-    AGGREGATED = "aggregated"
-    FEATURE = "feature"
-    SIGNAL = "signal"
-    REPLAY = "replay"
+DataLakeLayer = DataLayer
 
 
 @dataclass
 class DataLakeConfig:
-    raw_ttl_days: int = 90
-    normalized_ttl_days: int = 180
-    aggregated_ttl_days: int = 365
-    feature_ttl_days: int = 180
-    signal_ttl_days: int = 365
-    replay_ttl_days: int = 730
+    raw_ttl_days: int = LAYER_CONFIGS[DataLayer.RAW].ttl_days
+    normalized_ttl_days: int = LAYER_CONFIGS[DataLayer.NORMALIZED].ttl_days
+    aggregated_ttl_days: int = LAYER_CONFIGS[DataLayer.AGGREGATED].ttl_days
+    feature_ttl_days: int = LAYER_CONFIGS[DataLayer.FEATURE].ttl_days
+    signal_ttl_days: int = LAYER_CONFIGS[DataLayer.SIGNAL].ttl_days
+    replay_ttl_days: int = LAYER_CONFIGS[DataLayer.REPLAY].ttl_days
     hot_storage_hours: int = 24
     warm_storage_days: int = 30
 

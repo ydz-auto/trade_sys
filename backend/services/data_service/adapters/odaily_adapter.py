@@ -26,7 +26,7 @@ from typing import Dict, List, Optional, Any
 from enum import Enum
 import asyncio
 
-from shared.contracts import (
+from domain.contracts import (
     StandardEvent,
     Sentiment,
     Source,

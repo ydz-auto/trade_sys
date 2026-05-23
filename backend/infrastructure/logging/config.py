@@ -1,10 +1,10 @@
-"""
+﻿"""
 日志配置和常量定义
 从 shared.config 导入
 """
 
-from shared.config.enums import LogType, LogLevel
-from shared.config.defaults.infrastructure import (
+from infrastructure.config.enums import LogType, LogLevel
+from infrastructure.config.defaults.infrastructure import (
     LOGGING_CONFIGS,
     LOG_CONFIG,
     LOG_LEVELS,

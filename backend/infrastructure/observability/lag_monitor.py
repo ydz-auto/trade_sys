@@ -1,4 +1,4 @@
-"""
+﻿"""
 Consumer Lag Monitor - Consumer Lag 监控服务
 监控所有 Kafka Consumer 的 Lag 情况
 
@@ -10,6 +10,7 @@ Consumer Lag Monitor - Consumer Lag 监控服务
 """
 
 import asyncio
+import os
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
@@ -17,7 +18,7 @@ from collections import deque
 from enum import Enum
 
 from infrastructure.logging import get_logger
-from shared.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
+from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 try:
     from aiokafka import AIOKafkaAdminClient, AIOKafkaConsumer
@@ -40,9 +41,9 @@ class LagLevel(Enum):
 @dataclass
 class LagThreshold:
     """Lag 阈值配置"""
-    warning: int = 1000
-    critical: int = 10000
-    check_interval_seconds: int = 10
+    warning: int = int(os.environ.get("LAG_WARNING_THRESHOLD", "1000"))
+    critical: int = int(os.environ.get("LAG_CRITICAL_THRESHOLD", "10000"))
+    check_interval_seconds: int = int(os.environ.get("LAG_CHECK_INTERVAL_SECONDS", "10"))
 
 
 @dataclass

@@ -7,12 +7,9 @@ Feature Generation Service - 特征生成服务
 import asyncio
 from typing import List, Dict, Any, Optional
 
-from infrastructure.logging import get_logger
+from domain.logging import get_logger
 
-from services.aggregation_service import (
-    extract_historical_features,
-    get_feature_status as get_aggregation_feature_status
-)
+from application.queries.service_queries import extract_historical_features, get_aggregation_feature_status
 
 logger = get_logger("api.feature_generation_service")
 

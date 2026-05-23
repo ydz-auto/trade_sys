@@ -10,76 +10,49 @@
 | Mac M1/M2/M3/M4 | MPS | Apple Silicon |
 | 任何平台 | CPU | NumPy fallback |
 
-> **重要更新（2026-05-22）**：  
-> 所有 GPU 加速现在必须**通过 Runtime 架构**！独立的 GPU 脚本（`scripts/gpu_*.py`）已删除！
+> **重要更新（2026-05-23）**：  
+> GPU 加速模块已完成架构收敛：`infrastructure/acceleration/`（基础设施）、`services/feature_service/torch_calculator.py`（特征计算）、`services/research_service/lstm_strategy.py`（LSTM 策略）。
 
 ---
 
 ## 架构兼容性
 
-### 与现有架构的关系（最终收敛版）
+### 与六层架构的关系
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Frontend / API                           │
-└────────────────────────────────────────┬────────────────────────┘
-                                         │
-                                         ▼
-                              ┌───────────────────────┐
-                              │ Runtime State Store  │
-                              │ (唯一真实状态源)     │
-                              └───────────┬───────────┘
-                                          │
-                                          ▼
-                              ┌───────────────────────┐
-                              │ Projection Runtime   │
-                              └───────────┬───────────┘
-                                          │
-                                          ▼
-                              ┌───────────────────────┐
-                              │ Portfolio Runtime    │
-                              └───────────┬───────────┘
-                                          │
-                                          ▼
-                              ┌───────────────────────┐
-                              │ Execution Runtime    │
-                              └───────────┬───────────┘
-                                          │
-                                          ▼
-                              ┌───────────────────────┐
-                              │ Signal Runtime       │
-                              └───────────┬───────────┘
-                                          │
-                                          ▼
-                              ┌───────────────────────┐
-                              │ Feature Matrix      │
-                              │ Runtime (核心真理)   │
-                              └───────────┬───────────┘
-                                          │
-                                          ▼
-                              ┌───────────────────────┐
-                              │ Runtime Bus         │
-                              │ (唯一事件总线)       │
-                              └───────────┬───────────┘
-                                          │
-┌─────────────────────────────────────────┼───────────────────────────────────────┐
-│           Data Service (事实层)          │                                       │
-└─────────────────────────────────────────┘                                       │
-                                          │                                       │
-                                          ▼                                       │
-                        ┌───────────────────────────────┐                          │
-                        │ Exchange / Replay             │                          │
-                        └───────────────────────────────┘                          │
-                                                                                   │
-┌───────────────────────────────────────────────────────────────────────────────┐
-│                          Infrastructure (加速层)                               │
-│                                                                               │
-│  ┌───────────────────────┐  ┌───────────────────────┐                         │
-│  │ shared/acceleration/  │  │  domain/feature/      │                         │
-│  │ (GPU基础设施层)        │  │  torch_calculator.py │                         │
-│  │ (保留！)               │  │ (GPU特征计算)        │                         │
-│  └───────────────────────┘  └───────────────────────┘                         │
-└───────────────────────────────────────────────────────────────────────────────┘
+│                         API Server                              │
+└────────────────────────────┬────────────────────────────────────┘
+                             ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                        APPLICATION                              │
+│  Commands / Queries / Workflows (OptimizationService)           │
+└────────────────────────────┬────────────────────────────────────┘
+                             ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                     RUNTIME LAYER                               │
+│                                                                 │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────┐  │
+│  │ FeatureRuntime   │  │ SignalRuntime    │  │ ReplayRuntime│  │
+│  │ (特征生成/守卫)  │  │ (信号生成)       │  │ (回放)       │  │
+│  └────────┬─────────┘  └────────┬─────────┘  └──────┬───────┘  │
+└───────────┼──────────────────────┼───────────────────┼──────────┘
+            ↓                      ↓                   ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                        SERVICES                                 │
+│  ┌──────────────────────────┐  ┌────────────────────────────┐  │
+│  │ feature_service/         │  │ research_service/          │  │
+│  │ torch_calculator.py      │  │ lstm_strategy.py           │  │
+│  │ (GPU 特征计算)           │  │ (GPU LSTM 训练/推理)       │  │
+│  └──────────────────────────┘  └────────────────────────────┘  │
+└────────────────────────────┬────────────────────────────────────┘
+                             ↓
+┌──────────────────────┐  ┌───────────────────────────────────────┐
+│       DOMAIN         │  │          INFRASTRUCTURE                │
+│  (纯交易规则)        │  │  acceleration/  (GPU 基础设施)        │
+│  零外部依赖          │  │  http/          (HTTP 客户端)          │
+│                      │  │  llm/           (LLM 客户端)          │
+└──────────────────────┘  └───────────────────────────────────────┘
 ```
 
 ### 各 Runtime GPU 加速状态
@@ -93,39 +66,39 @@
 | `narrative_runtime` | ❌ 不需要 | AI 叙事生成 | - |
 | `ingestion_runtime` | ❌ 不需要 | 数据采集 | - |
 | `replay_runtime` | ✅ 支持 | 回测时特征计算 | ✅ CPU fallback |
-| `feature_matrix_runtime` | ✅ 支持 | 特征计算 | ✅ CPU fallback |
+| `feature_runtime` | ✅ 支持 | 特征计算 | ✅ CPU fallback |
 
 ### 各 Service GPU 加速状态
 
 | Service | GPU 加速 | 多线程/并行 | 功能 | 自动降级 |
 |---------|---------|------------|------|---------|
 | `backtest_service` | ✅ 通过 replay_runtime | ✅ asyncio.gather | 回测 | ✅ CPU fallback |
-| `factor_service` | ✅ 通过 feature_runtime | - | 因子计算 | ✅ CPU fallback |
-| `strategy_service` | ✅ 通过 signal_runtime | - | LSTM 策略 | ✅ CPU fallback |
+| `feature_service` | ✅ 原生 GPU | - | GPU 特征计算 | ✅ CPU fallback |
+| `research_service` | ✅ 原生 GPU | - | LSTM 策略 | ✅ CPU fallback |
 | `optimization_service` | ✅ 通过 OptimizationBacktestEngine | ✅ asyncio.gather + Semaphore | 优化 | ✅ CPU fallback |
 | `execution_service` | ❌ 不需要 | - | 订单执行 | - |
-| `fusion_service` | ❌ 不需要 | - | 信号融合 | - |
 | `data_service` | ❌ 不需要 | - | 数据采集 | - |
 
-### 各 Domain GPU 加速状态
+### GPU 模块分布
 
-| Domain 模块 | GPU 加速 | 多线程 | 功能 | 自动降级 |
-|-------------|---------|--------|------|---------|
-| `torch_calculator` | ✅ 原生 GPU | - | GPU 向量化特征计算 | ✅ CPU fallback |
-| `unified_calculator` | ✅ 委托 TorchFeatureCalculator | - | 统一特征计算入口 | ✅ CPU fallback |
-| `matrix_builder` | ✅ GPU 批量前向填充 | ✅ ThreadPoolExecutor | 特征矩阵构建 | ✅ CPU fallback |
-| `lstm_strategy` | ✅ 原生 GPU | - | LSTM 训练/推理 | ✅ CPU fallback |
+| 模块 | 位置 | GPU 加速 | 自动降级 |
+|------|------|---------|---------|
+| `acceleration/` | `infrastructure/acceleration/` | GPU 基础设施 | ✅ CPU fallback |
+| `torch_calculator` | `services/feature_service/torch_calculator.py` | GPU 向量化特征计算 | ✅ CPU fallback |
+| `unified_calculator` | `runtime/feature_runtime/unified_calculator.py` | 委托 TorchFeatureCalculator | ✅ CPU fallback |
+| `matrix_builder` | `domain/feature/materializer/matrix_builder.py` | GPU 批量前向填充 | ✅ CPU fallback |
+| `lstm_strategy` | `services/research_service/lstm_strategy.py` | GPU LSTM 训练/推理 | ✅ CPU fallback |
 
 ---
 
-## 关键架构原则（2026-05-22 更新）
+## 关键架构原则
 
 ### 1. **GPU 是基础设施，不是独立系统！**
 ```
 ✅ 正确方式：
-  replay_runtime → feature_runtime → shared/acceleration/ → GPU计算
+  replay_runtime → feature_runtime → services/feature_service/torch_calculator → infrastructure/acceleration/ → GPU
 
-❌ 错误方式（已删除）：
+❌ 错误方式：
   scripts/gpu_feature_backtest.py → 直接pandas → 独立运行
 ```
 
@@ -134,8 +107,19 @@
 ✅ 正确方式：
   application/optimization_service/engine.py → replay_runtime
 
-❌ 错误方式（已删除）：
+❌ 错误方式：
   application/optimization_service/parallel_engine.py → 直接pandas
+```
+
+### 3. **依赖方向必须合规！**
+```
+✅ 正确：
+  services/feature_service → infrastructure/acceleration  (Services → Infrastructure)
+  runtime/feature_runtime  → services/feature_service     (Runtime → Services via DI)
+
+❌ 错误：
+  domain/ → infrastructure/  (Domain 零外部依赖)
+  domain/ → services/        (Domain 零外部依赖)
 ```
 
 ---
@@ -171,7 +155,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 ### 1. 检测设备
 
 ```python
-from shared.acceleration import device, is_gpu, get_accelerator_info
+from infrastructure.acceleration import device, is_gpu, get_accelerator_info
 
 info = get_accelerator_info()
 print(f"Device: {info['device_type']}")
@@ -183,10 +167,10 @@ print(f"Device Info: {info['device_info']}")
 
 #### 2.1 回测（走 replay_runtime）
 ```python
-from shared.replay.orchestrator import ReplayOrchestrator
+from runtime.replay_runtime.shared_replay.orchestrator import ReplayOrchestrator
 
 orchestrator = ReplayOrchestrator()
-# GPU 加速由 shared/acceleration/ 自动处理
+# GPU 加速由 infrastructure/acceleration/ 自动处理
 await orchestrator.run_replay(...)
 ```
 
@@ -202,7 +186,7 @@ await engine.optimize(...)
 ### 3. 特征计算（直接使用 TorchFeatureCalculator）
 
 ```python
-from domain.feature.torch_calculator import TorchFeatureCalculator
+from services.feature_service.torch_calculator import TorchFeatureCalculator
 
 calculator = TorchFeatureCalculator()
 
@@ -210,7 +194,7 @@ calculator = TorchFeatureCalculator()
 features_df = calculator.compute_batch(df, use_gpu=True)
 
 # 方式2: GPU Tensor 输入输出（零拷贝，适合 LSTM）
-from shared.acceleration import to_gpu
+from infrastructure.acceleration import to_gpu
 
 closes = to_gpu(df['close'].values)
 highs = to_gpu(df['high'].values)
@@ -224,7 +208,7 @@ features = calculator.compute_batch_tensor(closes, highs, lows, volumes)
 ### 4. LSTM 策略
 
 ```python
-from domain.strategy.lstm_strategy import LSTMStrategyBuilder
+from services.research_service.lstm_strategy import LSTMStrategyBuilder
 
 # 创建策略
 strategy = LSTMStrategyBuilder.create_fast(input_size=21)
@@ -251,7 +235,7 @@ signal = await strategy.predict(features_tensor)
 
 ---
 
-## 架构（最终收敛版）
+## 架构（GPU 数据流）
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -270,13 +254,14 @@ signal = await strategy.predict(features_tensor)
                           │
                           ▼
               ┌───────────────────────┐
-              │ Feature Matrix       │
-              │ Runtime (核心真理)    │
+              │ Feature Runtime       │
+              │ (特征生成/守卫/物化)  │
               └───────────┬───────────┘
                           │
                           ▼
         ┌─────────────────────────────────────────┐
-        │    domain/feature/torch_calculator.py   │
+        │  services/feature_service/               │
+        │  torch_calculator.py                     │
         │                                         │
         │   closes → GPU Tensor (to_gpu())        │
         │   highs  → GPU Tensor                   │
@@ -303,7 +288,7 @@ signal = await strategy.predict(features_tensor)
 
 ## API 参考
 
-### shared.acceleration
+### infrastructure.acceleration
 
 ```python
 # 设备信息
@@ -321,6 +306,8 @@ synchronize()
 ### TorchFeatureCalculator
 
 ```python
+from services.feature_service.torch_calculator import TorchFeatureCalculator
+
 calculator = TorchFeatureCalculator()
 
 # DataFrame 输入输出
@@ -339,6 +326,8 @@ calculator.compute_from_parquet(parquet_path, symbol, output_path, use_gpu=True)
 ### LSTMStrategy
 
 ```python
+from services.research_service.lstm_strategy import LSTMStrategyBuilder
+
 # 创建策略
 strategy = LSTMStrategyBuilder.create_fast(input_size=21)    # 快速配置
 strategy = LSTMStrategyBuilder.create_default(input_size=21) # 默认配置
@@ -394,7 +383,7 @@ python tests/test_torch_acceleration.py
 ### CUDA Out of Memory
 
 ```python
-from shared.acceleration import clear_cache
+from infrastructure.acceleration import clear_cache
 
 # 清理 GPU 缓存
 clear_cache()
@@ -428,6 +417,22 @@ os.environ["TORCH_DEVICE"] = "cuda"
 
 ## 重要更新记录
 
+### 2026-05-23 架构收敛
+
+#### 迁移
+- ✅ `shared/acceleration/` → `infrastructure/acceleration/` — GPU 基础设施归入 Infrastructure 层
+- ✅ `domain/feature/torch_calculator.py` → `services/feature_service/torch_calculator.py` — GPU 特征计算归入 Services 层
+- ✅ `domain/strategy/lstm_strategy.py` → `services/research_service/lstm_strategy.py` — LSTM 策略归入 Services 层
+- ✅ `domain/feature/unified_calculator.py` → `runtime/feature_runtime/unified_calculator.py` — 统一计算器归入 Runtime 层
+- ✅ `shared/` 层完全消亡，所有模块已迁移至正确的架构层
+
+#### 必须遵循的原则
+1. **所有 GPU 计算必须走 Runtime 主链**
+2. **所有回测必须走 replay_runtime**
+3. **所有优化必须走 OptimizationBacktestEngine（走 Runtime）**
+4. **Domain 层零外部依赖，不包含 GPU 逻辑**
+5. **GPU 基础设施在 infrastructure/acceleration/，特征计算在 services/feature_service/**
+
 ### 2026-05-22 加速改造
 
 #### 新增
@@ -441,20 +446,9 @@ os.environ["TORCH_DEVICE"] = "cuda"
 #### 修复
 - ✅ 清理 `backtest_engine.py` 对已删除 `parallel_engine.py` 的幽灵引用
 
-### 2026-05-22 架构收敛
+### 2026-05-22 架构收敛（旧）
 
-### 已删除
+#### 已删除
 - ❌ `scripts/gpu_feature_backtest.py` - 绕过 Runtime
 - ❌ `scripts/gpu_optimize_backtest.py` - 绕过 Runtime
 - ❌ `application/optimization_service/parallel_engine.py` - 绕过 Runtime
-
-### 保留
-- ✅ `shared/acceleration/` - GPU 基础设施
-- ✅ `domain/feature/torch_calculator.py` - GPU 特征计算器
-- ✅ `domain/strategy/lstm_strategy.py` - LSTM 策略
-- ✅ 所有 Runtime 模块
-
-### 必须遵循的原则
-1. **所有 GPU 计算必须走 Runtime 主链**
-2. **所有回测必须走 replay_runtime**
-3. **所有优化必须走 OptimizationBacktestEngine（走 Runtime）**

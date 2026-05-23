@@ -1,4 +1,4 @@
-"""
+﻿"""
 Aggregation Service - K线聚合服务
 
 业务逻辑：K线、成交、订单簿聚合
@@ -9,8 +9,8 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 
 from infrastructure.logging import get_logger
-from shared.config import get_datasource_config_manager
-from shared.state import get_system_state_manager
+from infrastructure.config import get_datasource_config_manager
+from infrastructure.state import get_system_state_manager
 
 from .aggregators.candle.candle_aggregator import get_timeframe_aggregator
 from .aggregators.trade.trade_aggregator import get_trade_aggregator

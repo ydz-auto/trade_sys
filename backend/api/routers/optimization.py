@@ -85,8 +85,7 @@ async def create_optimization(request: OptimizationRequest):
         "created_at": datetime.now().isoformat(),
     }
 
-    from infrastructure.runtime import get_runtime_governor
-    governor = get_runtime_governor()
+    import asyncio
 
     async def _run():
         from application.optimization_service import get_optimization_service
@@ -137,7 +136,7 @@ async def create_optimization(request: OptimizationRequest):
                 "completed_at": datetime.now().isoformat(),
             })
 
-    governor.create_task(_run(), name=f"optimization_{optimization_id}")
+    asyncio.ensure_future(_run())
 
     return {
         "optimization_id": optimization_id,
@@ -167,9 +166,7 @@ async def list_optimizations():
 async def batch_optimization(request: BatchOptimizationRequest):
     """批量优化 - Router 只转发"""
     import uuid
-    from infrastructure.runtime import get_runtime_governor
-
-    governor = get_runtime_governor()
+    import asyncio
     task_ids = []
 
     for symbol in request.symbols:
@@ -218,9 +215,8 @@ async def batch_optimization(request: BatchOptimizationRequest):
                         "error": str(e),
                     })
 
-            governor.create_task(
+            asyncio.ensure_future(
                 _run(strategy_id, symbol, optimization_id),
-                name=f"batch_optimization_{optimization_id}",
             )
 
     return {
@@ -246,10 +242,9 @@ async def get_available_strategies():
 
 @router.get("/optimization/runtime/status")
 async def get_runtime_status():
-    from runtime.bus.runtime_bus import get_runtime_bus
+    from application.commands.bus_commands import get_bus_stats
 
-    bus = get_runtime_bus()
-    bus_stats = bus.get_stats()
+    bus_stats = await get_bus_stats()
 
     return {
         "runtime_pipeline": {
