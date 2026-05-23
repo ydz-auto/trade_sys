@@ -1,137 +1,66 @@
 """
-Runtime Kernel - Runtime 核心模块
+Runtime - 运行时核心
 
-这是整个 Runtime Trading System 的核心，包含:
-- ExecutionRouter: 统一下单入口
-- RuntimeIsolation: namespace 隔离
-- RuntimeStateStore: 统一状态存储
-- EventNamespace: 事件命名空间
-- RuntimeDependencyGraph: 依赖图
-- RuntimeContext: 共享上下文
-- RuntimeBus: 统一通信总线
-- RuntimeOrchestrator: 编排层
-
-架构:
-    TradeModeManager
-           │
-    ───────────────────────
-    Runtime Orchestrator
-           │
-    Runtime Dependency Graph
-           │
-    ───────────────────────
-    Market Runtime
-           ↓
-    Feature Runtime
-           ↓
-    Behaviour Runtime
-           ↓
-    Strategy Runtime
-           ↓
-    Execution Router
-       ├─ Paper Execution
-       └─ Live Execution
-           ↓
-    Portfolio Runtime
-           ↓
-    Risk Runtime
-           ↓
-    Projection Runtime
-           ↓
-    RuntimeStateStore
-           ↓
-    WebSocket Gateway
-           ↓
-    Frontend Runtime UI
+Runtime 收敛的核心组件：
+- P0.1: AuthoritySystem (时钟、可用性、顺序)
+- P0.2: GuardSystem (拦截违规)
+- P0.3: RuntimeKernel (单一入口)
+- P0.4: DeterministicReplay (验证)
 """
-from .types import RuntimeType, RuntimeState
-from .execution import (
-    ExecutionRouter,
-    ExecutionRoute,
-    ExecutionBlockedError,
-    get_execution_router,
-    safe_execute,
+
+from runtime.authority import (
+    ClockAuthority,
+    ClockMode,
+    AvailabilityAuthority,
+    LatencyModel,
+    FixedLatencyModel,
+    OrderingAuthority,
+    AuthoritySystem,
 )
 
-from .isolation import (
-    RuntimeNamespace,
-    RuntimeIsolation,
-    get_runtime_isolation,
-    ns_topic,
-    ns_event,
+from runtime.guards import (
+    GuardViolation,
+    BaseGuard,
+    AvailabilityGuard,
+    OrderingGuard,
+    MutationGuard,
+    PartialCandleGuard,
+    DuplicateGuard,
+    ClockGuard,
+    GuardSystem,
 )
 
-from .state import (
-    StateSnapshot,
-    RuntimeStateStore,
-    get_runtime_state_store,
-    get_state,
-)
-
-from .event import (
-    EventDomain,
-    EventType,
-    EventNamespace,
-    get_event_namespace,
-)
-
-from .dependency import (
-    DependencyNode,
-    RuntimeDependencyGraph,
-    get_dependency_graph,
-)
-
-from .context import (
-    RuntimeContext,
-    get_runtime_context,
-    SessionManager,
-    get_session_manager,
-)
-
-from .bus import (
-    RuntimeBus,
-    get_runtime_bus,
-    publish,
-    publish_event,
+from runtime.kernel import (
+    KernelMode,
+    RawEvent,
+    StateTrajectory,
+    RuntimeKernel,
 )
 
 __all__ = [
-    "RuntimeType",
-    "RuntimeState",
+    # Authority
+    "ClockAuthority",
+    "ClockMode",
+    "AvailabilityAuthority",
+    "LatencyModel",
+    "FixedLatencyModel",
+    "OrderingAuthority",
+    "AuthoritySystem",
     
-    "ExecutionRouter",
-    "ExecutionRoute",
-    "ExecutionBlockedError",
-    "get_execution_router",
-    "safe_execute",
+    # Guards
+    "GuardViolation",
+    "BaseGuard",
+    "AvailabilityGuard",
+    "OrderingGuard",
+    "MutationGuard",
+    "PartialCandleGuard",
+    "DuplicateGuard",
+    "ClockGuard",
+    "GuardSystem",
     
-    "RuntimeNamespace",
-    "RuntimeIsolation",
-    "get_runtime_isolation",
-    "ns_topic",
-    "ns_event",
-    
-    "StateSnapshot",
-    "RuntimeStateStore",
-    "get_runtime_state_store",
-    "get_state",
-    
-    "EventDomain",
-    "EventType",
-    "EventNamespace",
-    "get_event_namespace",
-    
-    "DependencyNode",
-    "RuntimeDependencyGraph",
-    "get_dependency_graph",
-    
-    "RuntimeContext",
-    "get_runtime_context",
-    "SessionManager",
-    "get_session_manager",
-    
-    "RuntimeBus",
-    "get_runtime_bus",
-    "publish",
-    "publish_event",
+    # Kernel
+    "KernelMode",
+    "RawEvent",
+    "StateTrajectory",
+    "RuntimeKernel",
 ]
