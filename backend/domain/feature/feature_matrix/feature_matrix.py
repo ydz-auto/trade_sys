@@ -11,15 +11,13 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 import pandas as pd
 
-from domain.logging import get_logger
-from domain.feature.materializer import (
-    UnifiedFeatureMatrix,
-    HistoricalFeatureMaterializer,
-    RealtimeFeatureMaterializer,
-    get_schema_registry
-)
+import logging
+from domain.feature.materializer.matrix_builder import UnifiedFeatureMatrix
+from engines.compute.feature.historical_materializer import HistoricalFeatureMaterializer
+from runtimes.feature_runtime.realtime_materializer import RealtimeFeatureMaterializer
+from domain.feature.materializer.schema_registry import get_schema_registry
 
-logger = get_logger("feature.feature_matrix")
+logger = logging.getLogger(__name__)
 
 DATA_LAKE_ROOT = Path(r"e:\00_crypto\00_code\backend\data_lake")
 

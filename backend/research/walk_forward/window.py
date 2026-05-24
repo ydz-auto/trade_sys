@@ -1,9 +1,9 @@
-
+﻿
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
 
-from infrastructure.runtime_clock import now_ms
+from infrastructure.utilities.runtime_clock import now_ms
 
 
 @dataclass

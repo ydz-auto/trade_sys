@@ -1,4 +1,4 @@
-﻿"""
+"""
 Cache 配置 - 基础设施配置
 """
 
@@ -11,10 +11,10 @@ CACHE_CONFIGS = {
     "cache.key_prefix": os.environ.get("CACHE_KEY_PREFIX", "tradeagent"),
     "cache.default_ttl": int(os.environ.get("CACHE_DEFAULT_TTL", "60")),
     "cache.redis_url": os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
-    "cache.host": os.environ.get("CACHE_HOST", "localhost"),
-    "cache.port": int(os.environ.get("CACHE_PORT", "6379")),
-    "cache.db": int(os.environ.get("CACHE_DB", "0")),
-    "cache.password": os.environ.get("CACHE_PASSWORD") or None,
+    "cache.host": os.environ.get("REDIS_HOST", os.environ.get("CACHE_HOST", "localhost")),
+    "cache.port": int(os.environ.get("REDIS_PORT", os.environ.get("CACHE_PORT", "6379"))),
+    "cache.db": int(os.environ.get("REDIS_DB", os.environ.get("CACHE_DB", "0"))),
+    "cache.password": os.environ.get("REDIS_PASSWORD", os.environ.get("CACHE_PASSWORD")) or None,
     "cache.max_connections": int(os.environ.get("CACHE_MAX_CONNECTIONS", "50")),
     "cache.socket_timeout": float(os.environ.get("CACHE_SOCKET_TIMEOUT", "5.0")),
     "cache.socket_connect_timeout": float(os.environ.get("CACHE_SOCKET_CONNECT_TIMEOUT", "5.0")),

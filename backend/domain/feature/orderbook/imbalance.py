@@ -12,9 +12,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import numpy as np
 
-from domain.logging import get_logger
+import logging
 
-logger = get_logger("feature.orderbook.imbalance")
+logger = logging.getLogger(__name__)
 
 
 @dataclass

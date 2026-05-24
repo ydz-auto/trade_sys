@@ -7,7 +7,7 @@ def get_trading_modes() -> Dict[str, Any]:
 
 
 def get_trading_mode_manager() -> Any:
-    from domain.trading_mode import get_trading_mode_manager
+    from runtimes.trading_mode_manager import get_trading_mode_manager
     return get_trading_mode_manager()
 
 
@@ -90,22 +90,21 @@ def get_available_features() -> Any:
 
 
 def get_materializer_status() -> Dict[str, Any]:
-    from domain.feature.materializer import get_materializer_status
     return get_materializer_status()
 
 
 def get_schema_registry() -> Any:
-    from domain.feature.materializer import get_schema_registry
+    from domain.feature.materializer.schema_registry import get_schema_registry
     return get_schema_registry()
 
 
 def get_historical_feature_materializer(data_lake_root) -> Any:
-    from domain.feature.materializer import HistoricalFeatureMaterializer
+    from engines.compute.feature.historical_materializer import HistoricalFeatureMaterializer
     return HistoricalFeatureMaterializer(data_lake_root)
 
 
 def get_materializer_feature_category_enum() -> Any:
-    from domain.feature.materializer import FeatureCategory
+    from domain.feature.materializer.schema_registry import FeatureCategory
     return FeatureCategory
 
 
@@ -141,15 +140,15 @@ def get_execution_trading_mode_config() -> Any:
 
 
 def get_strategy_param_store() -> Any:
-    from services.strategy_service.strategy_param_store import get_strategy_param_store
+    from infrastructure.persistence.state.strategy_param_store import get_strategy_param_store
     return get_strategy_param_store()
 
 
 def get_strategy_parameters_class() -> Any:
-    from services.strategy_service.strategy_param_store import StrategyParameters
+    from infrastructure.persistence.state.strategy_param_store import StrategyParameters
     return StrategyParameters
 
 
 def get_feature_range_class() -> Any:
-    from services.strategy_service.strategy_param_store import FeatureRange
+    from infrastructure.persistence.state.strategy_param_store import FeatureRange
     return FeatureRange

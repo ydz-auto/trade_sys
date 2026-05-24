@@ -1,18 +1,28 @@
-"""
-Strategy Router - 策略管理端点
-
-架构：
-    API Router (转发)
-      ↓
-    StrategyAPIService (use-case orchestration)
-      ↓
-    RuntimeBus.publish_command()
-"""
 from fastapi import APIRouter, HTTPException
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
-from ..services.strategy_api_service import get_strategy_api_service
+from application.queries.strategy import (
+    discover_strategies,
+    get_discovered_strategies,
+    add_to_watchlist,
+    remove_from_watchlist,
+    run_backtest,
+    get_backtest,
+    list_backtests,
+    get_strategy_configs,
+    get_strategy_config,
+    update_strategy_config,
+    enable_strategy,
+    disable_strategy,
+    get_strategy_performance,
+    get_active_strategies,
+    get_symbol_params,
+    update_feature_range,
+    batch_update_params,
+    get_param_history,
+    restore_version,
+)
 from ..schemas.common import SuccessResponse
 
 router = APIRouter()
@@ -42,39 +52,35 @@ class BatchUpdateRequest(BaseModel):
     updates: List[dict] = Field(..., description="更新列表")
 
 
-def get_service():
-    return get_strategy_api_service()
-
-
 @router.post("/strategy/discover")
-async def discover_strategies(request: StrategyDiscoveryRequest):
-    return await get_service().discover_strategies(request.symbol)
+async def discover_strategies_endpoint(request: StrategyDiscoveryRequest):
+    return await discover_strategies(request.symbol)
 
 
 @router.get("/strategy/discovered/{symbol}")
-async def get_discovered_strategies(symbol: str):
-    return await get_service().get_discovered_strategies(symbol)
+async def get_discovered_strategies_endpoint(symbol: str):
+    return await get_discovered_strategies(symbol)
 
 
 @router.post("/strategy/watchlist/{strategy_id}")
-async def add_to_watchlist(strategy_id: str):
-    result = await get_service().add_to_watchlist(strategy_id)
+async def add_to_watchlist_endpoint(strategy_id: str):
+    result = await add_to_watchlist(strategy_id)
     if not result["success"]:
         raise HTTPException(status_code=404, detail=result.get("error", "Strategy not found"))
     return SuccessResponse(success=True, message=f"Strategy {strategy_id} added to watchlist")
 
 
 @router.delete("/strategy/watchlist/{strategy_id}")
-async def remove_from_watchlist(strategy_id: str):
-    result = await get_service().remove_from_watchlist(strategy_id)
+async def remove_from_watchlist_endpoint(strategy_id: str):
+    result = await remove_from_watchlist(strategy_id)
     if not result["success"]:
         raise HTTPException(status_code=404, detail=result.get("error", "Strategy not found"))
     return SuccessResponse(success=True, message=f"Strategy {strategy_id} removed from watchlist")
 
 
 @router.post("/strategy/backtest")
-async def run_backtest(request: BacktestRequest):
-    return await get_service().run_backtest_via_runtime(
+async def run_backtest_endpoint(request: BacktestRequest):
+    return await run_backtest(
         strategy_id=request.strategy_id,
         symbol=request.symbol,
         start_date=request.start_date,
@@ -84,39 +90,39 @@ async def run_backtest(request: BacktestRequest):
 
 
 @router.get("/strategy/backtest/{backtest_id}")
-async def get_backtest(backtest_id: str):
-    result = await get_service().get_backtest(backtest_id)
+async def get_backtest_endpoint(backtest_id: str):
+    result = await get_backtest(backtest_id)
     if not result:
         raise HTTPException(status_code=404, detail="Backtest not found")
     return result
 
 
 @router.get("/strategy/backtest/history")
-async def list_backtests():
-    return await get_service().list_backtests()
+async def list_backtests_endpoint():
+    return await list_backtests()
 
 
 @router.get("/strategy/configs")
-async def get_strategy_configs():
-    return await get_service().get_strategy_configs()
+async def get_strategy_configs_endpoint():
+    return await get_strategy_configs()
 
 
 @router.get("/strategy/configs/{strategy_id}/{symbol}")
-async def get_strategy_config(strategy_id: str, symbol: str):
-    config = await get_service().get_strategy_config(strategy_id, symbol)
+async def get_strategy_config_endpoint(strategy_id: str, symbol: str):
+    config = await get_strategy_config(strategy_id, symbol)
     if not config:
         return {"strategy_id": strategy_id, "symbol": symbol, "weight": 1.0, "enabled": False, "parameters": {}}
     return config
 
 
 @router.put("/strategy/configs/{strategy_id}/{symbol}")
-async def update_strategy_config(
+async def update_strategy_config_endpoint(
     strategy_id: str,
     symbol: str,
     config: StrategyConfigUpdate,
 ):
     config_dict = config.model_dump(exclude_none=True)
-    result = await get_service().update_strategy_config(strategy_id, symbol, config_dict)
+    result = await update_strategy_config(strategy_id, symbol, config_dict)
     return SuccessResponse(
         success=True,
         message=f"Config updated for {strategy_id}/{symbol}",
@@ -125,7 +131,7 @@ async def update_strategy_config(
 
 
 @router.post("/strategy/enable/{strategy_id}/{symbol}")
-async def enable_strategy(strategy_id: str, symbol: str):
+async def enable_strategy_endpoint(strategy_id: str, symbol: str):
     from application.commands.bus_commands import publish_command
 
     await publish_command(
@@ -134,12 +140,12 @@ async def enable_strategy(strategy_id: str, symbol: str):
         target="signal_runtime",
     )
 
-    await get_service().enable_strategy(strategy_id, symbol)
+    await enable_strategy(strategy_id, symbol)
     return SuccessResponse(success=True, message=f"Strategy {strategy_id} enabled for {symbol}")
 
 
 @router.post("/strategy/disable/{strategy_id}/{symbol}")
-async def disable_strategy(strategy_id: str, symbol: str):
+async def disable_strategy_endpoint(strategy_id: str, symbol: str):
     from application.commands.bus_commands import publish_command
 
     await publish_command(
@@ -148,36 +154,36 @@ async def disable_strategy(strategy_id: str, symbol: str):
         target="signal_runtime",
     )
 
-    await get_service().disable_strategy(strategy_id, symbol)
+    await disable_strategy(strategy_id, symbol)
     return SuccessResponse(success=True, message=f"Strategy {strategy_id} disabled for {symbol}")
 
 
 @router.get("/strategy/performance/{strategy_id}/{symbol}")
-async def get_strategy_performance(strategy_id: str, symbol: str):
-    return await get_service().get_strategy_performance(strategy_id, symbol)
+async def get_strategy_performance_endpoint(strategy_id: str, symbol: str):
+    return await get_strategy_performance(strategy_id, symbol)
 
 
 @router.get("/strategy/active")
-async def get_active_strategies():
-    return await get_service().get_active_strategies()
+async def get_active_strategies_endpoint():
+    return await get_active_strategies()
 
 
 @router.get("/strategy/params/{symbol}")
-async def get_symbol_params(symbol: str):
-    return await get_service().get_symbol_params(symbol)
+async def get_symbol_params_endpoint(symbol: str):
+    return await get_symbol_params(symbol)
 
 
 @router.put("/strategy/feature-range/{strategy_id}/{symbol}")
-async def update_feature_range(strategy_id: str, symbol: str, feature_range: dict):
-    result = await get_service().update_feature_range(strategy_id, symbol, feature_range)
+async def update_feature_range_endpoint(strategy_id: str, symbol: str, feature_range: dict):
+    result = await update_feature_range(strategy_id, symbol, feature_range)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Failed to update"))
     return SuccessResponse(success=True, message=f"Feature range updated for {strategy_id}/{symbol}", data=result["config"])
 
 
 @router.post("/strategy/params/batch")
-async def batch_update_params(request: BatchUpdateRequest):
-    result = await get_service().batch_update_params(request.updates)
+async def batch_update_params_endpoint(request: BatchUpdateRequest):
+    result = await batch_update_params(request.updates)
     return SuccessResponse(
         success=True,
         message=f"Batch update completed: {result['success']} success, {result['failed']} failed",
@@ -186,13 +192,13 @@ async def batch_update_params(request: BatchUpdateRequest):
 
 
 @router.get("/strategy/history/{strategy_id}/{symbol}")
-async def get_param_history(strategy_id: str, symbol: str, limit: int = 10):
-    return await get_service().get_param_history(strategy_id, symbol, limit)
+async def get_param_history_endpoint(strategy_id: str, symbol: str, limit: int = 10):
+    return await get_param_history(strategy_id, symbol, limit)
 
 
 @router.post("/strategy/restore/{strategy_id}/{symbol}/{version}")
-async def restore_param_version(strategy_id: str, symbol: str, version: int):
-    result = await get_service().restore_version(strategy_id, symbol, version)
+async def restore_param_version_endpoint(strategy_id: str, symbol: str, version: int):
+    result = await restore_version(strategy_id, symbol, version)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Failed to restore"))
     return SuccessResponse(success=True, message=f"Restored {strategy_id}/{symbol} to version {version}", data=result["config"])

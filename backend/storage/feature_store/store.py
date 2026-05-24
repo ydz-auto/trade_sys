@@ -19,7 +19,8 @@ from dataclasses import dataclass, field
 import json
 import asyncio
 
-from domain.trading_mode import TradingMode, get_trading_mode_manager
+from domain.trading_mode import TradingMode
+from runtimes.trading_mode_manager import get_trading_mode_manager
 from infrastructure.logging import get_logger
 
 logger = get_logger("storage.feature_store")

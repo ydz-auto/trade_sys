@@ -23,9 +23,9 @@ from .liquidity_shift import detect_liquidity_shift, LiquidityTracker
 from .microprice import calculate_microprice, MicropriceTracker
 from .depth_pressure import calculate_depth_pressure, DepthPressureTracker
 
-from domain.logging import get_logger
+import logging
 
-logger = get_logger("feature.orderbook.analyzer")
+logger = logging.getLogger(__name__)
 
 
 @dataclass

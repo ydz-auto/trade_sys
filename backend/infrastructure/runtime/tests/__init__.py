@@ -1,3 +1,0 @@
-"""
-Runtime Governor Tests
-"""

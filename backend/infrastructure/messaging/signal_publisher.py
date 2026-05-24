@@ -36,7 +36,7 @@ class SignalPublisher:
     async def start(self) -> None:
         """启动发布者"""
         try:
-            from infrastructure.messaging import get_broker
+            from infrastructure.messaging.broker import get_broker
             
             self._producer = get_broker(self.bootstrap_servers)
             await self._producer.start()

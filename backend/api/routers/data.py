@@ -8,10 +8,10 @@ from datetime import datetime
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from domain.logging import get_logger
-from application.queries.infrastructure_queries import get_redis_client_sync
+import logging
+from application.queries.service_queries import get_redis_client_sync
 
-logger = get_logger("data_api")
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/data", tags=["Data"])
 
 

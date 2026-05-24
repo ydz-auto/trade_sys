@@ -145,7 +145,7 @@ python tests/verify_modules.py
 **解决方案**: 确保所有依赖模块已正确导入
 ```python
 from domain.signal.models import Signal
-from domain.execution.intelligence import ExecutionOptimizer
+from domain.execution.order_rules import ExecutionOptimizer
 ```
 
 ### 问题: pytest 未找到

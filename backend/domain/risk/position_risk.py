@@ -13,9 +13,9 @@ from datetime import datetime
 from enum import Enum
 import numpy as np
 
-from domain.logging import get_logger
+import logging
 
-logger = get_logger("risk.position_risk")
+logger = logging.getLogger(__name__)
 
 
 class RiskLevel(str, Enum):

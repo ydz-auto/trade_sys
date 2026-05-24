@@ -5,11 +5,11 @@ Database 配置 - 基础设施配置
 import os
 
 DATABASE_CONFIGS = {
-    "database.host": os.environ.get("DATABASE_HOST", "localhost"),
-    "database.port": int(os.environ.get("DATABASE_PORT", "5432")),
-    "database.name": os.environ.get("DATABASE_NAME", "tradeagent"),
-    "database.username": os.environ.get("DATABASE_USERNAME", "postgres"),
-    "database.password": os.environ.get("DATABASE_PASSWORD", "postgres"),
+    "database.host": os.environ.get("POSTGRES_HOST", os.environ.get("DATABASE_HOST", "localhost")),
+    "database.port": int(os.environ.get("POSTGRES_PORT", os.environ.get("DATABASE_PORT", "5432"))),
+    "database.name": os.environ.get("POSTGRES_DATABASE", os.environ.get("DATABASE_NAME", "tradeagent")),
+    "database.username": os.environ.get("POSTGRES_USERNAME", os.environ.get("DATABASE_USERNAME", "postgres")),
+    "database.password": os.environ.get("POSTGRES_PASSWORD", os.environ.get("DATABASE_PASSWORD", "postgres")),
     "database.min_connections": int(os.environ.get("DATABASE_MIN_CONNECTIONS", "5")),
     "database.max_connections": int(os.environ.get("DATABASE_MAX_CONNECTIONS", "20")),
     "database.connection_timeout": int(os.environ.get("DATABASE_CONNECTION_TIMEOUT", "30")),

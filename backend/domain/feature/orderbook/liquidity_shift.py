@@ -13,9 +13,9 @@ from datetime import datetime
 from enum import Enum
 import numpy as np
 
-from domain.logging import get_logger
+import logging
 
-logger = get_logger("feature.orderbook.liquidity_shift")
+logger = logging.getLogger(__name__)
 
 
 class ShiftType(str, Enum):

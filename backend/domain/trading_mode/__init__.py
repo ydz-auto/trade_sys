@@ -102,6 +102,3 @@ class ModeTransitionRequest(BaseModel):
     force: bool = False
 
 
-def get_trading_mode_manager():
-    from runtime.trading_mode_manager import TradingModeManager
-    return TradingModeManager()

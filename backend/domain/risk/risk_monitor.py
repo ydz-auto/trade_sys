@@ -18,9 +18,9 @@ from .portfolio_risk import PortfolioRiskCalculator, PortfolioRisk
 from .market_risk import MarketRiskMonitor, MarketRiskAssessment
 from .limit_manager import LimitManager, LimitCheckResult
 
-from domain.logging import get_logger
+import logging
 
-logger = get_logger("risk.monitor")
+logger = logging.getLogger(__name__)
 
 
 class AlertLevel(str, Enum):

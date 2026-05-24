@@ -109,11 +109,11 @@ class Position:
             return 0.0
         
         if self.is_long():
-            # 多头：爆仓价在下方的距离
-            distance = self.liquidation_price - self.current_price
-        else:
-            # 空头：爆仓价在上方的距离
+            # 多头：爆仓价在下方的距离 (current > liquidation -> 正值)
             distance = self.current_price - self.liquidation_price
+        else:
+            # 空头：爆仓价在上方的距离 (liquidation > current -> 正值)
+            distance = self.liquidation_price - self.current_price
         
         return (distance / self.current_price) * 100 if distance > 0 else 0.0
 

@@ -7,22 +7,22 @@ debug: true
 log_level: DEBUG
 
 kafka:
-  bootstrap_servers: "localhost:9092"
+  bootstrap_servers: "${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
   
 redis:
-  url: "redis://localhost:6379/0"
+  url: "${REDIS_URL:-redis://localhost:6379/0}"
   
 clickhouse:
-  host: "localhost"
+  host: "${CLICKHOUSE_HOST:-localhost}"
   port: 9000
-  database: "tradeagent_dev"
+  database: "${CLICKHOUSE_DATABASE:-tradeagent_dev}"
   
 postgresql:
-  host: "localhost"
+  host: "${POSTGRES_HOST:-localhost}"
   port: 5432
-  database: "tradeagent_dev"
-  user: "postgres"
-  password: "postgres"
+  database: "${POSTGRES_DATABASE:-tradeagent_dev}"
+  user: "${POSTGRES_USERNAME:-postgres}"
+  password: "${POSTGRES_PASSWORD:-postgres}"
 
 observability:
   prometheus:
@@ -30,11 +30,11 @@ observability:
     port: 9090
   jaeger:
     enabled: true
-    endpoint: "http://localhost:4317"
+    endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}"
 
 data_lake:
-  smb_host: "192.168.1.14"
-  smb_share: "00_crypto"
-  smb_path: "00_code/backend/data_lake"
-  local_path: "e:/00_crypto/00_code/backend/data_lake"
+  smb_host: "${DATA_LAKE_SMB_HOST:-192.168.1.14}"
+  smb_share: "${DATA_LAKE_SMB_SHARE:-00_crypto}"
+  smb_path: "${DATA_LAKE_SMB_PATH:-00_code/backend/data_lake}"
+  local_path: "${DATA_LAKE_LOCAL_PATH:-./data_lake}"
   use_smb: false

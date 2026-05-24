@@ -1,53 +1,24 @@
-﻿"""
-Business 配置 - 业务配置，跟业务逻辑相关
+"""
+Deprecated: 业务配置已迁移至 application.config.defaults.business
+请使用: from application.config.defaults.business import ...
 """
 
-from infrastructure.config.defaults.business.trading import (
-    TRADING_CONFIGS,
-    TRADING_SCHEMAS,
-)
-from infrastructure.config.defaults.business.risk import (
-    RISK_CONFIGS,
-    RISK_SCHEMAS,
-)
-from infrastructure.config.defaults.business.strategy import (
-    STRATEGY_CONFIGS,
-    STRATEGY_SCHEMAS,
-)
-from infrastructure.config.defaults.business.market import (
-    MARKET_CONFIGS,
-    MARKET_SCHEMAS,
-)
-from infrastructure.config.defaults.business.datasource import (
-    DATASOURCE_CONFIGS,
-    DATASOURCE_SCHEMAS,
-    KOL_TRADER_LIST,
-    MULTI_SOURCE_CONFIG,
-)
-from infrastructure.config.defaults.business.notification import (
-    NOTIFICATION_CONFIGS,
-    NOTIFICATION_SCHEMAS,
-)
-from infrastructure.config.defaults.business.correlation import (
-    CORRELATION_CONFIGS,
-    CORRELATION_SCHEMAS,
+import warnings
+
+warnings.warn(
+    "infrastructure.config.defaults.business is deprecated, use application.config.defaults.business instead",
+    DeprecationWarning,
+    stacklevel=2,
 )
 
-__all__ = [
-    "TRADING_CONFIGS",
-    "TRADING_SCHEMAS",
-    "RISK_CONFIGS",
-    "RISK_SCHEMAS",
-    "STRATEGY_CONFIGS",
-    "STRATEGY_SCHEMAS",
-    "MARKET_CONFIGS",
-    "MARKET_SCHEMAS",
-    "DATASOURCE_CONFIGS",
-    "DATASOURCE_SCHEMAS",
-    "KOL_TRADER_LIST",
-    "MULTI_SOURCE_CONFIG",
-    "NOTIFICATION_CONFIGS",
-    "NOTIFICATION_SCHEMAS",
-    "CORRELATION_CONFIGS",
-    "CORRELATION_SCHEMAS",
-]
+from application.config.defaults.business import *  # noqa: F401,F403
+from application.config.defaults.business import (  # noqa: F401
+    RISK_CONFIGS, RISK_SCHEMAS,
+    STRATEGY_CONFIGS, STRATEGY_SCHEMAS,
+    TRADING_CONFIGS, TRADING_SCHEMAS,
+    MARKET_CONFIGS, MARKET_SCHEMAS,
+    NOTIFICATION_CONFIGS, NOTIFICATION_SCHEMAS,
+    CORRELATION_CONFIGS, CORRELATION_SCHEMAS,
+    DATASOURCE_CONFIGS, DATASOURCE_SCHEMAS,
+    APPROVAL_CONFIGS, APPROVAL_SCHEMAS, SYMBOL_APPROVAL_CONFIGS,
+)

@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import json
 import os
 from datetime import datetime
@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any, AsyncIterator
 from infrastructure.logging import get_logger
 from infrastructure.messaging.schema.base_event import BaseEvent
 from infrastructure.messaging.serializer import EventSerializer
-from infrastructure.runtime_clock import now_ms
+from infrastructure.utilities.runtime_clock import now_ms
 
 logger = get_logger("infrastructure.messaging.event_journal")
 
@@ -47,7 +47,7 @@ class ClickHouseJournalBackend:
             return True
 
         try:
-            from infrastructure.database.clickhouse import get_clickhouse_manager
+            from infrastructure.persistence.database.clickhouse import get_clickhouse_manager
             manager = get_clickhouse_manager()
             await manager.connect()
             self._client = manager

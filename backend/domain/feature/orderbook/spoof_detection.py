@@ -13,9 +13,9 @@ from datetime import datetime, timedelta
 from enum import Enum
 import numpy as np
 
-from domain.logging import get_logger
+import logging
 
-logger = get_logger("feature.orderbook.spoof_detection")
+logger = logging.getLogger(__name__)
 
 
 class SpoofType(str, Enum):

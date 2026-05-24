@@ -1,4 +1,4 @@
-"""
+﻿"""
 Feature Generation Service - 统一特征生成服务 (Application 层)
 
 架构定位：
@@ -41,10 +41,10 @@ import asyncio
 import pandas as pd
 import numpy as np
 
-from domain.logging import get_logger
-from services.feature_service.unified_calculator import UnifiedFeatureCalculator, get_feature_calculator
+import logging
+from engines.compute.feature.unified_calculator import UnifiedFeatureCalculator, get_feature_calculator
 
-logger = get_logger("feature_generation_service")
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -86,9 +86,9 @@ class FeatureGenerationService:
     def __init__(self, config: GenerationConfig = None):
         self.config = config or GenerationConfig()
         self.calculator = get_feature_calculator()
-        from infrastructure.feature.partial_candle_handler import get_partial_candle_handler
+        from domain.feature.infrastructure.partial_candle_handler import get_partial_candle_handler
         self._partial_candle_handler = get_partial_candle_handler()
-        from infrastructure.runtime_clock import get_clock
+        from infrastructure.utilities.runtime_clock import get_clock
         self._clock = get_clock()
     
     async def generate_features(
@@ -211,7 +211,7 @@ class FeatureGenerationService:
         end_time: Optional[str] = None,
         mode: str = "replay",
     ) -> pd.DataFrame:
-        from infrastructure.runtime_clock import set_clock_mode, ClockMode
+        from infrastructure.utilities.runtime_clock import set_clock_mode, ClockMode
         if mode == "replay":
             set_clock_mode(ClockMode.REPLAY)
         elif mode == "paper":
@@ -315,7 +315,7 @@ class FeatureGenerationService:
             try:
                 query_time = int(pd.Timestamp(df[timestamp_col].max()).timestamp() * 1000)
             except Exception:
-                from infrastructure.runtime_clock import now_ms
+                from infrastructure.utilities.runtime_clock import now_ms
                 query_time = now_ms()
         
         result = self._partial_candle_handler.aggregate_to_higher_timeframe(

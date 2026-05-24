@@ -1,17 +1,9 @@
-"""
-Execution Domain 配置
-
-执行领域的配置定义
-包括订单执行参数、滑点控制、手续费等
-"""
-
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 from pydantic import BaseModel, Field
 from enum import Enum
 
 
 class ContractType(str, Enum):
-    """合约类型"""
     SPOT = "spot"
     USDT_PERPETUAL = "usdt_perpetual"
     USDC_PERPETUAL = "usdc_perpetual"
@@ -19,7 +11,6 @@ class ContractType(str, Enum):
 
 
 class ExchangeFeeConfig(BaseModel):
-    """单一交易所的手续费配置"""
     spot_maker_fee_pct: float = Field(description="现货Maker费率")
     spot_taker_fee_pct: float = Field(description="现货Taker费率")
     usdt_perpetual_maker_fee_pct: float = Field(description="USDT永续Maker费率")
@@ -31,7 +22,6 @@ class ExchangeFeeConfig(BaseModel):
 
 
 class FeeConfig(BaseModel):
-    """手续费配置（VIP0基础费率）"""
     binance: ExchangeFeeConfig = Field(
         default_factory=lambda: ExchangeFeeConfig(
             spot_maker_fee_pct=0.001,
@@ -61,7 +51,6 @@ class FeeConfig(BaseModel):
 
 
 class OrderTypeConfig(BaseModel):
-    """订单类型配置"""
     use_market_order: bool = Field(default=True, description="是否使用市价单")
     use_limit_order: bool = Field(default=False, description="是否使用限价单")
     use_stop_order: bool = Field(default=False, description="是否使用止损单")
@@ -71,17 +60,12 @@ class OrderTypeConfig(BaseModel):
 
 
 class SlippageConfig(BaseModel):
-    """滑点配置"""
     max_slippage_pct: float = Field(default=0.002, ge=0.0, le=0.1, description="最大滑点百分比")
     target_slippage_pct: float = Field(default=0.001, ge=0.0, le=0.1, description="目标滑点百分比")
     aggressive_slippage_pct: float = Field(default=0.005, ge=0.0, le=0.1, description="激进滑点百分比")
 
 
 class ExecutionRuntimeConfig(BaseModel):
-    """
-    执行运行时配置
-    支持热更新和版本化
-    """
     order_type: OrderTypeConfig = Field(default_factory=OrderTypeConfig)
     slippage: SlippageConfig = Field(default_factory=SlippageConfig)
     fee: FeeConfig = Field(default_factory=FeeConfig)
@@ -101,7 +85,6 @@ class ExecutionRuntimeConfig(BaseModel):
         return self.model_dump()
 
     def validate_for_trading(self) -> List[str]:
-        """验证配置"""
         errors = []
         if self.min_order_size > self.max_order_size:
             errors.append("最小订单金额不应大于最大订单金额")

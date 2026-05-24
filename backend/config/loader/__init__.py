@@ -53,35 +53,35 @@ def expand_env_vars(value: Any) -> Any:
 
 
 class KafkaConfig(BaseModel):
-    bootstrap_servers: str = "localhost:9092"
+    bootstrap_servers: str = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     consumer_config: Dict[str, Any] = Field(default_factory=dict)
     producer_config: Dict[str, Any] = Field(default_factory=dict)
 
 
 class RedisConfig(BaseModel):
-    url: str = "redis://localhost:6379/0"
+    url: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
     max_connections: int = 100
     connection_timeout: int = 5
     socket_timeout: int = 5
 
 
 class ClickHouseConfig(BaseModel):
-    host: str = "localhost"
+    host: str = os.environ.get("CLICKHOUSE_HOST", "localhost")
     port: int = 9000
     http_port: int = 8123
-    database: str = "tradeagent"
-    user: str = "default"
-    password: str = ""
+    database: str = os.environ.get("CLICKHOUSE_DATABASE", "tradeagent")
+    user: str = os.environ.get("CLICKHOUSE_USERNAME", "default")
+    password: str = os.environ.get("CLICKHOUSE_PASSWORD", "")
     connection_timeout: int = 10
     send_receive_timeout: int = 300
 
 
 class PostgreSQLConfig(BaseModel):
-    host: str = "localhost"
+    host: str = os.environ.get("POSTGRES_HOST", "localhost")
     port: int = 5432
-    database: str = "tradeagent"
-    user: str = "postgres"
-    password: str = "postgres"
+    database: str = os.environ.get("POSTGRES_DATABASE", "tradeagent")
+    user: str = os.environ.get("POSTGRES_USERNAME", "postgres")
+    password: str = os.environ.get("POSTGRES_PASSWORD", "postgres")
     min_connections: int = 5
     max_connections: int = 20
 
@@ -90,15 +90,15 @@ class ObservabilityConfig(BaseModel):
     prometheus_enabled: bool = True
     prometheus_port: int = 9090
     jaeger_enabled: bool = True
-    jaeger_endpoint: str = "http://localhost:4317"
+    jaeger_endpoint: str = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
 
 
 class DataLakeStorageConfig(BaseModel):
-    smb_host: str = "192.168.1.14"
-    smb_share: str = "00_crypto"
-    smb_path: str = "00_code/backend/data_lake"
-    local_path: str = "e:/00_crypto/00_code/backend/data_lake"
-    use_smb: bool = False
+    smb_host: str = os.environ.get("DATA_LAKE_SMB_HOST", "192.168.1.14")
+    smb_share: str = os.environ.get("DATA_LAKE_SMB_SHARE", "00_crypto")
+    smb_path: str = os.environ.get("DATA_LAKE_SMB_PATH", "00_code/backend/data_lake")
+    local_path: str = os.environ.get("DATA_LAKE_LOCAL_PATH", "./data_lake")
+    use_smb: bool = os.environ.get("DATA_LAKE_USE_SMB", "false").lower() == "true"
     
     @property
     def smb_url(self) -> str:

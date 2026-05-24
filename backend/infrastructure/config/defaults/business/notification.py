@@ -1,46 +1,14 @@
 """
-Notification 配置 - 业务配置
+Deprecated: 此模块已迁移至 application.config.defaults.business.notification
+请使用: from application.config.defaults.business.notification import NOTIFICATION_CONFIGS, NOTIFICATION_SCHEMAS
 """
 
-NOTIFICATION_CONFIGS = {
-    "notification.telegram_enabled": False,
-    "notification.email_enabled": False,
-    "notification.slack_enabled": False,
-    "notification.alert_on_trade": True,
-    "notification.alert_on_position": True,
-    "notification.alert_on_risk": True,
-}
+import warnings
 
+warnings.warn(
+    "infrastructure.config.defaults.business.notification is deprecated, use application.config.defaults.business.notification instead",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
-NOTIFICATION_SCHEMAS = {
-    "notification.telegram_enabled": {
-        "value_type": "bool",
-        "default": False,
-        "description": "Enable Telegram notifications",
-    },
-    "notification.email_enabled": {
-        "value_type": "bool",
-        "default": False,
-        "description": "Enable email notifications",
-    },
-    "notification.slack_enabled": {
-        "value_type": "bool",
-        "default": False,
-        "description": "Enable Slack notifications",
-    },
-    "notification.alert_on_trade": {
-        "value_type": "bool",
-        "default": True,
-        "description": "Alert on trade execution",
-    },
-    "notification.alert_on_position": {
-        "value_type": "bool",
-        "default": True,
-        "description": "Alert on position changes",
-    },
-    "notification.alert_on_risk": {
-        "value_type": "bool",
-        "default": True,
-        "description": "Alert on risk threshold breach",
-    },
-}
+from application.config.defaults.business.notification import NOTIFICATION_CONFIGS, NOTIFICATION_SCHEMAS  # noqa: F401

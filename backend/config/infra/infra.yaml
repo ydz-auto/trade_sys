@@ -25,8 +25,8 @@ clickhouse:
   port: 9000
   http_port: 8123
   database: "${CLICKHOUSE_DATABASE:-tradeagent}"
-  user: "default"
-  password: ""
+  user: "${CLICKHOUSE_USERNAME:-default}"
+  password: "${CLICKHOUSE_PASSWORD:-}"
   connection_timeout: 10
   send_receive_timeout: 300
   
@@ -34,7 +34,7 @@ postgresql:
   host: "${POSTGRES_HOST:-localhost}"
   port: 5432
   database: "${POSTGRES_DATABASE:-tradeagent}"
-  user: "${POSTGRES_USER:-postgres}"
+  user: "${POSTGRES_USERNAME:-postgres}"
   password: "${POSTGRES_PASSWORD:-postgres}"
   min_connections: 5
   max_connections: 20
@@ -48,5 +48,5 @@ data_lake:
   smb_host: "${DATA_LAKE_SMB_HOST:-192.168.1.14}"
   smb_share: "${DATA_LAKE_SMB_SHARE:-00_crypto}"
   smb_path: "${DATA_LAKE_SMB_PATH:-00_code/backend/data_lake}"
-  local_path: "${DATA_LAKE_LOCAL_PATH:-e:/00_crypto/00_code/backend/data_lake}"
+  local_path: "${DATA_LAKE_LOCAL_PATH:-./data_lake}"
   use_smb: "${DATA_LAKE_USE_SMB:-false}"

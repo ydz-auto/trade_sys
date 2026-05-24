@@ -1,4 +1,4 @@
-﻿"""
+"""
 统一配置工厂
 
 整合 Startup Config (pydantic-settings) 和 Runtime Config (ConfigManager)
@@ -111,6 +111,12 @@ class ConfigFactory:
 
     @classmethod
     def register_domain_config(cls, registry=None):
+        """注册领域配置
+        
+        ARCHITECTURE NOTE: infrastructure → application 反向依赖
+        此处使用 lazy import + 可选 registry 参数。
+        TODO: 应改为依赖注入，调用方传入 registry 实例，不在 infrastructure 内部 import application。
+        """
         config_manager = cls.get_runtime_config()
 
         if registry is not None:

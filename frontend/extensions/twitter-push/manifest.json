@@ -1,3 +1,46 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:8a227cb2d97a9eac622ae9357fff98a043ba27954c82a6d6bd56bf3525283a9f
-size 1047
+{
+  "manifest_version": 3,
+  "name": "Twitter Push to TradeAgent",
+  "version": "1.0.0",
+  "description": "将 Twitter 浏览器通知转发到 TradeAgent 系统",
+  "permissions": [
+    "notifications",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://twitter.com/*",
+    "https://x.com/*",
+    "ws://localhost/*",
+    "ws://127.0.0.1/*",
+    "ws://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://twitter.com/*",
+        "https://x.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "TradeAgent Twitter Monitor",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

@@ -8,12 +8,12 @@ Domain 配置注册表
 from typing import Dict, List, Optional, Type
 from pydantic import BaseModel
 
-from domain.risk.config import (
+from infrastructure.config.domain.risk_config import (
     RiskRuntimeConfig,
     RISK_DEFAULTS,
     RISK_SCHEMA,
 )
-from domain.strategy.config import (
+from infrastructure.config.domain.strategy_config import (
     StrategyRuntimeConfig,
     STRATEGY_DEFAULTS,
     STRATEGY_SCHEMA,
@@ -23,7 +23,7 @@ from domain.execution.config import (
     EXECUTION_DEFAULTS,
     EXECUTION_SCHEMA,
 )
-from domain.data.config import (
+from infrastructure.config.domain.data_config import (
     DataRuntimeConfig,
     DATA_DEFAULTS,
     DATA_SCHEMA,

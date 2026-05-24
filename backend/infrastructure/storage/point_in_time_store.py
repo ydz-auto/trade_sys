@@ -132,7 +132,9 @@ class PointInTimeFeatureStore:
     def _get_guard(self):
         guard = self._feature_availability_guard
         if guard is None:
-            from runtime.replay_runtime.shared_replay.feature_availability_guard import (
+            # ARCHITECTURE NOTE: infrastructure → runtime 反向依赖
+            # TODO: 应改为依赖注入，由调用方传入 FeatureAvailabilityGuard
+            from runtimes.replay_runtime.shared_replay.feature_availability_guard import (
                 FeatureAvailabilityGuard,
                 get_feature_availability_guard,
             )

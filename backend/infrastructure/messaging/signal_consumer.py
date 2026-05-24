@@ -38,7 +38,7 @@ class SignalConsumer:
     async def start(self) -> None:
         """启动消费者"""
         try:
-            from infrastructure.messaging import get_broker
+            from infrastructure.messaging.broker import get_broker
             
             self._consumer = get_broker(self.bootstrap_servers)
             await self._consumer.start()

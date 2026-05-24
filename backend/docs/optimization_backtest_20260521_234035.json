@@ -1,3 +1,168 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:99d5c8acac2cd2c45ca24c14123e0b894255d6db140ef555999d50161711c7d1
-size 3763
+{
+  "optimization_period": "2024-01-01 to 2024-12-31",
+  "backtest_period": "2025-01-01 to 2026-04-30",
+  "optimization_results": {
+    "BTCUSDT_rsi_oversold": {
+      "best_params": {
+        "period": 7,
+        "oversold": 25
+      },
+      "best_score": 0.0
+    },
+    "BTCUSDT_rsi_overbought": {
+      "best_params": {
+        "period": 7,
+        "overbought": 65
+      },
+      "best_score": 0.0
+    },
+    "BTCUSDT_sma_cross": {
+      "best_params": {
+        "fast": 5,
+        "slow": 30
+      },
+      "best_score": 0.0
+    },
+    "BTCUSDT_ema_cross": {
+      "best_params": {
+        "fast": 5,
+        "slow": 30
+      },
+      "best_score": 0.0
+    },
+    "SOLUSDT_rsi_oversold": {
+      "best_params": {
+        "period": 7,
+        "oversold": 25
+      },
+      "best_score": 0.0
+    },
+    "SOLUSDT_rsi_overbought": {
+      "best_params": {
+        "period": 7,
+        "overbought": 65
+      },
+      "best_score": 0.0
+    },
+    "SOLUSDT_sma_cross": {
+      "best_params": {
+        "fast": 5,
+        "slow": 30
+      },
+      "best_score": 0.0
+    },
+    "SOLUSDT_ema_cross": {
+      "best_params": {
+        "fast": 5,
+        "slow": 30
+      },
+      "best_score": 0.0
+    }
+  },
+  "backtest_results": {
+    "BTCUSDT_rsi_oversold": {
+      "symbol": "BTCUSDT",
+      "strategy_id": "rsi_oversold",
+      "params": {
+        "period": 7,
+        "oversold": 25
+      },
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "total_trades": 0
+    },
+    "BTCUSDT_rsi_overbought": {
+      "symbol": "BTCUSDT",
+      "strategy_id": "rsi_overbought",
+      "params": {
+        "period": 7,
+        "overbought": 65
+      },
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "total_trades": 0
+    },
+    "BTCUSDT_sma_cross": {
+      "symbol": "BTCUSDT",
+      "strategy_id": "sma_cross",
+      "params": {
+        "fast": 5,
+        "slow": 30
+      },
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "total_trades": 0
+    },
+    "BTCUSDT_ema_cross": {
+      "symbol": "BTCUSDT",
+      "strategy_id": "ema_cross",
+      "params": {
+        "fast": 5,
+        "slow": 30
+      },
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "total_trades": 0
+    },
+    "SOLUSDT_rsi_oversold": {
+      "symbol": "SOLUSDT",
+      "strategy_id": "rsi_oversold",
+      "params": {
+        "period": 7,
+        "oversold": 25
+      },
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "total_trades": 0
+    },
+    "SOLUSDT_rsi_overbought": {
+      "symbol": "SOLUSDT",
+      "strategy_id": "rsi_overbought",
+      "params": {
+        "period": 7,
+        "overbought": 65
+      },
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "total_trades": 0
+    },
+    "SOLUSDT_sma_cross": {
+      "symbol": "SOLUSDT",
+      "strategy_id": "sma_cross",
+      "params": {
+        "fast": 5,
+        "slow": 30
+      },
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "total_trades": 0
+    },
+    "SOLUSDT_ema_cross": {
+      "symbol": "SOLUSDT",
+      "strategy_id": "ema_cross",
+      "params": {
+        "fast": 5,
+        "slow": 30
+      },
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "total_trades": 0
+    }
+  }
+}

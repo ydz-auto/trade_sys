@@ -1,20 +1,25 @@
-"""
-Execution Router - 执行引擎端点
+"""Execution Router - 执行引擎端点
 
 架构：
     API Router (转发)
       ↓
-    ExecutionAPIService (adapter，无状态)
+    Application Commands/Queries
       ↓
-    RuntimeBus.publish_command()
-      ↓
-    ExecutionRuntime (唯一 execution state source)
-      ↓
-    runtime_bus
+    RuntimeBus / ExecutionRuntime
 """
 from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
 from pydantic import BaseModel, Field
+
+from application.commands.trading import submit_order, cancel_order
+from application.commands.bus_commands import publish_command
+from application.queries.execution import (
+    get_execution_state,
+    get_open_orders,
+    get_orders,
+    get_order,
+)
+from application.queries.portfolio import get_positions
 
 router = APIRouter()
 
@@ -48,17 +53,11 @@ class SignalBatchExecuteRequest(BaseModel):
     signals: List[SignalExecuteRequest]
 
 
-def _get_service():
-    from api.services.execution_api_service import get_execution_api_service
-    return get_execution_api_service()
-
-
 @router.post("/execution/orders")
 async def create_order(request: OrderRequest):
-    service = _get_service()
-    result = await service.create_order(
+    result = await submit_order(
         symbol=request.symbol,
-        side=request.side,
+        action=request.side,
         quantity=request.quantity,
         order_type=request.order_type,
         price=request.price,
@@ -70,12 +69,11 @@ async def create_order(request: OrderRequest):
 
 
 @router.get("/execution/orders/open")
-async def get_open_orders(
+async def get_open_orders_endpoint(
     symbol: Optional[str] = Query(None),
     exchange: Optional[str] = Query(None),
 ):
-    service = _get_service()
-    orders = await service.get_open_orders(symbol=symbol, exchange=exchange)
+    orders = await get_open_orders(symbol=symbol, exchange=exchange)
     return {"orders": orders, "total": len(orders)}
 
 
@@ -84,34 +82,31 @@ async def get_order_history(
     symbol: Optional[str] = Query(None),
     limit: int = Query(100),
 ):
-    service = _get_service()
-    orders = await service.get_order_history(symbol=symbol, limit=limit)
-    return {"orders": orders, "total": len(orders)}
+    orders = await get_orders(symbol=symbol)
+    orders.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return {"orders": orders[:limit], "total": len(orders)}
 
 
 @router.get("/execution/orders/{order_id}")
-async def get_order(order_id: str):
-    service = _get_service()
-    result = await service.get_order(order_id)
+async def get_order_endpoint(order_id: str):
+    result = await get_order(order_id)
     if not result:
         raise HTTPException(status_code=404, detail="Order not found")
     return result
 
 
 @router.delete("/execution/orders/{order_id}")
-async def cancel_order(order_id: str):
-    service = _get_service()
-    result = await service.cancel_order(order_id)
+async def cancel_order_endpoint(order_id: str):
+    result = await cancel_order(order_id)
     return result
 
 
 @router.get("/execution/positions")
-async def get_positions(
+async def get_positions_endpoint(
     symbol: Optional[str] = Query(None),
     exchange: Optional[str] = Query(None),
 ):
-    service = _get_service()
-    positions = await service.get_positions(symbol=symbol, exchange=exchange)
+    positions = await get_positions(symbol=symbol, exchange=exchange)
     return {"positions": positions, "total": len(positions)}
 
 
@@ -120,44 +115,68 @@ async def close_position(
     position_id: str,
     quantity: Optional[float] = Query(None),
 ):
-    service = _get_service()
-    result = await service.close_position(position_id, quantity)
-    if not result.get("success"):
-        raise HTTPException(status_code=404, detail=result.get("error", "Position not found"))
-    return result
+    await publish_command(
+        command_type="close_position",
+        data={"position_id": position_id, "quantity": quantity},
+        target="portfolio_runtime",
+    )
+    return {"success": True, "position_id": position_id, "dispatch_via": "runtime_bus"}
 
 
 @router.put("/execution/positions/{position_id}")
 async def update_position(position_id: str, updates: PositionUpdate):
-    service = _get_service()
-    result = await service.update_position(position_id, updates.model_dump(exclude_none=True))
-    if not result.get("success"):
-        raise HTTPException(status_code=404, detail=result.get("error", "Position not found"))
-    return result
+    await publish_command(
+        command_type="update_position",
+        data={"position_id": position_id, "updates": updates.model_dump(exclude_none=True)},
+        target="portfolio_runtime",
+    )
+    return {"success": True, "position_id": position_id, "dispatch_via": "runtime_bus"}
 
 
 @router.post("/execution/signals/execute")
 async def execute_signal(request: SignalExecuteRequest):
-    service = _get_service()
-    result = await service.execute_signal(
-        signal_id=request.signal_id,
+    result = await submit_order(
         symbol=request.symbol,
         action=request.action,
         quantity=request.quantity,
-        confidence=request.confidence,
         exchange=request.exchange,
     )
-    return result
+    return {
+        **result,
+        "signal_id": request.signal_id,
+        "confidence": request.confidence,
+    }
 
 
 @router.post("/execution/signals/batch")
 async def execute_signals_batch(request: SignalBatchExecuteRequest):
-    service = _get_service()
-    signals = [s.model_dump() for s in request.signals]
-    return await service.execute_signals_batch(signals)
+    results = []
+    errors = []
+    for signal in request.signals:
+        try:
+            result = await submit_order(
+                symbol=signal.symbol,
+                action=signal.action,
+                quantity=signal.quantity,
+                exchange=signal.exchange,
+            )
+            if result.get("success", True):
+                results.append({**result, "signal_id": signal.signal_id})
+            else:
+                errors.append({"signal": signal.model_dump(), "error": result.get("error", "Unknown")})
+        except Exception as e:
+            errors.append({"signal": signal.model_dump(), "error": str(e)})
+    return {"total": len(request.signals), "executed": len(results), "failed": len(errors), "results": results, "errors": errors}
 
 
 @router.get("/execution/state")
-async def get_execution_state():
-    service = _get_service()
-    return await service.get_execution_state()
+async def get_execution_state_endpoint():
+    exec_state = await get_execution_state()
+    portfolio_state = await get_positions()
+    return {
+        "state": exec_state.get("state", "unknown"),
+        "last_error": exec_state.get("last_error"),
+        "orders_count": len(exec_state.get("orders", {})),
+        "positions_count": len(portfolio_state),
+        "source": "runtime",
+    }

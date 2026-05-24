@@ -13,20 +13,20 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 declare -A RUNTIMES=(
-    ["ingestion"]="runtime.ingestion_runtime"
-    ["feature"]="runtime.feature_runtime"
-    ["signal"]="runtime.signal_runtime"
-    ["execution"]="runtime.execution_runtime"
-    ["portfolio"]="runtime.portfolio_runtime"
-    ["projection"]="runtime.projection_runtime"
-    ["correlation"]="runtime.correlation_runtime"
-    ["narrative"]="runtime.narrative_runtime"
-    ["regime"]="runtime.regime_runtime"
-    ["replay"]="runtime.replay_runtime"
+    ["ingestion"]="runtimes.ingestion_runtime"
+    ["feature"]="runtimes.feature_runtime"
+    ["signal"]="runtimes.signal_runtime"
+    ["execution"]="runtimes.execution_runtime"
+    ["portfolio"]="runtimes.portfolio_runtime"
+    ["projection"]="runtimes.projection_runtime"
+    ["correlation"]="runtimes.correlation_runtime"
+    ["narrative"]="runtimes.narrative_runtime"
+    ["regime"]="runtimes.regime_runtime"
+    ["replay"]="runtimes.replay_runtime"
 )
 
 declare -A GPU_RUNTIMES=(
-    ["gpu-signal"]="runtime.signal_runtime"
+    ["gpu-signal"]="runtimes.signal_runtime"
 )
 
 declare -A RUNTIME_NAMES=(

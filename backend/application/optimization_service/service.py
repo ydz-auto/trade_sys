@@ -1,4 +1,4 @@
-"""
+﻿"""
 Optimization Service - 策略参数优化服务
 
 核心职责：
@@ -26,7 +26,7 @@ import uuid
 import json
 
 from infrastructure.logging import get_logger
-from infrastructure.time_authority import ensure_time_ms
+from infrastructure.utilities.time_authority import ensure_time_ms
 
 from .engine import OptimizationBacktestAdapter as OptimizationBacktestEngine, BacktestConfig, BacktestResult
 

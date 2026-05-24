@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any, List, Callable
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
-from infrastructure.runtime_clock import now_ms, ClockMode
+from infrastructure.utilities.runtime_clock import now_ms, ClockMode
 
 
 def generate_event_id() -> str:

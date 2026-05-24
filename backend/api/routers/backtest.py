@@ -1,19 +1,7 @@
-"""
-Backtest Router - 回测管理端点
-
-架构：
-    API Router (转发)
-      ↓
-    RuntimeBus.publish_command(run_backtest)
-      ↓
-    BacktestManager (task persistence)
-      ↓
-    ReplayRuntime (唯一 execution source)
-"""
 from fastapi import APIRouter, HTTPException
 from uuid import uuid4
 
-from ..schemas.backtest import (
+from api.schemas.backtest import (
     BacktestRequest,
     BacktestResult,
     BacktestListResponse,
@@ -21,33 +9,18 @@ from ..schemas.backtest import (
     PerformanceMetrics,
     TradeRecord,
 )
-from ..services.backtest_service import get_backtest_manager
+from application.commands.backtest import create_and_run_backtest, stop_backtest_task
+from application.queries.replay import get_backtest, list_backtests
 
 router = APIRouter()
 
 
-async def get_manager():
-    manager = get_backtest_manager()
-    await manager.ensure_connection()
-    return manager
-
-
 @router.post("/backtest", response_model=BacktestResult)
-async def create_and_run_backtest(request: BacktestRequest):
-    """创建并运行回测 - Router 只转发"""
-    from application.commands.bus_commands import publish_command
-
+async def create_and_run_backtest_endpoint(request: BacktestRequest):
     config = request.config.model_dump()
     backtest_id = str(uuid4())[:8]
 
-    await publish_command(
-        command_type="run_backtest",
-        data={"backtest_id": backtest_id, **config},
-        target="replay_runtime",
-    )
-
-    manager = await get_manager()
-    await manager.start(backtest_id, config)
+    await create_and_run_backtest(backtest_id, config)
 
     return BacktestResult(
         id=backtest_id,
@@ -62,10 +35,8 @@ async def create_and_run_backtest(request: BacktestRequest):
 
 
 @router.get("/backtest", response_model=BacktestListResponse)
-async def list_backtests():
-    """获取回测列表"""
-    manager = await get_manager()
-    backtests = await manager.list()
+async def list_backtests_endpoint():
+    backtests = await list_backtests()
 
     results = []
     for b in backtests:
@@ -100,10 +71,8 @@ async def list_backtests():
 
 
 @router.get("/backtest/{backtest_id}", response_model=BacktestResult)
-async def get_backtest(backtest_id: str):
-    """获取回测详情"""
-    manager = await get_manager()
-    backtest = await manager.query(backtest_id)
+async def get_backtest_endpoint(backtest_id: str):
+    backtest = await get_backtest(backtest_id)
 
     if not backtest:
         raise HTTPException(status_code=404, detail="Backtest not found")
@@ -140,15 +109,5 @@ async def get_backtest(backtest_id: str):
 
 
 @router.delete("/backtest/{backtest_id}")
-async def stop_backtest(backtest_id: str):
-    """停止回测"""
-    from application.commands.bus_commands import publish_command
-
-    await publish_command(
-        command_type="stop_backtest",
-        data={"backtest_id": backtest_id},
-        target="replay_runtime",
-    )
-
-    manager = await get_manager()
-    return await manager.stop(backtest_id)
+async def stop_backtest_endpoint(backtest_id: str):
+    return await stop_backtest_task(backtest_id)

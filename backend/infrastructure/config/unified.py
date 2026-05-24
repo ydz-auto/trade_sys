@@ -155,9 +155,14 @@ async def get_config(key: str, default: Any = None) -> Any:
 
 
 async def _get_strategy_config(key: str, default: Any = None) -> Any:
-    """获取策略配置"""
+    """获取策略配置
+    
+    ARCHITECTURE NOTE: infrastructure → application 反向依赖
+    此处使用 lazy import + try/except 降级到本地默认值。
+    TODO: 应改为依赖注入，由 application 层注入 ConfigService 实例。
+    """
     try:
-        from api.services.config_service import get_config_service
+        from application.queries.config_queries import get_config_service
         
         field = key.replace("strategy.", "")
         service = get_config_service()
@@ -170,10 +175,9 @@ async def _get_strategy_config(key: str, default: Any = None) -> Any:
 
 
 async def _get_exchange_config(key: str, default: Any = None) -> Any:
-    """获取交易所配置"""
     try:
-        from api.services.config_service import get_config_service
-        
+        from application.queries.config_queries import get_config_service
+
         parts = key.split(".")
         if len(parts) < 3:
             return default
@@ -194,10 +198,9 @@ async def _get_exchange_config(key: str, default: Any = None) -> Any:
 
 
 async def _get_llm_config(key: str, default: Any = None) -> Any:
-    """获取 LLM 配置"""
     try:
-        from api.services.config_service import get_config_service
-        
+        from application.queries.config_queries import get_config_service
+
         parts = key.split(".")
         if len(parts) < 3:
             return default
@@ -234,11 +237,10 @@ async def get_exchange_credentials(exchange: str) -> Optional[Dict[str, str]]:
         {'api_key': '...', 'secret': '...', 'api_url': '...', 'testnet': bool} 或 None
     """
     result = {}
-    
-    # 1. 从 ConfigService 获取
+
     try:
-        from api.services.config_service import get_config_service
-        
+        from application.queries.config_queries import get_config_service
+
         service = get_config_service()
         config = await service.get_exchange_config(exchange)
         if config:
@@ -276,11 +278,10 @@ async def get_llm_credentials(provider: str) -> Optional[Dict[str, Any]]:
         {'api_key': '...', 'model': '...', 'api_url': '...'} 或 None
     """
     result = {}
-    
-    # 1. 从 ConfigService 获取
+
     try:
-        from api.services.config_service import get_config_service
-        
+        from application.queries.config_queries import get_config_service
+
         service = get_config_service()
         config = await service.get_llm_provider_config(provider)
         if config:
@@ -316,11 +317,10 @@ async def get_api_url(service: str = None, default: str = None) -> str:
     """
     if not service:
         return default or ""
-    
-    # 1. 从 ConfigService 获取
+
     try:
-        from api.services.config_service import get_config_service
-        
+        from application.queries.config_queries import get_config_service
+
         cs = get_config_service()
         url = await cs.get_api_url(service)
         if url:
@@ -347,8 +347,8 @@ async def get_strategy_weights() -> Dict[str, float]:
         {'momentum_weight': 0.3, 'trend_weight': 0.3, ...}
     """
     try:
-        from api.services.config_service import get_config_service
-        
+        from application.queries.config_queries import get_config_service
+
         service = get_config_service()
         return await service.get_strategy_config()
     except Exception as e:

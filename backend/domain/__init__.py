@@ -8,7 +8,7 @@ Domain Package - 纯交易规则与语义
 - Application Workflow → application/
 
 包含：
-- behaviour: 市场行为检测器
+- feature.indicators: 市场行为检测器
 - event: 领域事件类型
 - execution: 执行域模型与规则
 - feature: 特征定义与纯数学计算

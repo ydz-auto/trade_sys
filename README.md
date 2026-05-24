@@ -45,7 +45,7 @@
 
 | 服务 | 地址 | 说明 |
 |------|------|------|
-| 前端 | http://localhost:3000 | Vue 开发服务器 |
+| 前端 | http://localhost:3000 | Vue.js 开发服务器 |
 | API Server | http://localhost:8001 | FastAPI 服务 |
 | API Docs | http://localhost:8001/docs | Swagger 文档 |
 | Kafka UI | http://localhost:8080 | Kafka 管理界面 |
@@ -59,7 +59,7 @@
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                              Frontend                                │
-│                          (Vue.js + Vite)                            │
+│                        (Vue.js 3 + Vite + Tailwind)                 │
 └────────────────────────────────┬────────────────────────────────────┘
                                  │
                                  ▼
@@ -92,19 +92,14 @@
     ┌───────────────┼───────────────┐
     ▼               ▼               ▼
 ┌─────────┐  ┌─────────┐  ┌─────────┐
-│ Binance │  │  Bybit  │  │ Coinbase│
-│ WebSocket│  │   REST  │  │   REST  │
+│ Binance │  │  OKX    │  │ Mock    │
+│ WebSocket│  │   REST  │  │ Adapter │
 └─────────┘  └─────────┘  └─────────┘
                     │
                     ▼
          ┌──────────────────┐
          │     Kafka        │
          │  (Event Stream)  │
-         └──────────────────┘
-                    │
-                    ▼
-         ┌──────────────────┐
-         │    ZooKeeper     │
          └──────────────────┘
 ```
 
@@ -113,23 +108,45 @@
 ```
 backend/
 ├── api/                # API 网关 (Presentation Layer)
-├── services/           # 业务逻辑层 (Service Layer)
-│   └── data_service/   # 数据收集服务
-│       └── collectors/ # 数据收集器（Binance WebSocket）
-├── runtime/            # 运行时层 (Runtime Layer)
-│   ├── ingestion_runtime/    # 数据摄入
-│   ├── signal_runtime/       # 信号生成
-│   ├── projection_runtime/   # 状态投影
-│   └── execution_runtime/    # 执行下单
+│   ├── routers/       # API 路由 (22 个模块)
+│   └── schemas/       # 请求/响应模型
 ├── application/        # 业务用例层 (Application Layer)
+│   ├── commands/      # 写操作
+│   ├── queries/       # 读操作
+│   ├── optimization_service/ # 参数优化
+│   └── workflows/     # 长流程
+├── runtime/            # 运行时层 (Runtime Layer)
+│   ├── kernel/        # 内核 (Orchestrator + Bus + Authority + Guards)
+│   ├── stateful/      # 有状态 Runtime (Ingestion/Feature/Signal/Execution/Portfolio/Replay)
+│   ├── analytical/    # 分析型 Runtime (Correlation/Projection/Regime/Narrative)
+│   ├── contracts/     # 运行时契约
+│   ├── pipeline/      # 数据管道
+│   └── verification/  # 验证工具
+├── engines/            # 引擎层 (Engines Layer)
+│   ├── adapters/      # 外部适配器 (数据采集/交易所)
+│   ├── compute/       # 业务计算 (聚合/相关性/特征/风险/信号/策略)
+│   └── ml/            # 机器学习 (LSTM)
 ├── domain/             # 领域模型层 (Domain Layer)
+│   ├── event/         # 领域事件
+│   ├── execution/     # 执行域
+│   ├── feature/       # 特征定义
+│   ├── portfolio/     # 组合域
+│   ├── risk/          # 风险规则
+│   ├── signal/        # 信号模型
+│   └── strategy/      # 策略配置
 ├── infrastructure/     # 基础设施层 (Infrastructure Layer)
-│   └── resilience/     # 弹性基础设施（多通道降级）
-├── config/             # 配置治理
+│   ├── persistence/   # 持久化 (缓存/DB/快照/状态)
+│   ├── messaging/     # 消息传递 (Kafka/WS/Schema)
+│   ├── security/      # 安全 (API网关/Webhook/RBAC)
+│   ├── storage/       # 存储 (数据湖/Parquet/PIT)
+│   ├── observability/ # 可观测性 (指标/追踪/遥测)
+│   ├── config/        # 配置管理
+│   └── utilities/     # 工具 (弹性/降级/HTTP/LLM)
+├── config/             # 配置治理 (YAML 配置文件)
+├── research/           # 研究层 (回测/研究工具)
 ├── deploy/             # 部署治理
 ├── docker/             # Docker 相关
-├── docs/               # 文档
-└── research/           # 研究层
+└── docs/               # 文档
 ```
 
 ---
@@ -223,13 +240,16 @@ python -m scripts.test_data_channels
 
 ## 📚 文档
 
-详细文档请参考 `backend/docs/` 目录：
+详细文档请参考 `backend/docs/` 和 `doc/` 目录：
 
 | 文档 | 说明 |
 |------|------|
-| [MULTI_CHANNEL_DATAFLOW_FIX_20260516.md](backend/docs/MULTI_CHANNEL_DATAFLOW_FIX_20260516.md) | 多通道数据流修复报告 |
-| [KAFKA_REDIS_AUDIT_FIX_20260516.md](backend/docs/KAFKA_REDIS_AUDIT_FIX_20260516.md) | Kafka & Redis 配置审计 |
-| [API.md](backend/docs/API.md) | API 文档 |
+| [系统架构文档](doc/系统治理/ARCHITECTURE.md) | 核心架构设计（v5.0） |
+| [架构图](doc/交易系统/07_Meta/ARCHITECTURE.md) | 系统架构图 |
+| [核心架构文档](doc/交易系统/01_Core/01_架构文档.md) | 核心架构说明 |
+| [API 文档](backend/docs/API.md) | API 文档 |
+| [多通道数据流修复](backend/docs/MULTI_CHANNEL_DATAFLOW_FIX_20260516.md) | 多通道数据流修复报告 |
+| [Kafka & Redis 审计](backend/docs/KAFKA_REDIS_AUDIT_FIX_20260516.md) | Kafka & Redis 配置审计 |
 
 ---
 
@@ -371,6 +391,12 @@ npm run dev
 ---
 
 ## 📝 最新更新
+
+### 2026-05-24
+- 🔄 **services → engines 重构**: services/ 目录整合为 engines/（adapters + compute + ml）
+- 🔄 **Runtime 重组**: 扁平结构重组为 kernel/stateful/analytical/contracts/pipeline/replay/verification
+- 🔄 **Infrastructure 扩展**: 新增 persistence/security/storage/utilities 子目录
+- 📝 **架构文档更新**: v4.0 → v5.0
 
 ### 2026-05-16
 - ✅ **多通道数据降级架构**: 实现真实数据源链（Binance → Bybit → Coinbase → CoinGecko）

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Config Index - 合并所有领域配置
 """
 
@@ -6,14 +6,14 @@ from typing import Dict, Any
 from infrastructure.config.enums import ConfigCategory
 
 from .core import SYSTEM_CONFIGS, SYSTEM_SCHEMAS
-from .business.trading import TRADING_CONFIGS, TRADING_SCHEMAS
-from .business.risk import RISK_CONFIGS, RISK_SCHEMAS
-from .business.strategy import STRATEGY_CONFIGS, STRATEGY_SCHEMAS
-from .business.market import MARKET_CONFIGS, MARKET_SCHEMAS
-from .business.notification import NOTIFICATION_CONFIGS, NOTIFICATION_SCHEMAS
-from .business.datasource import DATASOURCE_CONFIGS, DATASOURCE_SCHEMAS
-from .business.approval import APPROVAL_CONFIGS, APPROVAL_SCHEMAS, SYMBOL_APPROVAL_CONFIGS
-from .business.correlation import CORRELATION_CONFIGS, CORRELATION_SCHEMAS
+from application.config.defaults.business.trading import TRADING_CONFIGS, TRADING_SCHEMAS
+from application.config.defaults.business.risk import RISK_CONFIGS, RISK_SCHEMAS
+from application.config.defaults.business.strategy import STRATEGY_CONFIGS, STRATEGY_SCHEMAS
+from application.config.defaults.business.market import MARKET_CONFIGS, MARKET_SCHEMAS
+from application.config.defaults.business.notification import NOTIFICATION_CONFIGS, NOTIFICATION_SCHEMAS
+from application.config.defaults.business.datasource import DATASOURCE_CONFIGS, DATASOURCE_SCHEMAS
+from application.config.defaults.business.approval import APPROVAL_CONFIGS, APPROVAL_SCHEMAS, SYMBOL_APPROVAL_CONFIGS
+from application.config.defaults.business.correlation import CORRELATION_CONFIGS, CORRELATION_SCHEMAS
 from .infrastructure.logging import LOGGING_CONFIGS, LOG_CONFIG, LOG_LEVELS, LOG_FORMAT
 from .infrastructure.monitoring import MONITORING_CONFIGS, SYSTEM_HEALTH_METRICS, TRADING_PERFORMANCE_METRICS, RISK_METRICS
 from .infrastructure.cache import CACHE_CONFIGS, CACHE_TTL, CACHE_DB_ALLOCATION, KEY_NAMING_CONVENTION, CACHE_KEY_PATTERNS, DEFAULT_TTL

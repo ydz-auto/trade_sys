@@ -17,10 +17,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import numpy as np
 
-from domain.logging import get_logger
+import logging
 from domain.feature.materializer.schema_registry import get_schema_registry, FeatureCategory
 
-logger = get_logger("feature.materializer.matrix_builder")
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -184,12 +184,6 @@ class UnifiedMatrixBuilder:
                 self._gpu_available = self._accelerator.is_gpu_available()
             except Exception:
                 self._gpu_available = False
-        else:
-            try:
-                from infrastructure.acceleration import is_gpu_available
-                self._gpu_available = is_gpu_available()
-            except Exception:
-                self._gpu_available = False
     
     def set_timestamps(self, timestamps: List[int]):
         """设置时间戳序列"""
@@ -288,15 +282,20 @@ class UnifiedMatrixBuilder:
     def _align_and_fill_gpu(
         self, ts_to_val: Dict, n: int
     ) -> List[float]:
-        """GPU 批量前向填充（大数据量时使用）"""
+        if self._accelerator is None:
+            values = [0.0] * n
+            for i, target_ts in enumerate(self.timestamps):
+                if target_ts in ts_to_val:
+                    values[i] = float(ts_to_val[target_ts])
+                elif i > 0:
+                    values[i] = values[i - 1]
+            return values
+
         try:
-            if self._accelerator is not None:
-                torch = self._accelerator.torch
-                device = self._accelerator.device
-                to_gpu = self._accelerator.to_gpu
-                to_cpu = self._accelerator.to_cpu
-            else:
-                from infrastructure.acceleration import torch, device, to_gpu, to_cpu
+            torch = self._accelerator.torch
+            device = self._accelerator.device
+            to_gpu = self._accelerator.to_gpu
+            to_cpu = self._accelerator.to_cpu
             
             ts_array = np.array(self.timestamps, dtype=np.int64)
             ts_tensor = to_gpu(ts_array)

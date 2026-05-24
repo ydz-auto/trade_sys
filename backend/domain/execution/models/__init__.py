@@ -1,9 +1,3 @@
-"""
-Execution Domain Models
-
-执行领域核心模型定义
-"""
-
 from domain.execution.models.enums import (
     OrderSide,
     OrderType,
@@ -19,12 +13,6 @@ from domain.execution.models.order import (
     OrderIntent,
 )
 from domain.execution.models.position import Position
-from domain.execution.models.events import (
-    OrderCreated,
-    OrderUpdated,
-    OrderFilled,
-    PositionUpdated,
-)
 
 __all__ = [
     "OrderSide",
@@ -38,8 +26,4 @@ __all__ = [
     "OrderResult",
     "OrderIntent",
     "Position",
-    "OrderCreated",
-    "OrderUpdated",
-    "OrderFilled",
-    "PositionUpdated",
 ]

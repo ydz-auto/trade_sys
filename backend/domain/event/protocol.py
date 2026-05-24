@@ -23,9 +23,7 @@ import json
 import hashlib
 from datetime import datetime
 
-from domain.logging import get_logger
 
-logger = get_logger("domain.event.protocol")
 
 # 时间源类型定义（domain 层保持抽象）
 # 调用者注入具体实现（REPLAY: RuntimeClock.now_ms, LIVE: datetime.now）
@@ -455,71 +453,6 @@ def create_event(
         builder.time_source(time_source)
     
     return builder.build()
-
-
-def create_replay_event(
-    event_type: str,
-    symbol: str,
-    exchange: str,
-    event_time_ms: int,
-    payload: Dict[str, Any],
-    replay_clock_ms: int,
-    network_delay_ms: int = 100,
-    processing_delay_ms: int = 50,
-) -> ImmutableEvent:
-    """
-    REPLAY 模式专用：创建事件
-    
-    Time Authority 规则：
-    - event_time_ms: 来自回放数据
-    - available_time_ms: event_time_ms + network_delay_ms + processing_delay_ms
-    - processing_time_ms: replay_clock_ms（当前回放时间）
-    """
-    available_time_ms = event_time_ms + network_delay_ms + processing_delay_ms
-    
-    # REPLAY 模式下，processing_time_ms = replay_clock
-    return create_event(
-        event_type=event_type,
-        symbol=symbol,
-        exchange=exchange,
-        event_time_ms=event_time_ms,
-        payload=payload,
-        available_time_ms=available_time_ms,
-        processing_time_ms=replay_clock_ms,
-        source=EventSource.REPLAY,
-    )
-
-
-def create_live_event(
-    event_type: str,
-    symbol: str,
-    exchange: str,
-    event_time_ms: int,
-    payload: Dict[str, Any],
-    processing_delay_ms: int = 50,
-) -> ImmutableEvent:
-    """
-    LIVE 模式专用：创建事件
-    
-    Time Authority 规则：
-    - event_time_ms: 来自交易所
-    - available_time_ms: event_time_ms + processing_delay_ms
-    - processing_time_ms: 当前 UTC 时间
-    """
-    import time
-    processing_time_ms = int(time.time() * 1000)
-    available_time_ms = event_time_ms + processing_delay_ms
-    
-    return create_event(
-        event_type=event_type,
-        symbol=symbol,
-        exchange=exchange,
-        event_time_ms=event_time_ms,
-        payload=payload,
-        available_time_ms=available_time_ms,
-        processing_time_ms=processing_time_ms,
-        source=EventSource.LIVE,
-    )
 
 
 def verify_event(event: ImmutableEvent) -> tuple[bool, list[str]]:

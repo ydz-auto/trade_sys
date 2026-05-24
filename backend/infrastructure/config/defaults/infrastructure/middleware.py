@@ -27,7 +27,15 @@ KAFKA_TOPICS = {
 }
 
 
-KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+def _resolve_kafka_default() -> str:
+    try:
+        from infrastructure.config.startup.settings import get_startup_settings
+        return get_startup_settings().kafka.bootstrap_servers
+    except Exception:
+        return "localhost:9092"
+
+
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS") or _resolve_kafka_default()
 KAFKA_CLIENT_ID = os.environ.get("KAFKA_CLIENT_ID", "tradeagent")
 
 

@@ -1,3 +1,441 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:be08d824cfd560a62efc71a980be2890315e788d9d877ab0e1f10b48d0dd7551
-size 13899
+{
+  "timestamp": "20260521_220806",
+  "optimization_period": "2017-08-17 04:15:00 ~ 2024-12-31 00:00:00",
+  "backtest_period": "2025-01-01 00:00:00 ~ 2026-04-30 23:55:00",
+  "optimization_results": {
+    "rsi_oversold": {
+      "total_return": 1.280365707406392,
+      "win_rate": 0.41021505376344086,
+      "max_drawdown": 0.5746528861517178,
+      "profit_factor": 1.0882445098536315,
+      "sharpe_ratio": 0.609676908128898,
+      "total_trades": 3720,
+      "avg_win": 0.03619279651310853,
+      "avg_loss": -0.023132020399810535,
+      "wins": 1526,
+      "losses": 2194
+    },
+    "rsi_overbought": {
+      "total_return": -0.45346302296447266,
+      "win_rate": 0.3766657601305412,
+      "max_drawdown": 0.7343765801853179,
+      "profit_factor": 0.9937810352931419,
+      "sharpe_ratio": -0.044846789073604364,
+      "total_trades": 3677,
+      "avg_win": 0.036457546447473725,
+      "avg_loss": -0.022168274638070883,
+      "wins": 1385,
+      "losses": 2292
+    },
+    "macd_cross": {
+      "total_return": -0.8907954849617686,
+      "win_rate": 0.3665283540802213,
+      "max_drawdown": 0.9094261210765169,
+      "profit_factor": 0.9131705204252843,
+      "sharpe_ratio": -0.6581993129971757,
+      "total_trades": 4338,
+      "avg_win": 0.03686888578825276,
+      "avg_loss": -0.023360843828870895,
+      "wins": 1590,
+      "losses": 2748
+    },
+    "bollinger_bands": {
+      "total_return": 0.0880142168199729,
+      "win_rate": 0.39486397152301045,
+      "max_drawdown": 0.6060383772742904,
+      "profit_factor": 1.03720664749242,
+      "sharpe_ratio": 0.26269296873614717,
+      "total_trades": 3933,
+      "avg_win": 0.036500215298118484,
+      "avg_loss": -0.022962788901179105,
+      "wins": 1553,
+      "losses": 2380
+    },
+    "sma_cross": {
+      "total_return": -0.8394631952978271,
+      "win_rate": 0.36803874092009686,
+      "max_drawdown": 0.8733224174865751,
+      "profit_factor": 0.8867567125500889,
+      "sharpe_ratio": -0.862963653792583,
+      "total_trades": 2891,
+      "avg_win": 0.033443333402792534,
+      "avg_loss": -0.021963834084056374,
+      "wins": 1064,
+      "losses": 1827
+    },
+    "ema_cross": {
+      "total_return": -0.7955665913745945,
+      "win_rate": 0.36920289855072463,
+      "max_drawdown": 0.8085380370907961,
+      "profit_factor": 0.9016744871683342,
+      "sharpe_ratio": -0.7423762382325387,
+      "total_trades": 2760,
+      "avg_win": 0.03376156278514167,
+      "avg_loss": -0.021915337982135526,
+      "wins": 1019,
+      "losses": 1741
+    },
+    "momentum": {
+      "total_return": -0.4857154744211708,
+      "win_rate": 0.351931330472103,
+      "max_drawdown": 0.7172472312169819,
+      "profit_factor": 0.9531714251236003,
+      "sharpe_ratio": -0.35203084201381435,
+      "total_trades": 2563,
+      "avg_win": 0.04112863052578797,
+      "avg_loss": -0.023432042140649378,
+      "wins": 902,
+      "losses": 1661
+    },
+    "volume_spike": {
+      "total_return": -0.342525914673296,
+      "win_rate": 0.3721286370597244,
+      "max_drawdown": 0.648763191247115,
+      "profit_factor": 1.0062749865718668,
+      "sharpe_ratio": 0.04505256956160795,
+      "total_trades": 3918,
+      "avg_win": 0.037667649320790496,
+      "avg_loss": -0.02218575731697387,
+      "wins": 1458,
+      "losses": 2460
+    },
+    "leveraged_short_squeeze": {
+      "total_return": 0.08268436043709698,
+      "win_rate": 0.39444444444444443,
+      "max_drawdown": 0.389165718795879,
+      "profit_factor": 1.1144985686795177,
+      "sharpe_ratio": 0.7950173931731895,
+      "total_trades": 180,
+      "avg_win": 0.04021767183394785,
+      "avg_loss": -0.023505487443613013,
+      "wins": 71,
+      "losses": 109
+    },
+    "micro_range_ripples": {
+      "total_return": 0.0,
+      "win_rate": 0,
+      "max_drawdown": 0,
+      "profit_factor": 0,
+      "sharpe_ratio": 0,
+      "total_trades": 0,
+      "avg_win": 0,
+      "avg_loss": 0,
+      "wins": 0,
+      "losses": 0
+    },
+    "cascade_flip": {
+      "total_return": -0.018191875046230235,
+      "win_rate": 0.3836978131212724,
+      "max_drawdown": 0.46566930983145793,
+      "profit_factor": 1.0028803828847743,
+      "sharpe_ratio": 0.02097217015148323,
+      "total_trades": 503,
+      "avg_win": 0.039886300031188565,
+      "avg_loss": -0.02476111690916109,
+      "wins": 193,
+      "losses": 310
+    },
+    "funding_exhaustion_trap": {
+      "total_return": -0.007202141333950931,
+      "win_rate": 0.3983548766157462,
+      "max_drawdown": 0.4655128543689592,
+      "profit_factor": 1.0072302294647346,
+      "sharpe_ratio": 0.05049902563505028,
+      "total_trades": 851,
+      "avg_win": 0.031200152139970523,
+      "avg_loss": -0.020509623945936244,
+      "wins": 339,
+      "losses": 512
+    },
+    "meme_mania_rotation": {
+      "total_return": -0.3202720962655671,
+      "win_rate": 0.3373287671232877,
+      "max_drawdown": 0.5677613151370894,
+      "profit_factor": 0.8653579214854448,
+      "sharpe_ratio": -1.0589765607375514,
+      "total_trades": 584,
+      "avg_win": 0.03925526509676418,
+      "avg_loss": -0.02309177951643575,
+      "wins": 197,
+      "losses": 387
+    },
+    "session_gap_exploit": {
+      "total_return": -0.005199030747867437,
+      "win_rate": 0.3333333333333333,
+      "max_drawdown": 0.30716504609433304,
+      "profit_factor": 0.7236895852072025,
+      "sharpe_ratio": -2.5252070493114718,
+      "total_trades": 3,
+      "avg_win": 0.04401163298547417,
+      "avg_loss": -0.030407811501717976,
+      "wins": 1,
+      "losses": 2
+    },
+    "dead_cat_echo": {
+      "total_return": 0.41985104851875366,
+      "win_rate": 0.39473684210526316,
+      "max_drawdown": 0.4239027363268001,
+      "profit_factor": 1.1541523804377414,
+      "sharpe_ratio": 1.0516744413920263,
+      "total_trades": 570,
+      "avg_win": 0.04207285879527532,
+      "avg_loss": -0.023774001958938522,
+      "wins": 225,
+      "losses": 345
+    },
+    "liquidity_vacuum_breakout": {
+      "total_return": 0.027673252504346966,
+      "win_rate": 0.5714285714285714,
+      "max_drawdown": 0.31196352589957704,
+      "profit_factor": 2.1447527635620283,
+      "sharpe_ratio": 5.984852324816429,
+      "total_trades": 7,
+      "avg_win": 0.04330483205726472,
+      "avg_loss": -0.026921413534144668,
+      "wins": 4,
+      "losses": 3
+    }
+  },
+  "backtest_results": {
+    "rsi_oversold": {
+      "strategy_name": "RSI Oversold",
+      "result": {
+        "total_return": -0.32337364705450855,
+        "win_rate": 0.4154228855721393,
+        "max_drawdown": 0.4214594516233893,
+        "profit_factor": 0.983733009064775,
+        "sharpe_ratio": -0.11497482612623783,
+        "total_trades": 402,
+        "avg_win": 0.026984758030472806,
+        "avg_loss": -0.019493503154380257,
+        "wins": 167,
+        "losses": 235
+      }
+    },
+    "rsi_overbought": {
+      "strategy_name": "RSI Overbought",
+      "result": {
+        "total_return": -0.21656359002130365,
+        "win_rate": 0.42355889724310775,
+        "max_drawdown": 0.39868347612736144,
+        "profit_factor": 1.0974904461898591,
+        "sharpe_ratio": 0.6470673147737388,
+        "total_trades": 399,
+        "avg_win": 0.027603244652065075,
+        "avg_loss": -0.018480693097896853,
+        "wins": 169,
+        "losses": 230
+      }
+    },
+    "macd_cross": {
+      "strategy_name": "MACD Cross",
+      "result": {
+        "total_return": -0.15973706865287404,
+        "win_rate": 0.4413145539906103,
+        "max_drawdown": 0.3686133822291571,
+        "profit_factor": 1.1416638805441226,
+        "sharpe_ratio": 0.9249995553329526,
+        "total_trades": 426,
+        "avg_win": 0.028080364948563086,
+        "avg_loss": -0.019428773207977583,
+        "wins": 188,
+        "losses": 238
+      }
+    },
+    "bollinger_bands": {
+      "strategy_name": "Bollinger Bands",
+      "result": {
+        "total_return": -0.11657883026063028,
+        "win_rate": 0.46115288220551376,
+        "max_drawdown": 0.37319426691920016,
+        "profit_factor": 1.1957762007835713,
+        "sharpe_ratio": 1.2505607610863763,
+        "total_trades": 399,
+        "avg_win": 0.027201674328515578,
+        "avg_loss": -0.01946816840252831,
+        "wins": 184,
+        "losses": 215
+      }
+    },
+    "sma_cross": {
+      "strategy_name": "SMA Cross",
+      "result": {
+        "total_return": -0.2270366990864981,
+        "win_rate": 0.4420485175202156,
+        "max_drawdown": 0.3805289269299652,
+        "profit_factor": 1.092355920844934,
+        "sharpe_ratio": 0.6192043695879069,
+        "total_trades": 371,
+        "avg_win": 0.026436957400196772,
+        "avg_loss": -0.019174356899972246,
+        "wins": 164,
+        "losses": 207
+      }
+    },
+    "ema_cross": {
+      "strategy_name": "EMA Cross",
+      "result": {
+        "total_return": -0.30250118134659304,
+        "win_rate": 0.4491525423728814,
+        "max_drawdown": 0.401189741215983,
+        "profit_factor": 1.0041313694831375,
+        "sharpe_ratio": 0.029059879263253905,
+        "total_trades": 354,
+        "avg_win": 0.024413115600247462,
+        "avg_loss": -0.0198241778705652,
+        "wins": 159,
+        "losses": 195
+      }
+    },
+    "momentum": {
+      "strategy_name": "Momentum",
+      "result": {
+        "total_return": 0.13896762284459419,
+        "win_rate": 0.4338235294117647,
+        "max_drawdown": 0.3310441815482341,
+        "profit_factor": 1.2963239077380992,
+        "sharpe_ratio": 1.8311493401316292,
+        "total_trades": 136,
+        "avg_win": 0.03341990339013822,
+        "avg_loss": -0.01975390432046848,
+        "wins": 59,
+        "losses": 77
+      }
+    },
+    "volume_spike": {
+      "strategy_name": "Volume Spike",
+      "result": {
+        "total_return": -0.3492257970938027,
+        "win_rate": 0.4039408866995074,
+        "max_drawdown": 0.38649487356239065,
+        "profit_factor": 0.9585177689077032,
+        "sharpe_ratio": -0.29809216120927223,
+        "total_trades": 406,
+        "avg_win": 0.02762643370785832,
+        "avg_loss": -0.019532288905997994,
+        "wins": 164,
+        "losses": 242
+      }
+    },
+    "leveraged_short_squeeze": {
+      "strategy_name": "Leveraged Short Squeeze",
+      "result": {
+        "total_return": -0.029430852433476137,
+        "win_rate": 0.37142857142857144,
+        "max_drawdown": 0.3335088773389693,
+        "profit_factor": 0.7888149702715873,
+        "sharpe_ratio": -1.7667935012164728,
+        "total_trades": 35,
+        "avg_win": 0.027678218906294898,
+        "avg_loss": -0.020734027355325712,
+        "wins": 13,
+        "losses": 22
+      }
+    },
+    "micro_range_ripples": {
+      "strategy_name": "Micro Range Ripples",
+      "result": {
+        "total_return": 0.0,
+        "win_rate": 0,
+        "max_drawdown": 0,
+        "profit_factor": 0,
+        "sharpe_ratio": 0,
+        "total_trades": 0,
+        "avg_win": 0,
+        "avg_loss": 0,
+        "wins": 0,
+        "losses": 0
+      }
+    },
+    "cascade_flip": {
+      "strategy_name": "Cascade Flip",
+      "result": {
+        "total_return": -0.04533614460394056,
+        "win_rate": 0.25,
+        "max_drawdown": 0.35074131667348546,
+        "profit_factor": 0.5783227076014176,
+        "sharpe_ratio": -4.206153631346102,
+        "total_trades": 20,
+        "avg_win": 0.041697222280175694,
+        "avg_loss": -0.024033422707951488,
+        "wins": 5,
+        "losses": 15
+      }
+    },
+    "funding_exhaustion_trap": {
+      "strategy_name": "Funding Exhaustion Trap",
+      "result": {
+        "total_return": -0.23085845538124022,
+        "win_rate": 0.45318352059925093,
+        "max_drawdown": 0.38035834618904046,
+        "profit_factor": 1.1244188538730502,
+        "sharpe_ratio": 0.8100198883755815,
+        "total_trades": 267,
+        "avg_win": 0.02545215728259074,
+        "avg_loss": -0.01875983411332913,
+        "wins": 121,
+        "losses": 146
+      }
+    },
+    "meme_mania_rotation": {
+      "strategy_name": "Meme Mania Rotation",
+      "result": {
+        "total_return": -0.026890086338865513,
+        "win_rate": 0.4,
+        "max_drawdown": 0.34383451463554193,
+        "profit_factor": 0.7601041660681278,
+        "sharpe_ratio": -1.953814609215739,
+        "total_trades": 30,
+        "avg_win": 0.023303297383830242,
+        "avg_loss": -0.020438687594073416,
+        "wins": 12,
+        "losses": 18
+      }
+    },
+    "session_gap_exploit": {
+      "strategy_name": "Session Gap Exploit",
+      "result": {
+        "total_return": 0.0,
+        "win_rate": 0,
+        "max_drawdown": 0,
+        "profit_factor": 0,
+        "sharpe_ratio": 0,
+        "total_trades": 0,
+        "avg_win": 0,
+        "avg_loss": 0,
+        "wins": 0,
+        "losses": 0
+      }
+    },
+    "dead_cat_echo": {
+      "strategy_name": "Dead Cat Echo",
+      "result": {
+        "total_return": -0.0471139380609613,
+        "win_rate": 0.24,
+        "max_drawdown": 0.33219083281550665,
+        "profit_factor": 0.6212037626277436,
+        "sharpe_ratio": -3.5741835339897636,
+        "total_trades": 25,
+        "avg_win": 0.043124637524330524,
+        "avg_loss": -0.021922447038994295,
+        "wins": 6,
+        "losses": 19
+      }
+    },
+    "liquidity_vacuum_breakout": {
+      "strategy_name": "Liquidity Vacuum Breakout",
+      "result": {
+        "total_return": 0.0,
+        "win_rate": 0,
+        "max_drawdown": 0,
+        "profit_factor": 0,
+        "sharpe_ratio": 0,
+        "total_trades": 0,
+        "avg_win": 0,
+        "avg_loss": 0,
+        "wins": 0,
+        "losses": 0
+      }
+    }
+  }
+}

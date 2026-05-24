@@ -1,4 +1,4 @@
-"""
+﻿"""
 API Server - Main Entry Point
 
 架构：
@@ -19,14 +19,28 @@ from fastapi.middleware.cors import CORSMiddleware
 from api import api_router
 
 from infrastructure.logging import get_logger
-from runtime.orchestrator import get_runtime_orchestrator
-from runtime.orchestrator.supervisor import get_runtime_supervisor, RuntimeSupervisor
-from infrastructure.circuit_breaker_manager import get_circuit_breaker_manager
-from infrastructure.subscription_manager import SubscriptionManager, TopicRegistry
-from infrastructure.priority_queue import PriorityEventQueue
-from infrastructure.websocket import get_ws_gateway
+from runtime.kernel.orchestrator import get_runtime_orchestrator
+from runtime.kernel.orchestrator.supervisor import get_runtime_supervisor, RuntimeSupervisor
+from infrastructure.utilities.resilience.circuit_breaker import get_circuit_breaker_manager
+from infrastructure.messaging.subscription_manager import SubscriptionManager, TopicRegistry
+from infrastructure.utilities.priority_queue import PriorityEventQueue
+from infrastructure.messaging.websocket import get_ws_gateway
 
 logger = get_logger("api_server")
+
+
+def _parse_csv_env(name: str, default: str) -> list[str]:
+    return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
+
+
+def _get_cors_origins() -> list[str]:
+    explicit = os.getenv("CORS_ORIGINS") or os.getenv("API_CORS_ORIGINS")
+    if explicit:
+        return _parse_csv_env("CORS_ORIGINS", explicit) if os.getenv("CORS_ORIGINS") else _parse_csv_env("API_CORS_ORIGINS", explicit)
+
+    hosts = _parse_csv_env("FRONTEND_HOSTS", "localhost,127.0.0.1")
+    ports = _parse_csv_env("FRONTEND_PORTS", "3000,3001,3002,3003,3004")
+    return [f"http://{host}:{port}" for host in hosts for port in ports]
 
 
 @asynccontextmanager
@@ -70,18 +84,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-        "http://localhost:3002",
-        "http://127.0.0.1:3002",
-        "http://localhost:3003",
-        "http://127.0.0.1:3003",
-        "http://localhost:3004",
-        "http://127.0.0.1:3004",
-    ],
+    allow_origins=_get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -165,14 +168,14 @@ async def reset_circuit_breaker(name: str) -> Dict[str, str]:
 
 @runtime_router.get("/subscriptions")
 async def get_subscriptions() -> Dict[str, Any]:
-    from infrastructure.runtime.subscription_manager import SubscriptionManager
+    from infrastructure.messaging.subscription_manager import SubscriptionManager
     manager = SubscriptionManager()
     return manager.get_stats()
 
 
 @runtime_router.get("/queue")
 async def get_queue_stats() -> Dict[str, Any]:
-    from infrastructure.priority_queue import PriorityEventQueue
+    from infrastructure.utilities.priority_queue import PriorityEventQueue
     queue = PriorityEventQueue()
     return queue.get_stats()
 
@@ -181,18 +184,19 @@ app.include_router(runtime_router, prefix="/api/v1")
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8001))
+    host = os.getenv("API_HOST", "0.0.0.0")
+    port = int(os.getenv("API_PORT", os.getenv("PORT", "8001")))
     print("=" * 80)
     print("  Quantitative Trading System API Server")
     print("  with Runtime Orchestrator + RuntimeBus")
     print("=" * 80)
-    print(f"  Starting on: http://0.0.0.0:{port}")
-    print(f"  Swagger Docs: http://0.0.0.0:{port}/docs")
-    print(f"  Runtime Stats: http://0.0.0.0:{port}/api/v1/runtime/stats")
+    print(f"  Starting on: http://{host}:{port}")
+    print(f"  Swagger Docs: http://{host}:{port}/docs")
+    print(f"  Runtime Stats: http://{host}:{port}/api/v1/runtime/stats")
     print("=" * 80)
     uvicorn.run(
         "api_server:app",
-        host="0.0.0.0",
+        host=host,
         port=port,
         reload=True,
     )

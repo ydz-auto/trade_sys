@@ -17,7 +17,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel
 
-from domain.logging import get_logger
+import logging
 from application.queries.domain_queries import (
     get_historical_feature_matrix,
     get_available_features,
@@ -26,7 +26,7 @@ from application.queries.domain_queries import (
     get_materializer_feature_category_enum,
 )
 
-logger = get_logger("api.feature")
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/feature", tags=["Unified Feature Service"])
 
