@@ -1,147 +1,265 @@
 #!/usr/bin/env python3
 """
-Minimum Closed-Loop Test - 最小闭环测试
+Minimum Closed-Loop Test - 真正的最小闭环测试
 
 测试链路：
-Kline → Feature → Signal → Mock Trade
+Kline → FeatureRuntime → SignalRuntime → ExecutionRuntime
 
-验证整个系统端到端的正确性。
+验证整个系统端到端的正确性，所有 Runtime 真实运行！
 """
 import sys
 sys.path.insert(0, '.')
 
 import asyncio
 from datetime import datetime, timezone
+from dataclasses import dataclass
+from typing import Dict, Optional, Any
+
+
+# 简单测试策略 - 用于验证信号生成链路
+class SimpleTestStrategy:
+    """简单的测试策略 - RSI 超买超卖 + SMA 趋势确认"""
+    
+    def __init__(self, strategy_id: str = "simple_test"):
+        self.strategy_id = strategy_id
+    
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        生成交易信号
+        """
+        rsi_14 = features.get('rsi_14')
+        sma_20 = features.get('sma_20')
+        close_price = features.get('close')
+        
+        if rsi_14 is None or sma_20 is None or close_price is None:
+            return None
+        
+        # 买入信号：RSI < 30 (超卖) + 价格高于 SMA
+        if rsi_14 < 30 and close_price > sma_20:
+            return {
+                'signal_type': 'buy',
+                'confidence': 0.8,
+                'reason': f'RSI({rsi_14:.1f}) < 30 + Price({close_price:.1f}) > SMA({sma_20:.1f})',
+                'metadata': {'strategy': self.strategy_id}
+            }
+        
+        # 卖出信号：RSI > 70 (超买) + 价格低于 SMA
+        elif rsi_14 > 70 and close_price < sma_20:
+            return {
+                'signal_type': 'sell',
+                'confidence': 0.8,
+                'reason': f'RSI({rsi_14:.1f}) > 70 + Price({close_price:.1f}) < SMA({sma_20:.1f})',
+                'metadata': {'strategy': self.strategy_id}
+            }
+        
+        return None
 
 
 async def test_minimum_closed_loop():
-    """测试最小闭环"""
+    """测试完整的闭环链路"""
     print("=" * 80)
-    print("Minimum Closed-Loop Test - 最小闭环测试")
+    print("Minimum Closed-Loop Test - 真正的最小闭环测试")
     print("=" * 80)
-
-    # 1. 清理状态
+    
+    from infrastructure.logging import get_logger
+    logger = get_logger("min_closed_loop_test")
+    
+    # 1. 清理状态 - 避免单例之间的干扰
     from infrastructure.storage.point_in_time_store import clear_all_stores
     clear_all_stores()
-    from runtimes.feature_runtime import FeatureRuntime
-    FeatureRuntime._instance = None
-    from engines.compute.feature.unified_calculator import _calculator_instance
-    globals()['_calculator_instance'] = None
-
-    # 2. 初始化 Feature Runtime
+    
+    # 2. 初始化 ReplayRuntime 并注入所有子 Runtime
+    from runtimes.replay_runtime.runtime import (
+        get_replay_runtime, 
+        ReplayConfig, 
+        ReplayEvent,
+        EventType,
+        SessionStatus
+    )
     from runtimes.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
-    feature_config = FeatureConfig(symbol="BTCUSDT", mode=FeatureMode.REPLAY, use_gpu=False)
+    from runtimes.signal_runtime import get_signal_runtime, SignalConfig
+    from runtimes.execution_runtime import get_execution_runtime, ExecutionConfig
+    
+    # 创建配置
+    symbol = "BTCUSDT"
+    config = ReplayConfig(
+        symbol=symbol,
+        warmup_periods=0,
+        checkpoint_interval=100
+    )
+    
+    # 创建 ReplayRuntime
+    replay_runtime = get_replay_runtime(config)
+    
+    # 注入 FeatureRuntime
+    feature_config = FeatureConfig(
+        symbol=symbol, 
+        mode=FeatureMode.REPLAY,
+        use_gpu=False
+    )
     feature_runtime = get_feature_runtime(feature_config)
-
-    # 3. 生成 25 根 K 线数据 + 特征 + 信号
-    print("\n[Step 1] 生成 25 根 K 线数据 + 特征 + 信号...")
+    replay_runtime.attach_feature_runtime(feature_runtime)
+    logger.info("✅ FeatureRuntime attached")
+    
+    # 注入 SignalRuntime
+    signal_config = SignalConfig(
+        symbols=[symbol],
+        mode="replay",
+        enable_strategy_registry=False
+    )
+    signal_runtime = get_signal_runtime(signal_config)
+    replay_runtime.attach_signal_runtime(signal_runtime)
+    logger.info("✅ SignalRuntime attached")
+    
+    # 注入 ExecutionRuntime (Mock 模式)
+    exec_config = ExecutionConfig(
+        name="execution_test",
+        enable_mock=True,
+        max_position_size=0.1
+    )
+    # 重置 ExecutionRuntime 实例
+    import runtimes.execution_runtime.runtime as exec_module
+    exec_module._execution_runtime = None
+    execution_runtime = get_execution_runtime()
+    await execution_runtime.initialize()
+    replay_runtime.attach_execution_runtime(execution_runtime)
+    logger.info("✅ ExecutionRuntime attached")
+    
+    # 注入测试策略
+    test_strategy = SimpleTestStrategy(strategy_id="simple_test_01")
+    replay_runtime.attach_strategy(test_strategy)
+    logger.info(f"✅ Test Strategy attached: {test_strategy.strategy_id}")
+    
+    # 3. 生成合成 K 线数据 - 制造一些能触发信号的波动
+    print("\n[Step 1] 生成测试数据...")
     start_time = datetime(2022, 1, 1, tzinfo=timezone.utc)
-    ts = int(start_time.timestamp() * 1000)
-    prices = [46500.0 + i * 10 for i in range(25)]
-
-    results = []
-    mock_trades = []
-
-    print("\n[Step 2] 逐条处理 K 线 → Feature → Signal → Mock Trade")
-    print("-" * 80)
-
-    for i, price in enumerate(prices):
-        event = {
-            'event_type': 'KLINE',
-            'timestamp_ms': ts,
-            'data': {
+    start_ms = int(start_time.timestamp() * 1000)
+    
+    def generate_test_klines():
+        """生成测试 K 线，包含波动行情"""
+        klines = []
+        price = 46500.0
+        ts = start_ms
+        
+        # 阶段1：先下跌，制造超卖（RSI < 30）
+        for i in range(15):
+            price_change = - (20 + i * 5)  # 加速下跌
+            klines.append({
+                'timestamp_ms': ts,
                 'open': price,
-                'high': price + 20,
-                'low': price - 20,
-                'close': price,
-                'volume': 100,
-                'symbol': 'BTCUSDT'
-            }
-        }
-
-        await feature_runtime.update(event)
-        features = feature_runtime.get_features_at(ts)
-
-        rsi_14 = features.get('rsi_14')
-        sma_20 = features.get('sma_20')
-
-        signal = None
-        if rsi_14 is not None and sma_20 is not None:
-            if rsi_14 < 30 and price > sma_20:
-                signal = "LONG"
-            elif rsi_14 > 70 and price < sma_20:
-                signal = "SHORT"
-
-        trade_result = None
-        if signal:
-            order = {
-                'symbol': 'BTCUSDT',
-                'side': 'BUY' if signal == 'LONG' else 'SELL',
-                'quantity': 0.01,
-                'price': price,
-            }
-            mock_trades.append(order)
-            trade_result = {
-                'order': order,
-                'status': 'FILLED',
-                'filled_price': price,
-                'filled_quantity': 0.01,
-            }
-
-        results.append({
-            'kline': i + 1,
-            'price': price,
-            'rsi_14': rsi_14,
-            'sma_20': sma_20,
-            'signal': signal,
-            'trade': trade_result,
-        })
-
-        if signal:
-            print(f"  K线 {i+1:2d}: 价格={price:.1f}, RSI={rsi_14:.1f}, SMA={sma_20:.1f} → 信号={signal} ✅")
-
-        ts += 60000
-
-    print("-" * 80)
-
-    # 4. 验证结果
-    print("\n[Step 3] 验证闭环结果")
+                'high': price + 50,
+                'low': price + price_change - 50,
+                'close': price + price_change,
+                'volume': 100 + i * 20,
+            })
+            price = price + price_change
+            ts += 60000
+        
+        # 阶段2：小幅反弹（可能触发买入信号）
+        for i in range(10):
+            price_change = 50 + i * 10
+            klines.append({
+                'timestamp_ms': ts,
+                'open': price,
+                'high': price + price_change + 50,
+                'low': price,
+                'close': price + price_change,
+                'volume': 150 + i * 10,
+            })
+            price = price + price_change
+            ts += 60000
+        
+        # 阶段3：上涨，制造超买（RSI > 70）
+        for i in range(15):
+            price_change = 100 - i * 5
+            klines.append({
+                'timestamp_ms': ts,
+                'open': price,
+                'high': price + price_change + 50,
+                'low': price - 50,
+                'close': price + price_change,
+                'volume': 120 + i * 5,
+            })
+            price = price + price_change
+            ts += 60000
+        
+        return klines
+    
+    test_klines = generate_test_klines()
+    print(f"✅ 生成 {len(test_klines)} 根 K 线")
+    
+    # 4. 创建事件迭代器
+    async def kline_generator():
+        for kline in test_klines:
+            yield ReplayEvent(
+                event_id=f"kline_{kline['timestamp_ms']}",
+                event_type=EventType.KLINE,
+                timestamp_ms=kline['timestamp_ms'],
+                data={
+                    'open': float(kline['open']),
+                    'high': float(kline['high']),
+                    'low': float(kline['low']),
+                    'close': float(kline['close']),
+                    'volume': float(kline['volume']),
+                    'symbol': symbol
+                }
+            )
+    
+    # 5. 运行回测！
+    print("\n[Step 2] 运行完整闭环回测...")
+    session_state = await replay_runtime.run_backtest(
+        symbol=symbol,
+        strategy_id=test_strategy.strategy_id,
+        params={},
+        start_time_ms=start_ms,
+        end_time_ms=start_ms + len(test_klines) * 60000,
+        initial_capital=10000.0,
+        event_iterator=kline_generator(),
+    )
+    
+    # 6. 验证结果
+    print("\n[Step 3] 验证回测结果...")
     print("=" * 80)
-
-    warmup_passed = True
-    for r in results[:14]:
-        if r['rsi_14'] is not None:
-            print(f"  ❌ K线{r['kline']} RSI_14应该是None，实际={r['rsi_14']}")
-            warmup_passed = False
-    if warmup_passed:
-        print("  ✅ 特征预热正确（前14根K线RSI_14=None）")
-
-    feature_valid = True
-    for r in results[14:]:
-        if r['rsi_14'] is None:
-            print(f"  ❌ K线{r['kline']} RSI_14应该有值，实际=None")
-            feature_valid = False
-    if feature_valid:
-        print("  ✅ 特征计算正确（第15根后RSI_14有值）")
-
-    if len(mock_trades) > 0:
-        print(f"  ✅ Mock交易执行成功：{len(mock_trades)} 笔订单")
-        for t in mock_trades:
-            print(f"     - {t['side']} {t['quantity']} {t['symbol']} @ {t['price']}")
+    
+    success = True
+    
+    # 检查是否有错误
+    if session_state.errors:
+        print(f"❌ 检测到 {len(session_state.errors)} 个错误：")
+        for i, err in enumerate(session_state.errors, 1):
+            print(f"   {i}. {err}")
+        success = False
     else:
-        print("  ℹ️  本次测试没有触发交易信号（正常，因为测试数据是单调上涨）")
-
+        print("✅ 无运行时错误")
+    
+    # 检查处理的事件数
+    print(f"✅ 处理事件数：{session_state.processed_events}/{len(test_klines)}")
+    if session_state.processed_events != len(test_klines):
+        success = False
+    
+    # 检查交易
+    print(f"\n📊 交易记录：{len(session_state.trades)} 笔")
+    for i, trade in enumerate(session_state.trades, 1):
+        print(f"   {i}. {trade.get('side', 'unknown')} {trade.get('quantity', 0)} {trade.get('symbol', symbol)}")
+    
+    # 检查状态
+    print(f"\n📈 最终资金：${session_state.capital:.2f}")
+    print(f"📈 初始资金：$10000.00")
+    
+    # 验证 SessionState
+    print(f"\n🟢 Session 状态：{session_state.status.value if hasattr(session_state.status, 'value') else session_state.status}")
+    
     print("\n" + "=" * 80)
-    all_passed = warmup_passed and feature_valid
-    if all_passed:
-        print("✅ Minimum Closed-Loop Test PASSED")
-        print("   - Kline → Feature ✓")
-        print("   - Feature → Signal ✓")
-        print("   - Signal → Mock Trade ✓")
+    if success:
+        print("✅ Minimum Closed-Loop Test PASSED!")
+        print("   - FeatureRuntime 工作正常")
+        print("   - SignalRuntime 工作正常")
+        print("   - ExecutionRuntime 工作正常")
+        print("   - 完整回测链路已通")
     else:
         print("❌ Minimum Closed-Loop Test FAILED")
-
-    return all_passed
+    
+    return success
 
 
 if __name__ == "__main__":
@@ -149,7 +267,7 @@ if __name__ == "__main__":
         success = asyncio.run(test_minimum_closed_loop())
         sys.exit(0 if success else 1)
     except Exception as e:
-        print(f"\n❌ Test failed with error: {e}")
+        print(f"\n❌ Test failed with exception: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

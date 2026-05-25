@@ -275,6 +275,9 @@ class TimeCausalSignalRuntime:
         
         Returns:
             Signal 字典或 None
+        
+        Raises:
+            Exception: 当信号生成过程中发生错误时抛出异常（便于 ReplayRuntime 捕获）
         """
         # 1. 时间因果检查 — replay 模式下先推进时钟
         if self._mode == "replay":
@@ -329,7 +332,10 @@ class TimeCausalSignalRuntime:
             return signal
         except Exception as e:
             logger.error(f"Signal generation failed: {e}")
-            return None
+            import traceback
+            logger.error(traceback.format_exc())
+            # 重新抛出异常，让 ReplayRuntime 可以捕获并记录
+            raise
     
     async def _get_safe_features(
         self,
