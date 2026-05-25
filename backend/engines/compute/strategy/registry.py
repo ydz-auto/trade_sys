@@ -262,6 +262,13 @@ class StrategyBridge(BaseStrategy):
 
 # 完整的策略注册表 - 添加桥接版本
 _STRATEGY_REGISTRY: Dict[str, Type[BaseStrategy]] = {
+    # 短名称别名
+    "rsi": RSIOversoldStrategy,
+    "macd": MACDCrossStrategy,
+    "sma": SMACrossStrategy,
+    "ema": EMACrossStrategy,
+    "bb": BollingerBandsStrategy,
+    # 全称
     "rsi_oversold": RSIOversoldStrategy,
     "rsi_overbought": RSIOverboughtStrategy,
     "macd_cross": MACDCrossStrategy,
@@ -290,6 +297,48 @@ _STRATEGY_REGISTRY: Dict[str, Type[BaseStrategy]] = {
 }
 
 _STRATEGY_INFO: Dict[str, StrategyInfo] = {
+    # 短名称别名
+    "rsi": StrategyInfo(
+        strategy_id="rsi",
+        name="RSI (alias for rsi_oversold)",
+        description="RSI 超卖策略（短名称）",
+        direction="long",
+        default_params={"period": 14, "oversold": 30},
+        required_features=["rsi_14"]
+    ),
+    "macd": StrategyInfo(
+        strategy_id="macd",
+        name="MACD (alias for macd_cross)",
+        description="MACD 交叉策略（短名称）",
+        direction="both",
+        default_params={},
+        required_features=["macd", "macd_signal"]
+    ),
+    "sma": StrategyInfo(
+        strategy_id="sma",
+        name="SMA (alias for sma_cross)",
+        description="SMA 交叉策略（短名称）",
+        direction="both",
+        default_params={"fast": 10, "slow": 50},
+        required_features=["sma_10", "sma_50"]
+    ),
+    "ema": StrategyInfo(
+        strategy_id="ema",
+        name="EMA (alias for ema_cross)",
+        description="EMA 交叉策略（短名称）",
+        direction="both",
+        default_params={"fast": 10, "slow": 50},
+        required_features=["ema_10", "ema_50"]
+    ),
+    "bb": StrategyInfo(
+        strategy_id="bb",
+        name="Bollinger Bands (alias for bollinger_bands)",
+        description="布林带策略（短名称）",
+        direction="both",
+        default_params={},
+        required_features=["bb_upper", "bb_lower", "close"]
+    ),
+    # 全称
     "rsi_oversold": StrategyInfo(
         strategy_id="rsi_oversold",
         name="RSI Oversold",

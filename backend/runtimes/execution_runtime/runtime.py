@@ -469,7 +469,8 @@ class ExecutionRuntime(BaseRuntime):
 
     async def _check_risk(self, decision: Dict[str, Any]) -> Dict[str, Any]:
         if self._risk_engine:
-            return await self._risk_engine.check(decision)
+            result = await self._risk_engine.validate(decision)
+            return {"approved": result.passed, "reason": result.reason}
         return {"approved": True, "reason": "Risk engine not available"}
 
     async def _execute_decision(self, decision: Dict[str, Any]) -> Optional[Dict[str, Any]]:

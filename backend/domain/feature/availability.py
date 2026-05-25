@@ -19,7 +19,7 @@ from functools import wraps
 import warnings
 
 from infrastructure.logging import get_logger
-from infrastructure.utilities.runtime_clock import get_clock
+from infrastructure.utilities.runtime_clock import get_clock, ClockMode
 
 logger = get_logger("infrastructure.feature_availability")
 
@@ -254,9 +254,12 @@ class SystematicAvailabilityGuard:
         """
         if clock is None:
             clock = get_clock()
-
+        
         if query_time is None:
             query_time = clock.available_at_ms()
+        
+        if clock.mode == ClockMode.REPLAY:
+            return AvailabilityStatus.AVAILABLE
 
         rule = self._rules.get(feature_name)
         if rule is None:

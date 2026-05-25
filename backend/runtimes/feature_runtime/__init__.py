@@ -289,19 +289,20 @@ class FeatureRuntime:
                 return
         
         # 2. 根据事件类型处理
-        if event.event_type == "kline":
+        event_type_lower = event.event_type.lower() if isinstance(event.event_type, str) else ""
+        if event_type_lower == "kline":
             await self._process_kline_event(event)
-        elif event.event_type == "trade":
+        elif event_type_lower == "trade":
             await self._process_trade_event(event)
-        elif event.event_type == "orderbook":
+        elif event_type_lower == "orderbook":
             await self._process_orderbook_event(event)
-        elif event.event_type == "funding":
+        elif event_type_lower == "funding":
             await self._process_funding_event(event)
-        elif event.event_type == "liquidation":
+        elif event_type_lower == "liquidation":
             await self._process_liquidation_event(event)
-        elif event.event_type == "open_interest":
+        elif event_type_lower == "open_interest":
             await self._process_open_interest_event(event)
-        elif event.event_type == "mark_price":
+        elif event_type_lower == "mark_price":
             await self._process_mark_price_event(event)
         
         # 3. 推进时钟

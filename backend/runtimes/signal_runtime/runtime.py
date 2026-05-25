@@ -163,6 +163,7 @@ class TimeCausalSignalRuntime:
             self.config.symbols.append(symbol)
         if mode:
             self.config.mode = mode
+            self._mode = mode  # 同步设置 _mode，否则 generate_signal() 中的时间检查会失败
             self._setup_mode()
         
         logger.info(f"Signal Runtime initialized for {self.config.symbols}")

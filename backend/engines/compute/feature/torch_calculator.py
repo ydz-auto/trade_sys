@@ -1,4 +1,4 @@
-﻿"""
+"""
 PyTorch Feature Calculator - PyTorch 统一特征计算器
 
 使用 PyTorch 实现，支持：
@@ -223,7 +223,8 @@ class TorchFeatureCalculator:
         
         for period in [7, 14, 21]:
             if n < period + 1:
-                results[f"rsi_{period}"] = torch.full((n,), 50.0, device=device)
+                # 数据不足时返回 NaN（None在Tensor中表示为NaN）
+                results[f"rsi_{period}"] = torch.full((n,), float('nan'), device=device)
                 continue
             
             deltas = closes[1:] - closes[:-1]
@@ -246,7 +247,8 @@ class TorchFeatureCalculator:
                 torch.tensor(100.0, device=device)
             )
             
-            rsi = torch.cat([torch.full((period,), 50.0, device=device), rsi])
+            # 前period个值设为NaN（数据不足）
+            rsi = torch.cat([torch.full((period,), float('nan'), device=device), rsi])
             results[f"rsi_{period}"] = rsi[:n]
         
         return results
@@ -257,13 +259,19 @@ class TorchFeatureCalculator:
         n = len(closes)
         
         for window in [10, 20, 50, 100]:
+            if n < window:
+                # 数据不足时返回 NaN
+                results[f"sma_{window}"] = torch.full((n,), float('nan'), device=device)
+                continue
+            
             kernel = torch.ones(window, device=device) / window
             kernel = kernel.view(1, 1, -1)
             
             padded = torch.nn.functional.pad(closes.view(1, 1, -1), (window - 1, 0))
             sma = torch.nn.functional.conv1d(padded, kernel).squeeze()
             
-            sma = torch.cat([closes[:window-1], sma])
+            # 前window-1个值设为NaN（数据不足）
+            sma = torch.cat([torch.full((window - 1,), float('nan'), device=device), sma])
             results[f"sma_{window}"] = sma[:n]
         
         return results
@@ -500,7 +508,7 @@ class TorchFeatureCalculator:
         
         for period in [7, 14, 21]:
             if len(prices) < period + 1:
-                result[f"rsi_{period}"] = 50.0
+                result[f"rsi_{period}"] = None  # 数据不足时返回 None，策略层需要过滤
                 continue
             
             deltas = np.diff(prices[-(period + 1):])
@@ -529,7 +537,7 @@ class TorchFeatureCalculator:
             if len(prices) >= window:
                 result[f"sma_{window}"] = float(np.mean(prices[-window:]))
             else:
-                result[f"sma_{window}"] = prices[-1] if prices else 0.0
+                result[f"sma_{window}"] = None  # 数据不足时返回 None
         
         return result
     
@@ -543,7 +551,7 @@ class TorchFeatureCalculator:
                 ema = pd.Series(prices).ewm(span=window, adjust=False).mean().iloc[-1]
                 result[f"ema_{window}"] = float(ema)
             else:
-                result[f"ema_{window}"] = prices[-1] if prices else 0.0
+                result[f"ema_{window}"] = None  # 数据不足时返回 None
         
         return result
     
@@ -552,7 +560,7 @@ class TorchFeatureCalculator:
         prices = list(self._price_buffer.get(symbol, []))
         
         if len(prices) < 35:
-            return {"macd": 0.0, "macd_signal": 0.0, "macd_hist": 0.0}
+            return {"macd": None, "macd_signal": None, "macd_hist": None}  # 数据不足时返回 None
         
         series = pd.Series(prices)
         ema_fast = series.ewm(span=12, adjust=False).mean()
@@ -573,7 +581,7 @@ class TorchFeatureCalculator:
         prices = list(self._price_buffer.get(symbol, []))
         
         if len(prices) < 20:
-            return {"bb_upper": 0.0, "bb_middle": 0.0, "bb_lower": 0.0, "bb_width": 0.0}
+            return {"bb_upper": None, "bb_middle": None, "bb_lower": None, "bb_width": None}  # 数据不足时返回 None
         
         recent = prices[-20:]
         sma = np.mean(recent)
@@ -591,7 +599,7 @@ class TorchFeatureCalculator:
         volumes = list(self._volume_buffer.get(symbol, []))
         
         if len(volumes) < 20:
-            return {"volume_ratio": 1.0, "volume_ma": 0.0}
+            return {"volume_ratio": None, "volume_ma": None}  # 数据不足时返回 None
         
         current_vol = volumes[-1]
         avg_vol = np.mean(volumes[-20:])
@@ -608,7 +616,7 @@ class TorchFeatureCalculator:
         prices = list(self._price_buffer.get(symbol, []))
         
         if len(prices) < 15:
-            return {"atr_14": 0.0}
+            return {"atr_14": None}  # 数据不足时返回 None
         
         tr_list = []
         for i in range(1, min(15, len(prices))):
@@ -628,7 +636,7 @@ class TorchFeatureCalculator:
         prices = list(self._price_buffer.get(symbol, []))
         
         if len(prices) < 11:
-            return {"momentum_10": 0.0}
+            return {"momentum_10": None}  # 数据不足时返回 None
         
         momentum_10 = (prices[-1] - prices[-11]) / prices[-11] if prices[-11] > 0 else 0.0
         

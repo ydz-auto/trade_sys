@@ -274,7 +274,7 @@ class UnifiedFeatureCalculator:
         
         for period in [7, 14, 21]:
             if len(prices) < period + 1:
-                result[f"rsi_{period}"] = 50.0
+                result[f"rsi_{period}"] = None  # 数据不足时返回 None
                 continue
             
             deltas = np.diff(prices[-(period + 1):])
@@ -303,7 +303,7 @@ class UnifiedFeatureCalculator:
             if len(prices) >= window:
                 result[f"sma_{window}"] = np.mean(prices[-window:])
             else:
-                result[f"sma_{window}"] = prices[-1] if prices else 0.0
+                result[f"sma_{window}"] = None  # 数据不足时返回 None
         
         return result
     
@@ -317,7 +317,7 @@ class UnifiedFeatureCalculator:
                 ema = pd.Series(prices).ewm(span=window, adjust=False).mean().iloc[-1]
                 result[f"ema_{window}"] = ema
             else:
-                result[f"ema_{window}"] = prices[-1] if prices else 0.0
+                result[f"ema_{window}"] = None  # 数据不足时返回 None
         
         return result
     
@@ -326,7 +326,7 @@ class UnifiedFeatureCalculator:
         prices = list(self._price_buffer.get(symbol, []))
         
         if len(prices) < 35:
-            return {"macd": 0.0, "macd_signal": 0.0, "macd_hist": 0.0}
+            return {"macd": None, "macd_signal": None, "macd_hist": None}  # 数据不足时返回 None
         
         series = pd.Series(prices)
         ema_fast = series.ewm(span=12, adjust=False).mean()
@@ -347,7 +347,7 @@ class UnifiedFeatureCalculator:
         prices = list(self._price_buffer.get(symbol, []))
         
         if len(prices) < 20:
-            return {"bb_upper": 0.0, "bb_middle": 0.0, "bb_lower": 0.0, "bb_width": 0.0}
+            return {"bb_upper": None, "bb_middle": None, "bb_lower": None, "bb_width": None}
         
         recent = prices[-20:]
         sma = np.mean(recent)
@@ -365,7 +365,7 @@ class UnifiedFeatureCalculator:
         volumes = list(self._volume_buffer.get(symbol, []))
         
         if len(volumes) < 20:
-            return {"volume_ratio": 1.0, "volume_ma": 0.0}
+            return {"volume_ratio": None, "volume_ma": None}
         
         current_vol = volumes[-1]
         avg_vol = np.mean(volumes[-20:])
@@ -382,7 +382,7 @@ class UnifiedFeatureCalculator:
         prices = list(self._price_buffer.get(symbol, []))
         
         if len(prices) < 15:
-            return {"atr_14": 0.0}
+            return {"atr_14": None}
         
         tr_list = []
         for i in range(1, min(15, len(prices))):
@@ -402,7 +402,7 @@ class UnifiedFeatureCalculator:
         prices = list(self._price_buffer.get(symbol, []))
         
         if len(prices) < 11:
-            return {"momentum_10": 0.0}
+            return {"momentum_10": None}
         
         momentum_10 = (prices[-1] - prices[-11]) / prices[-11] if prices[-11] > 0 else 0.0
         

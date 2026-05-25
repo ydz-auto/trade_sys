@@ -211,10 +211,7 @@ class RuntimeClock:
 
     def _compute_available_at(self) -> int:
         """计算事件可用时间"""
-        if self.mode == ClockMode.REPLAY:
-            return self._exchange_time + self._network_latency_ms + self._processing_delay_ms
-        else:
-            return self._current_timestamp_ms + self._processing_delay_ms
+        return self._exchange_time
 
     def _floor_to_kline(self, timestamp_ms: int) -> int:
         """对齐到 K 线开始时间"""

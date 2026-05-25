@@ -236,7 +236,6 @@ class TimeCausalReplayRuntime:
         start_time_ms: Optional[int] = None,
         end_time_ms: Optional[int] = None,
         initial_capital: float = 10000.0,
-        data_path: Optional[str] = None
     ):
         """
         创建并启动 replay session
@@ -284,10 +283,6 @@ class TimeCausalReplayRuntime:
         # 3. 初始化基础设施
         await self._initialize_session()
         
-        # 4. 加载数据源
-        if data_path:
-            await self.load_dataset(data_path)
-        
         # 5. 触发回调
         if self._on_session_start_callback:
             await self._on_session_start_callback(self._session_state)
@@ -302,13 +297,14 @@ class TimeCausalReplayRuntime:
     
     async def _initialize_session(self):
         """初始化会话"""
-        # 重置时钟
+        # 重置时钟（先切回 REPLAY 模式，防止被其他 Runtime 改成 LIVE）
+        set_clock_mode(ClockMode.REPLAY)
         self._clock.reset()
         self._clock.advance_to(self.config.start_time_ms)
         
         # 重置其他基础设施
-        self._event_ordering.reset()
-        self._warmup_manager.reset()
+        self._event_ordering.reset_sequence()
+        self._warmup_manager.reset_all()
         
         # 通知注入的 Runtime 初始化
         if self._feature_runtime:
@@ -318,14 +314,25 @@ class TimeCausalReplayRuntime:
             await self._signal_runtime.initialize()
         
         if self._execution_runtime:
-            await self._execution_runtime.initialize(initial_capital=self._session_state.capital)
+            await self._execution_runtime.initialize()
     
     async def _perform_warmup(self):
-        """执行预热（防止冷启动偏差）"""
+        """执行预热（防止冷启动偏差）
+        
+        注意：如果热身事件数和主循环相同，会导致主循环无事件可处理。
+        合成数据测试建议 warmup_periods=0。
+        """
         logger.info(f"Performing warmup for {self.config.warmup_periods} periods...")
         
         if self._event_iterator is None:
             return
+        
+        if self.config.warmup_periods <= 0:
+            logger.info("Warmup skipped (warmup_periods <= 0)")
+            return
+        
+        # 确保时钟在 REPLAY 模式
+        set_clock_mode(ClockMode.REPLAY)
         
         warmup_count = 0
         async for event in self._event_iterator:
@@ -337,7 +344,13 @@ class TimeCausalReplayRuntime:
             
             # 只更新特征，不生成信号
             if self._feature_runtime:
-                await self._feature_runtime.update(event)
+                event_type_str = event.event_type.value if hasattr(event.event_type, "value") else str(event.event_type)
+                feature_event = {
+                    "event_type": event_type_str,
+                    "timestamp_ms": event.timestamp_ms,
+                    "data": event.data,
+                }
+                await self._feature_runtime.update(feature_event)
             
             warmup_count += 1
         
@@ -470,14 +483,22 @@ class TimeCausalReplayRuntime:
         self._clock.advance_to(event.timestamp_ms)
         
         # 4. 事件确定性排序
+        event_type_str = event.event_type.value if hasattr(event.event_type, "value") else str(event.event_type)
         ordered_event = create_deterministic_event(
-            event=event.data,
-            timestamp_ms=event.timestamp_ms
+            event_type=event_type_str,
+            timestamp=event.timestamp_ms,
+            data=event.data,
+            symbol=self.config.symbol,
         )
         
-        # 5. 特征计算
+        # 5. 特征计算 — 直接用原始 ReplayEvent 传给 FeatureRuntime（它有 timestamp_ms）
         if self._feature_runtime:
-            await self._feature_runtime.update(ordered_event)
+            feature_event = {
+                "event_type": event_type_str,
+                "timestamp_ms": event.timestamp_ms,
+                "data": event.data,
+            }
+            await self._feature_runtime.update(feature_event)
         
         # 6. 信号生成
         signal = None
@@ -503,11 +524,13 @@ class TimeCausalReplayRuntime:
         self._session_state.equity_curve.append(self._session_state.capital)
         
         # 8. 生成不可变快照
-        snapshot = self.create_snapshot({
-            'capital': self._session_state.capital,
-            'event_count': self._session_state.processed_events,
-            'timestamp_ms': event.timestamp_ms
-        })
+        snapshot = self.create_snapshot(
+            features={
+                'capital': self._session_state.capital,
+                'event_count': self._session_state.processed_events,
+                'timestamp_ms': event.timestamp_ms
+            }
+        )
         
         # 9. 一致性验证
         self._consistency_verifier.record_replay(event.timestamp_ms, snapshot)
@@ -569,17 +592,12 @@ class TimeCausalReplayRuntime:
         snapshot_id: Optional[str] = None
     ) -> ImmutableFeatureSnapshot:
         """创建不可变快照"""
-        snapshot = create_immutable_snapshot(
-            features=features,
-            snapshot_id=snapshot_id,
-            metadata={
-                "symbol": self.config.symbol,
-                "mode": "replay",
-                "timestamp": self._clock.available_at_ms()
-            }
+        return create_immutable_snapshot(
+            self.config.symbol,
+            features,
+            self._clock.available_at_ms(),
+            source="replay",
         )
-        self._snapshot_store.store(snapshot)
-        return snapshot
 
     async def snapshot(self) -> Dict[str, Any]:
         ts = now_ms()
@@ -623,7 +641,8 @@ class TimeCausalReplayRuntime:
         start_time_ms: int,
         end_time_ms: int,
         initial_capital: float = 10000.0,
-        data_path: Optional[str] = None
+        data_path: Optional[str] = None,
+        event_iterator=None,
     ) -> SessionState:
         """
         运行完整回测（便捷方法）
@@ -635,28 +654,32 @@ class TimeCausalReplayRuntime:
             start_time_ms: 开始时间
             end_time_ms: 结束时间
             initial_capital: 初始资金
-            data_path: 数据源路径
+            data_path: 数据源路径（如果 event_iterator 为 None）
+            event_iterator: 可选的异步事件迭代器（优先级高于 data_path）
         
         Returns:
             SessionState: 回测结果
         """
-        # 1. 加载策略
         from engines.compute.strategy.registry import get_strategy
         self._strategy = get_strategy(strategy_id, params)
         
-        # 2. 启动会话
         await self.start_session(
             symbol=symbol,
             start_time_ms=start_time_ms,
             end_time_ms=end_time_ms,
             initial_capital=initial_capital,
-            data_path=data_path
         )
         
-        # 3. 运行事件流
+        if event_iterator is not None:
+            self._event_iterator = event_iterator
+            self._session_state.total_events = 0
+        elif data_path:
+            await self.load_dataset(data_path)
+        else:
+            raise ValueError("Either data_path or event_iterator must be provided")
+        
         await self.run_event_stream()
         
-        # 4. 返回结果
         return self.get_session_state()
 
 

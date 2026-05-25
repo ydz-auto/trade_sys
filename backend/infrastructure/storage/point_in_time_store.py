@@ -167,12 +167,16 @@ class PointInTimeFeatureStore:
             return None
         
         if available_at is None:
-            rule = self._get_guard().get_rule(feature_name)
-            if rule:
-                from infrastructure.utilities.runtime_clock import get_clock
-                available_at = rule.compute_available_at(feature_timestamp, get_clock())
-            else:
+            from infrastructure.utilities.runtime_clock import get_clock, ClockMode
+            clock = get_clock()
+            if clock.mode == ClockMode.REPLAY:
                 available_at = feature_timestamp
+            else:
+                rule = self._get_guard().get_rule(feature_name)
+                if rule:
+                    available_at = rule.compute_available_at(feature_timestamp, clock)
+                else:
+                    available_at = feature_timestamp
         
         if delay_ms is None:
             rule = self._get_guard().get_rule(feature_name)
