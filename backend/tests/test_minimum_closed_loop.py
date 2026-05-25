@@ -78,7 +78,7 @@ async def test_minimum_closed_loop():
     )
     from runtimes.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
     from runtimes.signal_runtime import get_signal_runtime, SignalConfig
-    from runtimes.execution_runtime import get_execution_runtime, ExecutionConfig
+    from runtimes.execution_runtime.runtime import get_execution_runtime, ExecutionConfig
     
     # 创建配置
     symbol = "BTCUSDT"
@@ -112,11 +112,6 @@ async def test_minimum_closed_loop():
     logger.info("✅ SignalRuntime attached")
     
     # 注入 ExecutionRuntime (Mock 模式)
-    exec_config = ExecutionConfig(
-        name="execution_test",
-        enable_mock=True,
-        max_position_size=0.1
-    )
     # 重置 ExecutionRuntime 实例
     import runtimes.execution_runtime.runtime as exec_module
     exec_module._execution_runtime = None
@@ -125,10 +120,9 @@ async def test_minimum_closed_loop():
     replay_runtime.attach_execution_runtime(execution_runtime)
     logger.info("✅ ExecutionRuntime attached")
     
-    # 注入测试策略
-    test_strategy = SimpleTestStrategy(strategy_id="simple_test_01")
-    replay_runtime.attach_strategy(test_strategy)
-    logger.info(f"✅ Test Strategy attached: {test_strategy.strategy_id}")
+    # 注入测试策略 - 使用已注册的策略 "rsi"
+    # ReplayRuntime 会通过 run_backtest() 自动获取策略
+    logger.info("✅ Test will use registered strategy 'rsi'")
     
     # 3. 生成合成 K 线数据 - 制造一些能触发信号的波动
     print("\n[Step 1] 生成测试数据...")
@@ -209,8 +203,8 @@ async def test_minimum_closed_loop():
     print("\n[Step 2] 运行完整闭环回测...")
     session_state = await replay_runtime.run_backtest(
         symbol=symbol,
-        strategy_id=test_strategy.strategy_id,
-        params={},
+        strategy_id="rsi",  # 使用已注册的策略
+        params={"oversold": 30, "overbought": 70},
         start_time_ms=start_ms,
         end_time_ms=start_ms + len(test_klines) * 60000,
         initial_capital=10000.0,
