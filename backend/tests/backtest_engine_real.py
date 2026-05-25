@@ -555,4 +555,4 @@ def print_summary(summary: Dict):
         wins = stats['wins']
         losses = stats['losses']
         total = wins + losses
-        total_pnl = stats['total_pnl
+        total_pnl = stats['total_pnl']

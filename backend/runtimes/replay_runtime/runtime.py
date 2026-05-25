@@ -176,6 +176,7 @@ class TimeCausalReplayRuntime:
         # 5. Event 源和队列
         self._event_source = None
         self._event_iterator = None
+        self._warmup_data = None  # 预热数据副本（不消耗主迭代器）
         self._event_queue = asyncio.Queue()
         
         # 6. 控制标志
@@ -319,30 +320,27 @@ class TimeCausalReplayRuntime:
     async def _perform_warmup(self):
         """执行预热（防止冷启动偏差）
         
-        注意：如果热身事件数和主循环相同，会导致主循环无事件可处理。
+        注意：预热使用数据的 COPY，不消耗主循环迭代器。
         合成数据测试建议 warmup_periods=0。
         """
         logger.info(f"Performing warmup for {self.config.warmup_periods} periods...")
-        
-        if self._event_iterator is None:
-            return
         
         if self.config.warmup_periods <= 0:
             logger.info("Warmup skipped (warmup_periods <= 0)")
             return
         
-        # 确保时钟在 REPLAY 模式
+        if self._warmup_data is None or len(self._warmup_data) == 0:
+            logger.info("Warmup skipped (no warmup data available)")
+            return
+        
         set_clock_mode(ClockMode.REPLAY)
         
-        warmup_count = 0
-        async for event in self._event_iterator:
-            if warmup_count >= self.config.warmup_periods:
-                break
-            
-            # 推进时钟
+        warmup_data = list(self._warmup_data[:self.config.warmup_periods])
+        logger.info(f"Warmup data prepared: {len(warmup_data)} events (copy)")
+        
+        for event in warmup_data:
             self._clock.advance_to(event.timestamp_ms)
             
-            # 只更新特征，不生成信号
             if self._feature_runtime:
                 event_type_str = event.event_type.value if hasattr(event.event_type, "value") else str(event.event_type)
                 feature_event = {
@@ -351,10 +349,8 @@ class TimeCausalReplayRuntime:
                     "data": event.data,
                 }
                 await self._feature_runtime.update(feature_event)
-            
-            warmup_count += 1
         
-        logger.info(f"Warmup completed: {warmup_count} events processed")
+        logger.info(f"Warmup completed: {len(warmup_data)} events processed (using copy)")
     
     async def load_dataset(self, data_path: str):
         """加载事件数据源（强制时间归一化）"""
@@ -394,6 +390,8 @@ class TimeCausalReplayRuntime:
             ]
             
             # 创建事件迭代器（强制单调检查）
+            warmup_events = []
+            
             async def event_generator():
                 for _, row in df.iterrows():
                     ts_ms = int(row['timestamp_ms'])
@@ -414,9 +412,11 @@ class TimeCausalReplayRuntime:
                             'symbol': self.config.symbol
                         }
                     )
+                    warmup_events.append(event)
                     yield event
             
             self._event_iterator = event_generator()
+            self._warmup_data = warmup_events  # 保存预热数据副本
             self._session_state.total_events = len(df)
             
             logger.info(f"Dataset loaded: {len(df)} events, "
@@ -465,83 +465,90 @@ class TimeCausalReplayRuntime:
     
     async def _process_event(self, event: ReplayEvent):
         """处理单个事件（时间因果安全）"""
-        # 0. 强制验证时间类型（Runtime 内部必须是 int）
-        if not isinstance(event.timestamp_ms, int):
-            raise TypeError(
-                f"Event timestamp must be int, got {type(event.timestamp_ms).__name__}: {event.timestamp_ms}"
-            )
-        
-        # 1. 时间因果检查
-        if event.timestamp_ms < self._clock.available_at_ms():
-            logger.warning(f"Event time {event.timestamp_ms} is in the past! Skipping.")
-            return
-        
-        # 2. 单调递增检查
-        check_monotonic(event.timestamp_ms)
-        
-        # 3. 推进时钟
-        self._clock.advance_to(event.timestamp_ms)
-        
-        # 4. 事件确定性排序
-        event_type_str = event.event_type.value if hasattr(event.event_type, "value") else str(event.event_type)
-        ordered_event = create_deterministic_event(
-            event_type=event_type_str,
-            timestamp=event.timestamp_ms,
-            data=event.data,
-            symbol=self.config.symbol,
-        )
-        
-        # 5. 特征计算 — 直接用原始 ReplayEvent 传给 FeatureRuntime（它有 timestamp_ms）
-        if self._feature_runtime:
-            feature_event = {
-                "event_type": event_type_str,
-                "timestamp_ms": event.timestamp_ms,
-                "data": event.data,
-            }
-            await self._feature_runtime.update(feature_event)
-        
-        # 6. 信号生成
-        signal = None
-        if self._signal_runtime and self._strategy:
-            features = await self._feature_runtime.get_features(event.timestamp_ms)
-            signal = await self._signal_runtime.generate_signal(
-                self._strategy,
-                features,
-                event.timestamp_ms
-            )
-        
-        # 7. 执行
-        if signal and self._execution_runtime:
-            trade_result = await self._execution_runtime.execute_signal(signal)
+        try:
+            # 0. 强制验证时间类型（Runtime 内部必须是 int）
+            if not isinstance(event.timestamp_ms, int):
+                raise TypeError(
+                    f"Event timestamp must be int, got {type(event.timestamp_ms).__name__}: {event.timestamp_ms}"
+                )
             
-            if trade_result:
-                self._session_state.trades.append(trade_result)
-                self._session_state.capital += trade_result.get('pnl', 0)
-        
-        # 8. 更新状态
-        self._session_state.current_time_ms = event.timestamp_ms
-        self._session_state.processed_events += 1
-        self._session_state.equity_curve.append(self._session_state.capital)
-        
-        # 8. 生成不可变快照
-        snapshot = self.create_snapshot(
-            features={
-                'capital': self._session_state.capital,
-                'event_count': self._session_state.processed_events,
-                'timestamp_ms': event.timestamp_ms
-            }
-        )
-        
-        # 9. 一致性验证
-        self._consistency_verifier.record_replay(event.timestamp_ms, snapshot)
-        
-        # 10. 触发回调
-        if self._on_event_callback:
-            await self._on_event_callback(event, self._session_state)
-        
-        # 11. 检查点
-        if self._session_state.processed_events % self.config.checkpoint_interval == 0:
-            logger.info(f"Checkpoint: {self._session_state.processed_events} events processed")
+            # 1. 时间因果检查
+            if event.timestamp_ms < self._clock.available_at_ms():
+                logger.warning(f"Event time {event.timestamp_ms} is in the past! Skipping.")
+                return
+            
+            # 2. 单调递增检查
+            check_monotonic(event.timestamp_ms)
+            
+            # 3. 推进时钟
+            self._clock.advance_to(event.timestamp_ms)
+            
+            # 4. 事件确定性排序
+            event_type_str = event.event_type.value if hasattr(event.event_type, "value") else str(event.event_type)
+            ordered_event = create_deterministic_event(
+                event_type=event_type_str,
+                timestamp=event.timestamp_ms,
+                data=event.data,
+                symbol=self.config.symbol,
+            )
+            
+            # 5. 特征计算 — 直接用原始 ReplayEvent 传给 FeatureRuntime（它有 timestamp_ms）
+            if self._feature_runtime:
+                feature_event = {
+                    "event_type": event_type_str,
+                    "timestamp_ms": event.timestamp_ms,
+                    "data": event.data,
+                }
+                await self._feature_runtime.update(feature_event)
+            
+            # 6. 信号生成
+            signal = None
+            if self._signal_runtime and self._strategy:
+                features = await self._feature_runtime.get_features(event.timestamp_ms)
+                signal = await self._signal_runtime.generate_signal(
+                    self._strategy,
+                    features,
+                    event.timestamp_ms
+                )
+            
+            # 7. 执行
+            if signal and self._execution_runtime:
+                trade_result = await self._execution_runtime.execute_signal(signal)
+                
+                if trade_result:
+                    self._session_state.trades.append(trade_result)
+                    self._session_state.capital += trade_result.get('pnl', 0)
+            
+            # 8. 更新状态
+            self._session_state.current_time_ms = event.timestamp_ms
+            self._session_state.processed_events += 1
+            self._session_state.equity_curve.append(self._session_state.capital)
+            
+            # 8. 生成不可变快照
+            snapshot = self.create_snapshot(
+                features={
+                    'capital': self._session_state.capital,
+                    'event_count': self._session_state.processed_events,
+                    'timestamp_ms': event.timestamp_ms
+                }
+            )
+            
+            # 9. 一致性验证
+            self._consistency_verifier.record_replay(event.timestamp_ms, snapshot)
+            
+            # 10. 触发回调
+            if self._on_event_callback:
+                await self._on_event_callback(event, self._session_state)
+            
+            # 11. 检查点
+            if self._session_state.processed_events % self.config.checkpoint_interval == 0:
+                logger.info(f"Checkpoint: {self._session_state.processed_events} events processed")
+        except Exception as e:
+            error_msg = f"Error processing event {event.event_id} at {event.timestamp_ms}: {str(e)}"
+            logger.error(error_msg)
+            import traceback
+            logger.error(traceback.format_exc())
+            self._session_state.errors.append(error_msg)
     
     async def step(self):
         """单步执行"""

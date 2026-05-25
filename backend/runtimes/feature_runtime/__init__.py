@@ -598,6 +598,17 @@ class FeatureRuntime:
             "mode": self.config.mode.value,
             "running": self._running,
         }
+    
+    def reset(self):
+        """重置 FeatureRuntime 状态 - 用于切换 symbol/mode 时清理旧状态"""
+        if hasattr(self, '_pit_store'):
+            self._pit_store.clear()
+        if hasattr(self, '_calculator'):
+            self._calculator._price_buffer.clear()
+            self._calculator._volume_buffer.clear()
+            self._calculator._high_buffer.clear()
+            self._calculator._low_buffer.clear()
+        logger.info(f"FeatureRuntime reset for {self.config.symbol}")
 
 
 # 全局实例

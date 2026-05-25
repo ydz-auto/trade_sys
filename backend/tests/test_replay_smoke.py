@@ -85,14 +85,20 @@ async def test_replay_smoke():
     print(f"  处理事件数: {session_state.processed_events}")
     print(f"  交易次数: {len(session_state.trades)}")
     print(f"  初始资金: ${session_state.capital:,.2f}")
+    print(f"  错误数: {len(session_state.errors)}")
     
-    success = session_state.processed_events > 0
+    success = session_state.processed_events > 0 and len(session_state.errors) == 0
     if success:
         print("\n✅ Replay Smoke Test PASSED")
         print("   - 事件处理正常")
+        print("   - 无运行时错误")
         print("   - 回测链路完整")
     else:
         print("\n❌ Replay Smoke Test FAILED")
+        if len(session_state.errors) > 0:
+            print(f"   - 检测到 {len(session_state.errors)} 个运行时错误:")
+            for i, err in enumerate(session_state.errors, 1):
+                print(f"     {i}. {err}")
         
     return success
 

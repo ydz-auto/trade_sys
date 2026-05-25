@@ -32,6 +32,7 @@ from engines.adapters.contracts import StandardEvent, Source, EventType
 from infrastructure.logging import get_logger
 from infrastructure.utilities.resilience.data_fallback import (
     get_multi_channel_manager,
+    get_data_fallback_manager,
     DataChannelType,
     PriceData
 )
@@ -94,8 +95,8 @@ class BinanceWebSocketAdapter:
     - Mock数据生成
     """
     
-    BASE_URL = EXCHANGE_WS_APIS["binance"]["spot"]
-    TESTNET_URL = EXCHANGE_WS_APIS["binance"]["testnet_spot"]
+    BASE_URL = EXCHANGE_WS_APIS["binance"]["futures"]
+    TESTNET_URL = EXCHANGE_WS_APIS["binance"]["testnet_futures"]
     
     def __init__(self, config: BinanceConfig = None):
         self.config = config or BinanceConfig()
@@ -149,9 +150,8 @@ class BinanceWebSocketAdapter:
                 elif stream_type == StreamType.KLINE:
                     streams.append(f"{symbol}@kline_{self.config.kline_interval}")
                 elif stream_type == StreamType.FUNDING_RATE:
-                    streams.append(f"{symbol}@markPrice@1s")  # 资金费率在markPrice流中
-                elif stream_type == StreamType.OPEN_INTEREST:
-                    streams.append(f"{symbol}@openInterest")
+                    streams.append(f"{symbol}@markPrice@1s")
+                # openInterest 已移除，改为通过 REST collector 获取
         
         # 获取可用端点
         try:

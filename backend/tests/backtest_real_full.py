@@ -43,7 +43,7 @@ def load_data_from_datalake(symbol, start, end, freq_min=60):
         
     df_total = pd.concat(all_bars, ignore_index=True)
     df_total['timestamp'] = pd.to_datetime(df_total['timestamp'])
-    df_total = df_total[(df_total['timestamp'] >= start] & [(df_total['timestamp'] <= end)
+    df_total = df_total[(df_total['timestamp'] >= start) & (df_total['timestamp'] <= end)]
     df_total = df_total.set_index('timestamp').sort_index()
     
     agg = {
@@ -143,4 +143,3 @@ def main():
     print("📊 完整真实系统回测结果！")
     print("=" * 120)
     print(f"初始资金：${initial_capital:,.2f}")
-    print(f"最终

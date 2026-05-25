@@ -184,15 +184,16 @@ class TimeCausalSignalRuntime:
         3. 跨币种对齐（可选）
         """
         # 1. 检查特征可用性
-        is_available, issue = self._availability_guard.check(
+        from domain.feature.availability import AvailabilityStatus
+        status = self._availability_guard.check(
             feature_name=feature_name,
             feature_timestamp=timestamp_ms,
-            replay_clock=self._clock.available_at_ms(),
+            query_time=self._clock.available_at_ms(),
             clock=self._clock
         )
         
-        if not is_available:
-            logger.debug(f"Skipping unavailable feature {feature_name}: {issue}")
+        if status != AvailabilityStatus.AVAILABLE:
+            logger.debug(f"Skipping unavailable feature {feature_name}: {status.value}")
             return False
         
         # 2. 记录特征血缘

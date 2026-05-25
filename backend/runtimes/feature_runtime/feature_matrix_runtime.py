@@ -165,19 +165,20 @@ class TimeCausalFeatureMatrix:
         
         if feature_names is not None:
             # 检查每个特征的可用性
+            from domain.feature.availability import AvailabilityStatus
             safe_features = {}
             for name in feature_names:
-                is_available, issue = self._availability_guard.check(
+                status = self._availability_guard.check(
                     feature_name=name,
                     feature_timestamp=safe_timestamp,
-                    replay_clock=current_clock,
+                    query_time=current_clock,
                     clock=self._clock
                 )
                 
-                if is_available and name in features:
+                if status == AvailabilityStatus.AVAILABLE and name in features:
                     safe_features[name] = features[name]
-                elif issue:
-                    logger.debug(f"Feature {name} unavailable: {issue}")
+                else:
+                    logger.debug(f"Feature {name} unavailable: {status.value}")
             
             features = safe_features
         
