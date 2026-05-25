@@ -93,7 +93,7 @@ class FeatureSnapshot:
 
 class FeatureRuntime:
     """
-    真正的特征运行时（单一实现入口）
+    真正的特征运行时（按 symbol/mode 隔离）
     
     所有特征计算必须通过这个 Runtime，禁止绕过！
     
@@ -110,17 +110,7 @@ class FeatureRuntime:
     - 所有特征必须走事件流
     """
     
-    _instance = None
-    
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-    
     def __init__(self, config: Optional[FeatureConfig] = None):
-        if hasattr(self, '_initialized') and self._initialized:
-            return
-        
         self.config = config or FeatureConfig()
         
         # 1. 基础设施
@@ -154,7 +144,6 @@ class FeatureRuntime:
         # 5. 设置模式
         self._setup_mode()
         
-        self._initialized = True
         logger.info(f"FeatureRuntime initialized: {self.config.symbol}, mode={self.config.mode.value}")
     
     def _setup_mode(self):
@@ -611,10 +600,39 @@ class FeatureRuntime:
         logger.info(f"FeatureRuntime reset for {self.config.symbol}")
 
 
-# 全局实例
+# 实例注册表 - 按 (symbol, mode) 键隔离
+_feature_runtime_instances = {}
+
+
 def get_feature_runtime(config: Optional[FeatureConfig] = None) -> FeatureRuntime:
-    """获取特征运行时（单一实例）"""
-    return FeatureRuntime(config)
+    """
+    获取特征运行时（按 symbol/mode 隔离）
+    
+    每对 (symbol, mode) 会有独立的 FeatureRuntime 实例，
+    避免多任务/多 symbol 之间的状态污染。
+    """
+    config = config or FeatureConfig()
+    instance_key = (config.symbol, config.mode.value)
+    
+    if instance_key not in _feature_runtime_instances:
+        _feature_runtime_instances[instance_key] = FeatureRuntime(config)
+        logger.info(f"Created new FeatureRuntime instance: {instance_key}")
+    else:
+        existing_runtime = _feature_runtime_instances[instance_key]
+        # 检查现有实例的配置是否匹配
+        if existing_runtime.config.mode != config.mode:
+            logger.warning(f"Mode mismatch for existing instance {instance_key}, creating new one")
+            _feature_runtime_instances[instance_key] = FeatureRuntime(config)
+    
+    return _feature_runtime_instances[instance_key]
+
+
+def clear_feature_runtime_cache():
+    """清除所有缓存的 FeatureRuntime 实例"""
+    global _feature_runtime_instances
+    cleared_count = len(_feature_runtime_instances)
+    _feature_runtime_instances = {}
+    logger.info(f"Cleared {cleared_count} FeatureRuntime instances")
 
 
 # 禁止直接导出 UnifiedFeatureCalculator！

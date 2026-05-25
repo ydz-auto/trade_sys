@@ -138,17 +138,24 @@ class ExecutionRuntime(BaseRuntime):
             self.logger.warning(f"Risk engine init failed: {e}")
             
         # 初始化 TradingModeManager 和 Exchange Adapter
+        # 在 mock/backtest 模式下不连接真实交易所
         try:
             from runtimes.trading_mode_manager import get_trading_mode_manager
             self._trading_mode_manager = get_trading_mode_manager()
-            self._exchange_adapter = self._trading_mode_manager.get_adapter()
             
-            # 如果没有 adapter，尝试连接一个
-            if not self._exchange_adapter:
-                await self._trading_mode_manager._connect_adapter()
+            # 检查是否是 mock/backtest 模式 - 通过 config name 或其他标识
+            is_mock_mode = getattr(self.config, "enable_mock", False) or self.config.name == "execution_test"
+            
+            if not is_mock_mode:
+                # 只有非 mock 模式才尝试连接真实交易所
                 self._exchange_adapter = self._trading_mode_manager.get_adapter()
                 
-            self.logger.info(f"TradingModeManager initialized, current mode: {self._trading_mode_manager.mode.value}")
+                # 如果没有 adapter，尝试连接一个
+                if not self._exchange_adapter:
+                    await self._trading_mode_manager._connect_adapter()
+                    self._exchange_adapter = self._trading_mode_manager.get_adapter()
+            
+            self.logger.info(f"TradingModeManager initialized, current mode: {self._trading_mode_manager.mode.value}, mock_mode: {is_mock_mode}")
         except Exception as e:
             self.logger.warning(f"TradingModeManager init failed: {e}")
             self._trading_mode_manager = None
@@ -472,15 +479,6 @@ class ExecutionRuntime(BaseRuntime):
             result = await self._risk_engine.validate(decision)
             return {"approved": result.passed, "reason": result.reason}
         return {"approved": True, "reason": "Risk engine not available"}
-
-    async def _execute_decision(self, decision: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        if decision.get("action") == "HOLD":
-            return None
-
-        if self._execution_engine:
-            return await self._execution_engine.execute(decision)
-
-        return self._create_mock_order(decision)
 
     def _create_mock_order(self, decision: Dict[str, Any]) -> Dict[str, Any]:
         from infrastructure.messaging.schema.base_event import OrderEvent, EventSource

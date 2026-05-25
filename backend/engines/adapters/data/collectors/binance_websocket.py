@@ -50,7 +50,6 @@ class StreamType(Enum):
     MARK_PRICE = "markPrice"      # 标记价格
     FUNDING_RATE = "fundingRate"  # 资金费率
     KLINE = "kline"              # K线
-    OPEN_INTEREST = "openInterest"  # 持仓量
 
 
 @dataclass
@@ -423,8 +422,6 @@ class BinanceWebSocketAdapter:
             await self._handle_kline(data)
         elif event_type == "24hrTicker":
             await self._handle_ticker(data)
-        elif event_type == "openInterest":
-            await self._handle_open_interest(data)
         elif "bookTicker" in data or (data.get("u") and "b" in data and "a" in data):
             await self._handle_book_ticker(data)
     
@@ -644,35 +641,6 @@ class BinanceWebSocketAdapter:
                 "close": float(data.get("c", 0)),
                 "volume": float(data.get("v", 0)),
                 "quote_volume": float(data.get("q", 0))
-            }
-        )
-        
-        if self.on_event:
-            await self.on_event(event)
-    
-    async def _handle_open_interest(self, data: Dict):
-        """处理持仓量数据"""
-        if "open_interests" not in self.stats:
-            self.stats["open_interests"] = 0
-        self.stats["open_interests"] += 1
-        
-        symbol = data.get("s", "").lower()
-        oi = float(data.get("o", 0))
-        time = data.get("E", 0)
-        
-        event = StandardEvent(
-            source=Source.BINANCE.value,
-            event_type=EventType.OPEN_INTEREST.value,
-            timestamp=time,
-            title=f"Open Interest: {symbol.upper()}",
-            content=f"OI: {oi}",
-            importance=0.35,
-            symbols=[symbol.upper()],
-            tags=["open_interest", "oi"],
-            metadata={
-                "symbol": symbol,
-                "open_interest": oi,
-                "timestamp": time
             }
         )
         
