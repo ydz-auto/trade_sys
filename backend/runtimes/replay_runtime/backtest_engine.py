@@ -5,8 +5,12 @@ from enum import Enum
 from pathlib import Path
 import asyncio
 import json
+import math
 
 from infrastructure.logging import get_logger
+from runtimes.replay_runtime.models.fee_model import FeeModel, FeeType
+from runtimes.replay_runtime.models.liquidation import LiquidationModel, LiquidationStatus
+from runtimes.replay_runtime.models.funding import FundingModel
 
 logger = get_logger("backtest_service")
 
@@ -37,6 +41,11 @@ class Trade:
     pnl: float
     pnl_pct: float
     side: SignalType
+    leverage: float = 1.0
+    entry_fee: float = 0.0
+    exit_fee: float = 0.0
+    funding_fee: float = 0.0
+    liquidated: bool = False
 
 
 @dataclass
@@ -55,6 +64,8 @@ class PerformanceMetrics:
     profit_factor: float = 0.0
     avg_trade_return: float = 0.0
     avg_trade_duration: float = 0.0
+    total_fees: float = 0.0
+    liquidation_count: int = 0
 
 
 @dataclass
@@ -65,6 +76,12 @@ class BacktestConfig:
     position_size: float = 0.1
     stop_loss: float = 0.02
     take_profit: float = 0.05
+    leverage: float = 1.0
+    stop_loss_type: str = "price"
+    maintenance_margin_rate: float = 0.005
+    use_realistic_fees: bool = True
+    data_frequency_minutes: int = 60
+    compound: bool = False
 
 
 @dataclass
@@ -131,6 +148,18 @@ class BacktestEngine:
         self._drawdown_curve: List[float] = []
         self._position: Optional[Dict] = None
         self._capital: float = 0.0
+        self._peak_capital: float = 0.0
+
+        self._fee_model = FeeModel()
+        self._liquidation_model = LiquidationModel(
+            maintenance_margin_rate=self.config.maintenance_margin_rate
+        )
+        self._funding_model = FundingModel()
+        
+        self._total_fees: float = 0.0
+        self._liquidation_count: int = 0
+        self._last_funding_time: Optional[datetime] = None
+        self._current_funding_rate: float = 0.0
 
         self._enable_gpu = enable_gpu
         self._gpu_available = False
@@ -264,6 +293,9 @@ class BacktestEngine:
         self._drawdown_curve = []
         self._position = None
         self._capital = self.config.initial_capital
+        self._peak_capital = self.config.initial_capital
+        self._total_fees = 0.0
+        self._liquidation_count = 0
 
         peak_equity = self._capital
 
@@ -271,16 +303,43 @@ class BacktestEngine:
             signal = signal_generator(bar, self._position)
 
             if self._position:
-                pnl_pct = (bar.close - self._position["entry_price"]) / self._position["entry_price"]
-
-                if self._position["side"] == SignalType.SELL:
-                    pnl_pct = -pnl_pct
-
-                if pnl_pct <= -self.config.stop_loss:
+                if i > 0:
+                    hours_passed = (bar.timestamp - self._bars[i-1].timestamp).total_seconds() / 3600
+                    self._position["holding_hours"] = self._position.get("holding_hours", 0.0) + hours_passed
+                
+                if self._position["side"] == SignalType.BUY:
+                    pnl_pct = (bar.close - self._position["entry_price"]) / self._position["entry_price"] * self.config.leverage
+                else:
+                    pnl_pct = (self._position["entry_price"] - bar.close) / self._position["entry_price"] * self.config.leverage
+                
+                stop_loss_triggered = False
+                if self.config.stop_loss_type == "price":
+                    if pnl_pct <= -self.config.stop_loss:
+                        stop_loss_triggered = True
+                elif self.config.stop_loss_type == "capital":
+                    if pnl_pct * self.config.position_size <= -self.config.stop_loss:
+                        stop_loss_triggered = True
+                
+                liquidated = False
+                if self.config.use_realistic_fees and self.config.leverage > 1:
+                    liq_result = self._liquidation_model.check(
+                        self._position["quantity"],
+                        self._position["entry_price"],
+                        bar.close,
+                        self.config.leverage,
+                        self._capital,
+                        "long" if self._position["side"] == SignalType.BUY else "short"
+                    )
+                    if liq_result.status == LiquidationStatus.LIQUIDATED:
+                        liquidated = True
+                
+                if liquidated:
+                    self._close_position(bar, "liquidation", True)
+                elif stop_loss_triggered:
                     self._close_position(bar, "stop_loss")
                 elif pnl_pct >= self.config.take_profit:
                     self._close_position(bar, "take_profit")
-                elif signal == SignalType.SELL:
+                elif signal == (SignalType.SELL if self._position["side"] == SignalType.BUY else SignalType.BUY):
                     self._close_position(bar, "signal")
 
             if not self._position and signal != SignalType.HOLD:
@@ -288,12 +347,16 @@ class BacktestEngine:
 
             current_equity = self._capital
             if self._position:
-                pos_pnl = (bar.close - self._position["entry_price"]) * self._position["quantity"]
-                if self._position["side"] == SignalType.SELL:
-                    pos_pnl = -pos_pnl
-                current_equity += pos_pnl
+                if self._position["side"] == SignalType.BUY:
+                    pos_pnl = (bar.close - self._position["entry_price"]) * self._position["quantity"]
+                else:
+                    pos_pnl = (self._position["entry_price"] - bar.close) * self._position["quantity"]
+                current_equity += pos_pnl + self._position["margin_used"]
 
             self._equity_curve.append(current_equity)
+            
+            if current_equity > self._peak_capital:
+                self._peak_capital = current_equity
 
             if current_equity > peak_equity:
                 peak_equity = current_equity
@@ -318,53 +381,112 @@ class BacktestEngine:
         )
 
     def _open_position(self, bar: Bar, signal: SignalType):
-        position_value = self._capital * self.config.position_size
-        quantity = position_value / bar.close
-
-        cost = position_value * (1 + self.config.commission + self.config.slippage)
-
-        if cost > self._capital:
+        if self.config.compound:
+            available_capital = self._capital
+        else:
+            available_capital = self.config.initial_capital
+            
+        position_value = available_capital * self.config.position_size
+        notional_value = position_value * self.config.leverage
+        quantity = notional_value / bar.close
+        
+        entry_price = bar.close * (1 + self.config.slippage if signal == SignalType.BUY else 1 - self.config.slippage)
+        
+        margin_used = position_value
+        
+        if margin_used > self._capital:
+            return
+        
+        entry_fee = 0.0
+        if self.config.use_realistic_fees:
+            fee_result = self._fee_model.calculate(
+                quantity, entry_price, "buy" if signal == SignalType.BUY else "sell", False
+            )
+            entry_fee = fee_result.total_fee
+        
+        total_cost = margin_used + entry_fee
+        
+        if total_cost > self._capital:
             return
 
         self._position = {
             "entry_time": bar.timestamp,
-            "entry_price": bar.close * (1 + self.config.slippage),
+            "entry_price": entry_price,
             "quantity": quantity,
             "side": signal,
-            "capital_used": cost
+            "margin_used": margin_used,
+            "notional_value": notional_value,
+            "leverage": self.config.leverage,
+            "entry_fee": entry_fee,
+            "holding_hours": 0.0
         }
 
-        self._capital -= cost
+        self._capital -= total_cost
+        self._total_fees += entry_fee
+        
+        if self._last_funding_time is None:
+            self._last_funding_time = bar.timestamp
 
-    def _close_position(self, bar: Bar, reason: str):
+    def _close_position(self, bar: Bar, reason: str, liquidated: bool = False):
         if not self._position:
             return
 
-        exit_price = bar.close * (1 - self.config.slippage)
-        if self._position["side"] == SignalType.SELL:
-            exit_price = bar.close * (1 + self.config.slippage)
-
-        pnl = (exit_price - self._position["entry_price"]) * self._position["quantity"]
-
-        if self._position["side"] == SignalType.SELL:
-            pnl = -pnl
-
-        pnl -= self._position["capital_used"] * self.config.commission
-
+        exit_price = bar.close * (1 - self.config.slippage) if self._position["side"] == SignalType.BUY else bar.close * (1 + self.config.slippage)
+        
+        if self._position["side"] == SignalType.BUY:
+            price_change_pct = (exit_price - self._position["entry_price"]) / self._position["entry_price"]
+        else:
+            price_change_pct = (self._position["entry_price"] - exit_price) / self._position["entry_price"]
+        
+        pnl = price_change_pct * self._position["notional_value"]
+        
+        exit_fee = 0.0
+        funding_fee = 0.0
+        if self.config.use_realistic_fees:
+            fee_result = self._fee_model.calculate(
+                self._position["quantity"], exit_price, "sell" if self._position["side"] == SignalType.BUY else "buy", False
+            )
+            exit_fee = fee_result.total_fee
+            
+            holding_hours = self._position.get("holding_hours", 0.0)
+            if holding_hours > 0 and self._current_funding_rate != 0:
+                funding_result = self._funding_model.calculate_holding_cost(
+                    self._position["notional_value"],
+                    self._current_funding_rate,
+                    holding_hours,
+                    "long" if self._position["side"] == SignalType.BUY else "short"
+                )
+                funding_fee = funding_result["total_funding_cost"]
+        
+        net_pnl = pnl - exit_fee - abs(funding_fee)
+        
+        capital_return = self._position["margin_used"] + net_pnl
+        
         trade = Trade(
             entry_time=self._position["entry_time"],
             exit_time=bar.timestamp,
             entry_price=self._position["entry_price"],
             exit_price=exit_price,
             quantity=self._position["quantity"],
-            pnl=pnl,
-            pnl_pct=pnl / self._position["capital_used"],
-            side=self._position["side"]
+            pnl=net_pnl,
+            pnl_pct=net_pnl / self._position["margin_used"] if self._position["margin_used"] > 0 else 0,
+            side=self._position["side"],
+            leverage=self._position["leverage"],
+            entry_fee=self._position.get("entry_fee", 0.0),
+            exit_fee=exit_fee,
+            funding_fee=funding_fee,
+            liquidated=liquidated
         )
 
         self._trades.append(trade)
-
-        self._capital += self._position["capital_used"] + pnl
+        self._total_fees += exit_fee + abs(funding_fee)
+        
+        if liquidated:
+            self._liquidation_count += 1
+            self._capital += max(0, capital_return)
+        else:
+            self._capital += max(0, capital_return)
+            
         self._position = None
 
     def _calculate_metrics(self) -> PerformanceMetrics:
@@ -400,19 +522,23 @@ class BacktestEngine:
 
         returns = []
         for i in range(1, len(self._equity_curve)):
-            ret = (self._equity_curve[i] - self._equity_curve[i-1]) / self._equity_curve[i-1]
+            ret = (self._equity_curve[i] - self._equity_curve[i-1]) / self._equity_curve[i-1] if self._equity_curve[i-1] > 0 else 0
             returns.append(ret)
 
+        sharpe_ratio = 0.0
         if returns:
             avg_return = sum(returns) / len(returns)
             std_return = (sum((r - avg_return) ** 2 for r in returns) / len(returns)) ** 0.5
-            sharpe_ratio = (avg_return / std_return * (252 ** 0.5)) if std_return > 0 else 0
-        else:
-            sharpe_ratio = 0
+            
+            minutes_per_year = 365 * 24 * 60
+            periods_per_year = minutes_per_year / self.config.data_frequency_minutes
+            
+            if std_return > 0:
+                sharpe_ratio = (avg_return / std_return) * math.sqrt(periods_per_year)
 
         avg_trade_return = sum(t.pnl_pct for t in self._trades) / total_trades if total_trades > 0 else 0
 
-        durations = [(t.exit_time - t.entry_time).days for t in self._trades]
+        durations = [(t.exit_time - t.entry_time).total_seconds() / 3600 for t in self._trades]
         avg_duration = sum(durations) / len(durations) if durations else 0
 
         return PerformanceMetrics(
@@ -429,16 +555,28 @@ class BacktestEngine:
             avg_loss=avg_loss,
             profit_factor=profit_factor,
             avg_trade_return=avg_trade_return,
-            avg_trade_duration=avg_duration
+            avg_trade_duration=avg_duration,
+            total_fees=self._total_fees,
+            liquidation_count=self._liquidation_count
         )
 
     def print_result(self, result: BacktestResult):
-        print("\n" + "=" * 70)
+        print("\n" + "=" * 80)
         print("📊 回测结果")
-        print("=" * 70)
+        print("=" * 80)
 
         print(f"\n📅 时间范围: {result.start_date.date()} ~ {result.end_date.date()}")
         print(f"   持续天数: {result.duration_days}")
+        
+        cfg = result.config
+        print(f"\n⚙️  配置")
+        print(f"   初始资金: ${cfg.initial_capital:,.2f}")
+        print(f"   杠杆倍数: {cfg.leverage}x")
+        print(f"   仓位大小: {cfg.position_size:.1%}")
+        print(f"   止损: {cfg.stop_loss:.1%} ({cfg.stop_loss_type})")
+        print(f"   止盈: {cfg.take_profit:.1%}")
+        print(f"   真实费用: {'是' if cfg.use_realistic_fees else '否'}")
+        print(f"   复利: {'是' if cfg.compound else '否'}")
 
         m = result.metrics
 
@@ -448,6 +586,8 @@ class BacktestEngine:
 
         print(f"\n📉 风险")
         print(f"   最大回撤: ${m.max_drawdown:,.2f} ({m.max_drawdown_pct:.2%})")
+        print(f"   总费用: ${m.total_fees:,.2f}")
+        print(f"   强平次数: {m.liquidation_count}")
 
         print(f"\n📈 交易统计")
         print(f"   总交易: {m.total_trades}")
@@ -457,9 +597,9 @@ class BacktestEngine:
         print(f"   平均盈利: ${m.avg_win:,.2f}")
         print(f"   平均亏损: ${m.avg_loss:,.2f}")
         print(f"   盈亏比: {m.profit_factor:.2f}")
-        print(f"   平均持仓: {m.avg_trade_duration:.1f} 天")
+        print(f"   平均持仓: {m.avg_trade_duration:.1f} 小时")
 
-        print("\n" + "=" * 70)
+        print("\n" + "=" * 80)
 
 
 def run_backtest(

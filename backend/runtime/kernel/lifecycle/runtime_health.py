@@ -1,4 +1,4 @@
-﻿"""
+"""
 Runtime Health System - Runtime 健康治理系统
 
 核心职责:
@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 import asyncio
 
-from runtime.kernel.orchestrator.registry import RuntimeState, get_runtime_registry
 from infrastructure.logging import get_logger
 from infrastructure.utilities.runtime_clock import now_ms
 
@@ -86,6 +85,7 @@ class RuntimeHealthSystem:
             return
         
         self._initialized = True
+        from runtime.kernel.orchestrator.registry import get_runtime_registry
         self._registry = get_runtime_registry()
         
         self._heartbeat_interval = heartbeat_interval
@@ -200,8 +200,9 @@ class RuntimeHealthSystem:
         self,
         healthy: bool,
         latency_ms: float,
-        runtime_state: RuntimeState,
+        runtime_state,
     ) -> HealthStatus:
+        from runtime.kernel.orchestrator.registry import RuntimeState
         if runtime_state == RuntimeState.FAILED:
             return HealthStatus.CRITICAL
         if runtime_state == RuntimeState.STOPPED:

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Signal Runtime - 时间因果一致的信号生成运行时
 
 重构版本！
@@ -6,19 +6,20 @@ Signal Runtime - 时间因果一致的信号生成运行时
 1. Runtime Clock - 单一时间源
 2. Feature Availability - 防止未来特征
 3. Label Isolation - Label 物理隔离
-4. Cross-Symbol Semantics - 跨币时间对齐
+4. Cross-Symbol Semantics - 跨币种时间对齐
 5. Feature Lineage - 特征血缘追踪
 
 重点防护：
 - Feature Leakage - 防止偷看未来特征
 - Label Contamination - Label 不能混入特征
-- Cross-Symbol Drift - 跨币时间错位
+- Cross-Symbol Drift - 跨币种时间错位
 
 不做上帝对象！只是组合使用基础设施。
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, field
+from enum import Enum
 import asyncio
 
 from infrastructure.logging import get_logger
@@ -36,7 +37,6 @@ from domain.feature.availability import (
 from domain.feature.label_isolation import (
     StrictLabelStore,
     get_label_store,
-    set_label_store_mode,
     safe_dataframe
 )
 from infrastructure.storage.immutable_snapshot import (
@@ -52,10 +52,17 @@ from domain.feature.infrastructure.feature_lineage import (
     FeatureLineageSystem,
     get_feature_lineage
 )
-from runtimes.feature_runtime.feature_matrix_runtime import get_feature_matrix_runtime
+from runtimes.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
 
 
 logger = get_logger("signal_runtime")
+
+
+class SignalType(Enum):
+    """信号类型"""
+    BUY = "buy"
+    SELL = "sell"
+    HOLD = "hold"
 
 
 @dataclass
@@ -63,6 +70,7 @@ class SignalConfig:
     """信号运行时配置"""
     symbols: List[str] = field(default_factory=list)
     mode: str = "live"
+    enable_strategy_registry: bool = True
 
 
 class TimeCausalSignalRuntime:
@@ -72,7 +80,7 @@ class TimeCausalSignalRuntime:
     重点防护：
     - 只使用当前时间之前的特征
     - Label 物理隔离
-    - 跨币时间对齐
+    - 跨币种时间对齐
     - 特征血缘追踪
     """
     
@@ -89,9 +97,15 @@ class TimeCausalSignalRuntime:
         self._snapshot_store = get_immutable_snapshot_store("MULTI")
         self._cross_symbol = get_cross_symbol_semantics(self.config.symbols)
         self._lineage = get_feature_lineage()
-        self._feature_matrices = {}
+        self._feature_runtimes = {}
         
-        # 2. 设置模式
+        # 2. 策略注册表和信号历史
+        self._strategies: Dict[str, Any] = {}
+        self._signal_history: List[Dict[str, Any]] = []
+        self._signal_callbacks: List[Callable] = []
+        self._signal_sequence = 0
+        
+        # 3. 设置模式
         self._setup_mode()
         
         self._running = False
@@ -100,15 +114,58 @@ class TimeCausalSignalRuntime:
     
     def _setup_mode(self):
         """设置模式"""
+        self._mode = self.config.mode
         if self.config.mode == "replay":
             set_clock_mode(ClockMode.REPLAY)
+            from domain.feature.label_isolation import set_label_store_mode
             set_label_store_mode("research")
         elif self.config.mode == "paper":
             set_clock_mode(ClockMode.PAPER)
+            from domain.feature.label_isolation import set_label_store_mode
             set_label_store_mode("runtime")
         else:  # live
             set_clock_mode(ClockMode.LIVE)
+            from domain.feature.label_isolation import set_label_store_mode
             set_label_store_mode("runtime")
+    
+    def register_strategy(self, strategy_id: str, strategy: Any) -> None:
+        """
+        注册策略
+        
+        Args:
+            strategy_id: 策略唯一标识符
+            strategy: 策略实例，必须实现 generate_signal 方法
+        """
+        self._strategies[strategy_id] = strategy
+        logger.info(f"Strategy registered: {strategy_id}")
+    
+    def unregister_strategy(self, strategy_id: str) -> None:
+        """注销策略"""
+        if strategy_id in self._strategies:
+            del self._strategies[strategy_id]
+            logger.info(f"Strategy unregistered: {strategy_id}")
+    
+    def get_registered_strategies(self) -> List[str]:
+        """获取已注册策略列表"""
+        return list(self._strategies.keys())
+    
+    def add_signal_callback(self, callback: Callable) -> None:
+        """
+        添加信号回调函数
+        """
+        self._signal_callbacks.append(callback)
+    
+    async def initialize(self, symbol: Optional[str] = None, mode: Optional[str] = None) -> None:
+        """
+        初始化信号运行时（供 ReplayRuntime 调用）
+        """
+        if symbol and symbol not in self.config.symbols:
+            self.config.symbols.append(symbol)
+        if mode:
+            self.config.mode = mode
+            self._setup_mode()
+        
+        logger.info(f"Signal Runtime initialized for {self.config.symbols}")
     
     async def update_feature(
         self,
@@ -123,7 +180,7 @@ class TimeCausalSignalRuntime:
         重点防护：
         1. 特征可用性检查
         2. 特征血缘追踪
-        3. 跨币对齐（可选）
+        3. 跨币种对齐（可选）
         """
         # 1. 检查特征可用性
         is_available, issue = self._availability_guard.check(
@@ -138,18 +195,15 @@ class TimeCausalSignalRuntime:
             return False
         
         # 2. 记录特征血缘
-        # 这里可以记录这个特征的来源、依赖关系等
+        self._lineage.register_source(feature_name, "feature")
         
-        # 3. 跨币对齐（可选）
+        # 3. 跨币种对齐（可选）
         if self._cross_symbol:
             self._cross_symbol.record_event(
                 symbol=symbol,
                 event_type=feature_name,
                 timestamp_ms=timestamp_ms
             )
-        
-        # 4. 存储到 Snapshot 用于验证
-        # 这里可以记录特征快照
         
         return True
     
@@ -172,24 +226,34 @@ class TimeCausalSignalRuntime:
         safe_timestamp = min(timestamp_ms, self._clock.available_at_ms())
         
         # 2. 获取安全特征
-        # 这里从 feature_matrix 获取
-        features = self._get_safe_features(symbol, safe_timestamp)
+        features = await self._get_safe_features(symbol, safe_timestamp)
         
-        # 3. 检查 Label 隔离
-        # 如果 DataFrame 中有 future_return，会自动清理
-        # safe_dataframe(df)
-        
-        # 4. 生成信号（具体策略逻辑在这里
+        # 3. 调用所有已注册策略生成信号
         signals = []
-        
-        # ... 策略逻辑 ...
-        
-        # 5. 记录特征血缘
-        for signal in signals:
-            self._lineage.register_source(
-                feature_name=signal.get("strategy", "unknown"),
-                feature_type="signal"
-            )
+        for strategy_id, strategy in self._strategies.items():
+            try:
+                signal = await self.generate_signal(strategy, features, safe_timestamp)
+                if signal:
+                    signal['strategy_id'] = strategy_id
+                    signal['symbol'] = symbol
+                    signals.append(signal)
+                    
+                    # 记录到历史
+                    self._signal_history.append(signal)
+                    self._signal_sequence += 1
+                    
+                    # 调用回调
+                    for callback in self._signal_callbacks:
+                        try:
+                            if asyncio.iscoroutinefunction(callback):
+                                await callback(signal)
+                            else:
+                                callback(signal)
+                        except Exception as e:
+                            logger.error(f"Signal callback failed: {e}")
+            
+            except Exception as e:
+                logger.error(f"Strategy {strategy_id} signal generation failed: {e}")
         
         return signals
     
@@ -210,23 +274,54 @@ class TimeCausalSignalRuntime:
         Returns:
             Signal 字典或 None
         """
-        # 1. 时间因果检查
-        if timestamp_ms > self._clock.available_at_ms():
-            logger.warning(f"Timestamp {timestamp_ms} ahead of clock {self._clock.available_at_ms()}")
-            return None
+        # 1. 时间因果检查 — replay 模式下先推进时钟
+        if self._mode == "replay":
+            self._clock.advance_to(timestamp_ms)
+        else:
+            if timestamp_ms > self._clock.available_at_ms() + 5000:
+                logger.warning(f"Timestamp {timestamp_ms} too far ahead of clock {self._clock.available_at_ms()}")
+                return None
         
         # 2. 调用策略生成信号
         try:
-            signal = strategy.generate_signal(features)
+            signal = None
+            
+            # 支持两种策略接口
+            if hasattr(strategy, 'generate_signal'):
+                signal = strategy.generate_signal(features)
+            elif hasattr(strategy, 'calculate'):
+                # 旧策略接口兼容
+                result = strategy.calculate(features)
+                if result:
+                    try:
+                        from engines.compute.strategy.strategies import ActionType
+                        action_type = getattr(result, 'action', None)
+                        if action_type == ActionType.LONG:
+                            signal = {
+                                'signal_type': 'buy',
+                                'confidence': getattr(result, 'confidence', 0.5),
+                                'reason': getattr(result, 'reason', ''),
+                                'metadata': getattr(result, 'metadata', {})
+                            }
+                        elif action_type == ActionType.SHORT:
+                            signal = {
+                                'signal_type': 'sell',
+                                'confidence': getattr(result, 'confidence', 0.5),
+                                'reason': getattr(result, 'reason', ''),
+                                'metadata': getattr(result, 'metadata', {})
+                            }
+                    except ImportError:
+                        pass
             
             if signal:
                 signal['timestamp_ms'] = timestamp_ms
                 signal['strategy_id'] = strategy.__class__.__name__
                 
                 # 记录特征血缘
-                self._lineage.register_source(
+                from domain.feature.infrastructure.feature_lineage import FeatureType as LineageFeatureType
+                self._lineage.register_feature(
                     feature_name=signal['strategy_id'],
-                    feature_type="signal"
+                    feature_type=LineageFeatureType.DERIVED,
                 )
             
             return signal
@@ -234,18 +329,21 @@ class TimeCausalSignalRuntime:
             logger.error(f"Signal generation failed: {e}")
             return None
     
-    def _get_safe_features(
+    async def _get_safe_features(
         self,
         symbol: str,
         timestamp_ms: int
     ) -> Dict[str, Any]:
-        if symbol not in self._feature_matrices:
-            self._feature_matrices[symbol] = get_feature_matrix_runtime(
-                symbol=symbol,
-                mode=self.config.mode
-            )
-        feature_matrix = self._feature_matrices[symbol]
-        return feature_matrix.get_features_at(timestamp_ms)
+        if symbol not in self._feature_runtimes:
+            feature_config = FeatureConfig(symbol=symbol, mode=FeatureMode(self.config.mode))
+            self._feature_runtimes[symbol] = get_feature_runtime(feature_config)
+        
+        feature_runtime = self._feature_runtimes[symbol]
+        return await feature_runtime.get_features(timestamp_ms)
+    
+    def get_signal_history(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """获取信号历史"""
+        return self._signal_history[-limit:]
     
     async def start(self):
         """启动运行时"""
@@ -287,9 +385,9 @@ class TimeCausalSignalRuntime:
             "running": self._running,
             "mode": self.config.mode,
             "symbols": list(self.config.symbols),
-            "signal_sequence": getattr(self, "_signal_sequence", 0),
-            "signal_cooldown": getattr(self, "_signal_cooldown", {}),
-            "signal_debounce": getattr(self, "_signal_debounce", {}),
+            "signal_sequence": self._signal_sequence,
+            "strategies": self.get_registered_strategies(),
+            "signal_history_count": len(self._signal_history),
             "clock_available_at_ms": self._clock.available_at_ms(),
         }
 
@@ -297,24 +395,21 @@ class TimeCausalSignalRuntime:
         if checkpoint is None:
             logger.info("Signal runtime recover: no checkpoint provided, resetting state")
             self._signal_sequence = 0
-            self._signal_cooldown = {}
-            self._signal_debounce = {}
+            self._signal_history = []
             return
 
         state = checkpoint if isinstance(checkpoint, dict) else {}
         self._signal_sequence = state.get("signal_sequence", 0)
-        self._signal_cooldown = state.get("signal_cooldown", {})
-        self._signal_debounce = state.get("signal_debounce", {})
-        logger.info(f"Signal runtime recovered from checkpoint")
+        self._signal_history = state.get("signal_history", [])
 
     def get_state(self) -> Dict[str, Any]:
         return {
             "running": self._running,
             "mode": self.config.mode,
             "symbols": list(self.config.symbols),
-            "signal_sequence": getattr(self, "_signal_sequence", 0),
-            "signal_cooldown": getattr(self, "_signal_cooldown", {}),
-            "signal_debounce": getattr(self, "_signal_debounce", {}),
+            "signal_sequence": self._signal_sequence,
+            "strategies": self.get_registered_strategies(),
+            "signal_history_count": len(self._signal_history),
         }
 
 
@@ -326,8 +421,6 @@ def get_signal_runtime(config: Optional[SignalConfig] = None) -> TimeCausalSigna
     """获取信号运行时（工厂函数）"""
     global _tc_signal_runtime
     if _tc_signal_runtime is None:
-        if config is None:
-            config = SignalConfig()
         _tc_signal_runtime = TimeCausalSignalRuntime(config)
     return _tc_signal_runtime
 

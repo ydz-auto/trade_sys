@@ -5,7 +5,7 @@ from datetime import datetime
 
 from infrastructure.logging import get_logger
 from infrastructure.messaging.topics import Topics
-from infrastructure.persistence.cache import get_redis_client
+from infrastructure.persistence.cache.redis_client import get_redis_client
 from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 logger = get_logger("event_service.odaily_consumer")

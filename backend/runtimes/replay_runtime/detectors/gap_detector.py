@@ -7,7 +7,7 @@ from infrastructure.persistence.database.clickhouse import ClickHouseManager
 
 from domain.event.base_event import Timeframe
 from engines.compute.models.candle_model import Candle
-from runtimes.replay_runtime.models.repair_models import GapInfo, GapStatus, IntegrityReport
+from runtimes.replay_runtime.models.repair_models.repair_models import GapInfo, GapStatus, IntegrityReport
 
 logger = get_logger("repair_service.gap_detector")
 

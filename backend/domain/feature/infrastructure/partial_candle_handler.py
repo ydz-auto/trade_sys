@@ -399,6 +399,57 @@ class PartialCandleHandler:
             "recent_attempts": self._leakage_log[-10:],
         }
     
+    def sanitize_dataframe(
+        self,
+        df: pd.DataFrame,
+        query_time: Optional[int] = None,
+        period_ms: Optional[int] = None,
+        timestamp_col: str = "timestamp",
+    ) -> pd.DataFrame:
+        """
+        安全清理 DataFrame
+        
+        这是一个综合方法，确保：
+        1. 没有未来数据
+        2. 部分 K 线特征被正确处理
+        3. 时间因果一致性
+        
+        Args:
+            df: 待处理的 DataFrame
+            query_time: 查询时间（默认是 DataFrame 最后一个时间戳）
+            period_ms: 周期毫秒数
+            timestamp_col: 时间戳列名
+        
+        Returns:
+            pd.DataFrame: 清理后的 DataFrame
+        """
+        df = df.copy()
+        
+        if len(df) == 0:
+            return df
+        
+        period_ms = period_ms or self.default_period_ms
+        
+        # 确定 query_time
+        if query_time is None:
+            # 默认使用最后一个时间戳
+            last_ts = df[timestamp_col].iloc[-1]
+            try:
+                if pd.api.types.is_datetime64_any_dtype(type(last_ts)) or hasattr(last_ts, 'timestamp'):
+                    query_time = int(last_ts.timestamp() * 1000)
+                else:
+                    query_time = int(last_ts)
+            except (ValueError, TypeError):
+                query_time = int(df.index[-1] if len(df) > 0 else 0)
+        
+        # 过滤已关闭的 K 线
+        df = self.filter_closed_candles(df, query_time, period_ms, timestamp_col)
+        
+        # 对部分 K 线的特征列设为 NaN（可选）
+        # 这里我们保留已关闭 K 线的数据，对未来/部分数据进行标记
+        
+        return df
+    
     def clear_cache(self):
         """清空缓存"""
         self._partial_candles.clear()

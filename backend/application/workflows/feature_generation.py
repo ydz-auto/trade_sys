@@ -1,4 +1,4 @@
-﻿"""
+"""
 Feature Generation Service - 统一特征生成服务 (Application 层)
 
 架构定位：
@@ -43,6 +43,11 @@ import numpy as np
 
 import logging
 from engines.compute.feature.unified_calculator import UnifiedFeatureCalculator, get_feature_calculator
+from domain.feature.availability import SystematicAvailabilityGuard, get_systematic_guard, AvailabilityStatus
+from domain.feature.label_isolation import StrictLabelStore, get_label_store, safe_dataframe
+from domain.feature.infrastructure.partial_candle_handler import get_partial_candle_handler
+from infrastructure.utilities.runtime_clock import get_clock
+from infrastructure.utilities.time_authority import ensure_time_ms
 
 logger = logging.getLogger(__name__)
 
@@ -80,16 +85,16 @@ class FeatureGenerationService:
     替代多个特征生成脚本，确保：
     1. 在线/离线使用相同逻辑
     2. 走 UnifiedFeatureCalculator
-    3. 防止数据泄漏
+    3. 防止数据泄露
     """
     
     def __init__(self, config: GenerationConfig = None):
         self.config = config or GenerationConfig()
         self.calculator = get_feature_calculator()
-        from domain.feature.infrastructure.partial_candle_handler import get_partial_candle_handler
         self._partial_candle_handler = get_partial_candle_handler()
-        from infrastructure.utilities.runtime_clock import get_clock
         self._clock = get_clock()
+        self._availability_guard = get_systematic_guard()
+        self._label_store = get_label_store()
     
     async def generate_features(
         self,
@@ -115,7 +120,17 @@ class FeatureGenerationService:
             logger.warning(f"No data found for {symbol}")
             return None
         
+        # 1. Label 隔离检查：移除标签列，防止泄露
+        df = safe_dataframe(df)
+        
+        # 2. 计算特征
         df = self.calculator.compute_batch(df, symbol)
+        
+        # 3. 再次 Label 隔离检查
+        df = safe_dataframe(df)
+        
+        # 4. 特征可用性和部分 K 线检查
+        df = self._apply_availability_guard(df)
         
         output_path = self.config.output_root / exchange / symbol / "features.parquet"
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -405,6 +420,89 @@ class FeatureGenerationService:
             features['total_volume'] = df['bid_volume'] + df['ask_volume']
         
         return features
+    
+    def _apply_availability_guard(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        应用特征可用性检查和部分 K 线处理
+        
+        这是一个安全机制，确保：
+        1. 特征可用性检查
+        2. 部分 K 线处理
+        3. 未来数据隔离
+        """
+        import copy
+        df = copy.deepcopy(df)
+        
+        if len(df) == 0:
+            return df
+        
+        # 确保我们有 timestamp 列
+        timestamp_col = None
+        if 'timestamp' in df.columns:
+            timestamp_col = 'timestamp'
+        elif 'open_time' in df.columns:
+            timestamp_col = 'open_time'
+        
+        if timestamp_col is None:
+            logger.warning("No timestamp column found, skipping availability guard")
+            return df
+        
+        # 识别所有特征列（排除基本列）
+        basic_cols = {'timestamp', 'open_time', 'open', 'high', 'low', 'close', 'volume'}
+        feature_cols = [col for col in df.columns if col not in basic_cols]
+        
+        if not feature_cols:
+            return df
+        
+        # 处理部分 K 线
+        try:
+            # 首先，将时间戳转换为 ms 整数
+            timestamps_ms = []
+            for idx, row in df.iterrows():
+                ts = row[timestamp_col]
+                try:
+                    if pd.api.types.is_datetime64_any_dtype(type(ts)) or hasattr(ts, 'timestamp'):
+                        ts_ms = int(ts.timestamp() * 1000)
+                    else:
+                        ts_ms = int(ts)
+                    timestamps_ms.append(ts_ms)
+                except (ValueError, TypeError):
+                    timestamps_ms.append(idx)
+            
+            # 对于时间序列特征，我们需要确保它们符合可用性规则
+            # 这里我们使用 SystematicAvailabilityGuard 来检查特征可用性
+            for idx, ts_ms in enumerate(timestamps_ms):
+                # 对于离线生成，我们假设 query_time 是序列末尾的时间
+                query_time = timestamps_ms[-1] if idx == len(timestamps_ms) - 1 else timestamps_ms[idx]
+                
+                for feature_name in feature_cols:
+                    # 检查特征可用性
+                    status = self._availability_guard.check(
+                        feature_name=feature_name,
+                        feature_timestamp=ts_ms,
+                        query_time=query_time,
+                        clock=self._clock
+                    )
+                    
+                    if status == AvailabilityStatus.NOT_YET_AVAILABLE:
+                        # 特征尚未可用，设为 NaN
+                        if pd.notna(df.at[idx, feature_name]):
+                            df.at[idx, feature_name] = np.nan
+                            logger.debug(f"Feature {feature_name} not available at {ts_ms}, set to NaN")
+                    elif status == AvailabilityStatus.PARTIAL_ONLY:
+                        # 部分可用，记录警告
+                        logger.debug(f"Feature {feature_name} is partial at {ts_ms}")
+        
+        except Exception as e:
+            logger.warning(f"Error applying availability guard: {e}")
+        
+        # 使用部分 K 线处理器进行最终检查
+        try:
+            df = self._partial_candle_handler.sanitize_dataframe(df, timestamp_col=timestamp_col)
+        except Exception as e:
+            logger.warning(f"Error in partial candle handler: {e}")
+        
+        return df
     
     def _compute_market_structure_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """计算市场结构特征"""

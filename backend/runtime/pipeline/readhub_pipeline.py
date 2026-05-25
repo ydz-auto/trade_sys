@@ -9,21 +9,37 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from infrastructure.logging import get_logger
-from infrastructure.utils import (
-    get_http_client,
-    RSSFetcher,
-    RSSSource,
-    get_symbol_extractor,
-    get_data_cleaner,
-    get_date_parser
-)
-from infrastructure.quality import (
-    get_deduplicator,
-    get_scorer,
-    get_tracker,
-    get_reviewer,
-    ReviewPriority
-)
+
+try:
+    from infrastructure.utilities import (
+        get_http_client,
+        RSSFetcher,
+        RSSSource,
+        get_symbol_extractor,
+        get_data_cleaner,
+        get_date_parser
+    )
+except ImportError:
+    get_http_client = None
+    RSSFetcher = None
+    RSSSource = None
+    get_symbol_extractor = None
+    get_data_cleaner = None
+    get_date_parser = None
+try:
+    from infrastructure.quality import (
+        get_deduplicator,
+        get_scorer,
+        get_tracker,
+        get_reviewer,
+        ReviewPriority
+    )
+except ImportError:
+    get_deduplicator = None
+    get_scorer = None
+    get_tracker = None
+    get_reviewer = None
+    ReviewPriority = None
 from runtime.pipeline.scheduler import get_scheduler
 from runtime.pipeline.realtime_push import get_pusher
 from runtime.pipeline.scheduler import TaskPriority
@@ -116,8 +132,11 @@ class ReadHubPipeline:
     
     def _init_default_sources(self):
         """初始化默认 RSS 源"""
-        from infrastructure.utilities import PRESET_RSS_SOURCES
-        self._rss_sources = PRESET_RSS_SOURCES
+        try:
+            from infrastructure.utilities import PRESET_RSS_SOURCES
+            self._rss_sources = PRESET_RSS_SOURCES
+        except ImportError:
+            self._rss_sources = []
     
     def add_rss_source(self, name: str, url: str, priority: int = 1):
         """添加 RSS 源"""

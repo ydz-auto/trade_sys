@@ -103,6 +103,9 @@ class IngestionRuntime(BaseRuntime):
         
         self.twitter_cookie_monitor = None
         self._twitter_cookie_task: Optional[asyncio.Task] = None
+        
+        self._oi_collector = None
+        self._oi_task: Optional[asyncio.Task] = None
     
     async def initialize(self) -> None:
         """初始化运行时组件"""
@@ -168,6 +171,18 @@ class IngestionRuntime(BaseRuntime):
         if self.config.enable_twitter_cookie_monitor:
             await self._init_twitter_cookie_monitor()
         
+        try:
+            from engines.adapters.data.collectors.binance_oi_collector import (
+                BinanceOICollector,
+                OICollectorConfig,
+            )
+            oi_symbols = [s.upper() for s in self.config.websocket_symbols]
+            self._oi_collector = BinanceOICollector(OICollectorConfig(symbols=oi_symbols))
+            self._oi_collector.on_event = self._on_ws_event
+            self.logger.info("OI REST collector initialized")
+        except Exception as e:
+            self.logger.warning(f"OI collector init failed: {e}")
+        
         self.health_check.register_check("news_collector", self._check_news_collector)
         self.health_check.register_check("aggregator", self._check_aggregator)
         self.health_check.register_check("publisher", self._check_publisher)
@@ -175,6 +190,7 @@ class IngestionRuntime(BaseRuntime):
         self.health_check.register_check("twitter_push", self._check_twitter_push)
         self.health_check.register_check("telegram", self._check_telegram)
         self.health_check.register_check("twitter_cookie_monitor", self._check_twitter_cookie_monitor)
+        self.health_check.register_check("oi_collector", self._check_oi_collector)
         
         self.logger.info("Ingestion Runtime initialized successfully")
     
@@ -193,6 +209,8 @@ class IngestionRuntime(BaseRuntime):
                     StreamType.MARK_PRICE,
                     StreamType.AGG_TRADE,
                     StreamType.LIQUIDATION,
+                    StreamType.KLINE,
+                    StreamType.FUNDING_RATE,
                 ]
             )
             
@@ -201,8 +219,9 @@ class IngestionRuntime(BaseRuntime):
             self.ws_adapter.on_price_update = self._on_price_update
             self.ws_adapter.on_trade = self._on_trade
             self.ws_adapter.on_liquidation = self._on_liquidation
+            self.ws_adapter.on_event = self._on_ws_event
             
-            self.logger.info(f"WebSocket adapter initialized for {self.config.websocket_symbols}")
+            self.logger.info(f"WebSocket adapter initialized for {self.config.websocket_symbols} with all streams")
             
         except Exception as e:
             self.logger.warning(f"WebSocket init failed: {e}")
@@ -348,6 +367,25 @@ class IngestionRuntime(BaseRuntime):
         except Exception as e:
             self.logger.error(f"Error processing liquidation: {e}")
     
+    async def _on_ws_event(self, event):
+        """处理所有 WebSocket 事件（包括 K线、持仓量、资金费率等）"""
+        try:
+            # 根据事件类型更新指标
+            if hasattr(event, 'metadata'):
+                event_type = event.metadata.get('event_type', '')
+                if 'kline' in event_type or 'candle' in event_type:
+                    self.metrics.increment("klines")
+                elif 'open_interest' in event_type or 'oi' in event_type:
+                    self.metrics.increment("open_interests")
+                elif 'funding' in event_type:
+                    self.metrics.increment("funding_updates")
+            
+            if self.publisher:
+                await self.publisher.publish(event.to_dict())
+                
+        except Exception as e:
+            self.logger.error(f"Error processing WS event: {e}")
+    
     async def _check_news_collector(self) -> bool:
         """检查新闻采集器"""
         return self.news_collector is not None
@@ -375,6 +413,10 @@ class IngestionRuntime(BaseRuntime):
     async def _check_twitter_cookie_monitor(self) -> bool:
         """检查 Twitter Cookie Monitor"""
         return self.twitter_cookie_monitor is not None
+
+    async def _check_oi_collector(self) -> bool:
+        """检查 OI REST 采集器"""
+        return self._oi_collector is not None and self._oi_collector._running
     
     async def shutdown(self) -> None:
         """关闭运行时组件"""
@@ -417,6 +459,9 @@ class IngestionRuntime(BaseRuntime):
         if self.twitter_cookie_monitor:
             await self.twitter_cookie_monitor.close()
         
+        if self._oi_collector:
+            await self._oi_collector.stop()
+        
         if self.publisher:
             await self.publisher.stop()
         
@@ -449,6 +494,10 @@ class IngestionRuntime(BaseRuntime):
         if self.config.enable_twitter_cookie_monitor and self.twitter_cookie_monitor:
             self._twitter_cookie_task = asyncio.create_task(self._run_twitter_cookie_monitor())
             self.logger.info("Twitter Cookie Monitor started")
+        
+        if self._oi_collector:
+            await self._oi_collector.start()
+            self.logger.info("OI REST collector started")
         
         while not self.context.is_shutdown_requested():
             try:

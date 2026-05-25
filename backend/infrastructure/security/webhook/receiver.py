@@ -267,9 +267,9 @@ class NewsWebhookHandler:
     async def _store_news(self, news_data: Dict, analysis: Dict):
         """存储新闻"""
         try:
-            from infrastructure.persistence.database import get_clickhouse_client
+            from infrastructure.persistence.database.clickhouse import get_clickhouse_manager
 
-            client = get_clickhouse_client()
+            client = get_clickhouse_manager()
 
             client.execute(
                 """
@@ -343,9 +343,9 @@ class PriceWebhookHandler:
     async def _store_price(self, price_data: Dict):
         """存储价格"""
         try:
-            from infrastructure.persistence.database import get_clickhouse_client
+            from infrastructure.persistence.database.clickhouse import get_clickhouse_manager
 
-            client = get_clickhouse_client()
+            client = get_clickhouse_manager()
 
             client.execute(
                 """

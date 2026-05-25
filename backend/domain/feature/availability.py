@@ -48,11 +48,12 @@ class FeatureRule:
     def compute_available_at(self, feature_timestamp: int, clock) -> int:
         """计算特征可用时间"""
         if self.requires_closed_kline:
-            # 需要等待 K 线关闭
             base = clock._floor_to_kline(feature_timestamp)
             if not hasattr(clock, '_kline_interval_ms'):
                 return feature_timestamp + (self.delay_periods * 60000)
             interval = clock._kline_interval_ms
+            if self.delay_periods == 0:
+                return base + interval
             return base + interval + (self.delay_periods * interval)
         elif self.delay_periods > 0:
             if not hasattr(clock, '_kline_interval_ms'):
@@ -176,6 +177,50 @@ class SystematicAvailabilityGuard:
                     category="cross_symbol",
                     is_derived=True,
                     description=f"跨品种 {name} 特征"
+                )
+            )
+
+        # K线技术指标特征（TorchFeatureCalculator 产出）
+        kline_technical_features = [
+            "rsi_7", "rsi_14", "rsi_21",
+            "sma_10", "sma_20", "sma_50", "sma_100",
+            "ema_10", "ema_20", "ema_50",
+            "macd", "macd_signal", "macd_hist",
+            "bb_upper", "bb_middle", "bb_lower", "bb_width",
+            "volume_ratio", "volume_ma",
+            "atr_14", "momentum_10",
+            "close", "open", "high", "low", "volume",
+        ]
+        for name in kline_technical_features:
+            self.register(
+                FeatureRule(
+                    name=name,
+                    requires_closed_kline=True,
+                    delay_periods=0,
+                    category="kline_technical",
+                    is_derived=True,
+                    description=f"K线技术指标 {name}"
+                )
+            )
+
+        # 衍生品原始特征
+        derivative_raw_features = [
+            "funding_rate", "funding_mark_price", "funding_index_price",
+            "open_interest",
+            "liquidation_side", "liquidation_price", "liquidation_quantity", "liquidation_value_usd",
+            "mark_price", "index_price",
+            "trade_price", "trade_volume",
+            "bid_price_0", "bid_volume_0", "ask_price_0", "ask_volume_0",
+        ]
+        for name in derivative_raw_features:
+            self.register(
+                FeatureRule(
+                    name=name,
+                    requires_closed_kline=False,
+                    delay_periods=0,
+                    category="derivative_raw",
+                    is_derived=False,
+                    description=f"衍生品原始 {name}"
                 )
             )
 

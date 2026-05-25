@@ -26,6 +26,12 @@ class BacktestConfig(BaseModel):
     stop_loss: float = Field(default=0.02, description="止损率")
     take_profit: float = Field(default=0.05, description="止盈率")
     strategy: str = Field(default="sma_crossover", description="策略类型")
+    leverage: float = Field(default=1.0, description="杠杆倍数")
+    stop_loss_type: str = Field(default="price", description="止损类型: price 或 capital")
+    maintenance_margin_rate: float = Field(default=0.005, description="维持保证金率")
+    use_realistic_fees: bool = Field(default=True, description="是否使用真实费用模型")
+    data_frequency_minutes: int = Field(default=60, description="数据频率（分钟）")
+    compound: bool = Field(default=False, description="是否复利")
 
 
 class PerformanceMetrics(BaseModel):
@@ -44,6 +50,8 @@ class PerformanceMetrics(BaseModel):
     profit_factor: float = 0.0
     avg_trade_return: float = 0.0
     avg_trade_duration: float = 0.0
+    total_fees: float = 0.0
+    liquidation_count: int = 0
 
 
 class TradeRecord(BaseModel):
@@ -56,6 +64,11 @@ class TradeRecord(BaseModel):
     pnl: float
     pnl_pct: float
     side: str
+    leverage: float = 1.0
+    entry_fee: float = 0.0
+    exit_fee: float = 0.0
+    funding_fee: float = 0.0
+    liquidated: bool = False
 
 
 class BacktestResult(BaseModel):

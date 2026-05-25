@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
-from infrastructure.logging import setup_logging, get_logger
+from infrastructure.logging import get_logger
 from runtime.pipeline.readhub_pipeline import (
     ReadHubPipeline,
     PipelineConfig,
@@ -15,11 +15,16 @@ from runtime.pipeline.readhub_pipeline import (
 )
 from runtime.pipeline.realtime_push import get_pusher
 from runtime.pipeline.scheduler import get_scheduler
-from infrastructure.quality import (
-    get_deduplicator,
-    get_scorer,
-    get_reviewer
-)
+try:
+    from infrastructure.quality import (
+        get_deduplicator,
+        get_scorer,
+        get_reviewer
+    )
+except ImportError:
+    get_deduplicator = None
+    get_scorer = None
+    get_reviewer = None
 
 logger = get_logger("pipeline_example")
 

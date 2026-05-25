@@ -16,9 +16,10 @@ from functools import wraps
 import pandas as pd
 
 import logging
-from .time_discipline import (
-    FeatureAvailabilityGuard as TimeDisciplineGuard,
-    get_feature_availability_guard as get_time_discipline_guard,
+from domain.feature.availability import (
+    SystematicAvailabilityGuard,
+    get_systematic_guard,
+    AvailabilityStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,13 +56,12 @@ class FeatureGenerationContext:
     def __init__(
         self,
         replay_clock: int,
-        guard: Optional["FeatureAvailabilityGuard"] = None,
+        guard: Optional[SystematicAvailabilityGuard] = None,
         strict_mode: bool = False,
         source: str = "unknown",
     ):
-        from runtimes.replay_runtime.shared_replay.feature_availability_guard import FeatureAvailabilityGuard, get_feature_availability_guard
         self.replay_clock = replay_clock
-        self.guard = guard or get_feature_availability_guard()
+        self.guard = guard or get_systematic_guard()
         self.strict_mode = strict_mode
         self.source = source
         
@@ -90,17 +90,16 @@ class FeatureGenerationContext:
             bool: 特征是否被接受
         """
         if check_availability:
-            from runtimes.replay_runtime.shared_replay.feature_availability_guard import FeatureAvailabilityStatus
-            check = self.guard.check_availability(
+            status = self.guard.check(
                 feature_name=feature_name,
                 feature_timestamp=feature_timestamp,
-                replay_clock=self.replay_clock,
+                query_time=self.replay_clock,
             )
             
-            if check.status != FeatureAvailabilityStatus.AVAILABLE:
+            if status != AvailabilityStatus.AVAILABLE:
                 self._blocked_features.append(feature_name)
                 self._warnings.append(
-                    f"Feature {feature_name} blocked: {check.message}"
+                    f"Feature {feature_name} blocked: {status.value}"
                 )
                 
                 if self.strict_mode:
@@ -108,7 +107,13 @@ class FeatureGenerationContext:
                 
                 return False
             
-            self._available_at_times[feature_name] = check.available_at
+            # Get available_at time
+            rule = self.guard.get_rule(feature_name)
+            if rule:
+                from infrastructure.utilities.runtime_clock import get_clock
+                self._available_at_times[feature_name] = rule.compute_available_at(feature_timestamp, get_clock())
+            else:
+                self._available_at_times[feature_name] = feature_timestamp
         
         self._generated_features[feature_name] = value
         return True
@@ -164,7 +169,6 @@ def with_feature_guard(
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
-            from runtimes.replay_runtime.shared_replay.feature_availability_guard import FeatureAvailabilityStatus, get_feature_availability_guard
             replay_clock = kwargs.get("replay_clock") or kwargs.get("timestamp")
             if replay_clock is None and len(args) > 0:
                 if isinstance(args[0], pd.DataFrame) and "timestamp" in args[0].columns:
@@ -176,7 +180,7 @@ def with_feature_guard(
                 logger.warning(f"Cannot determine replay_clock for {func.__name__}")
                 return func(*args, **kwargs)
             
-            guard = get_feature_availability_guard()
+            guard = get_systematic_guard()
             result = func(*args, **kwargs)
             
             if not isinstance(result, dict):
@@ -184,7 +188,7 @@ def with_feature_guard(
             
             checked_features = {}
             blocked = []
-            warnings = []
+            warnings_list = []
             
             for name, value in result.items():
                 if feature_names and name not in feature_names:
@@ -195,20 +199,20 @@ def with_feature_guard(
                     checked_features[name] = value
                     continue
                 
-                check = guard.check_availability(
+                status = guard.check(
                     feature_name=name,
                     feature_timestamp=replay_clock,
-                    replay_clock=replay_clock,
+                    query_time=replay_clock,
                 )
                 
-                if check.status == FeatureAvailabilityStatus.AVAILABLE:
+                if status == AvailabilityStatus.AVAILABLE:
                     checked_features[name] = value
                 else:
                     blocked.append(name)
-                    warnings.append(f"{name}: {check.message}")
+                    warnings_list.append(f"{name}: {status.value}")
                     
                     if strict_mode:
-                        raise ValueError(f"Feature {name} not available: {check.message}")
+                        raise ValueError(f"Feature {name} not available: {status.value}")
             
             if blocked:
                 logger.warning(
@@ -235,11 +239,10 @@ class GuardedFeatureExtractor:
     
     def __init__(
         self,
-        guard: Optional["FeatureAvailabilityGuard"] = None,
+        guard: Optional[SystematicAvailabilityGuard] = None,
         strict_mode: bool = False,
     ):
-        from runtimes.replay_runtime.shared_replay.feature_availability_guard import FeatureAvailabilityGuard, get_feature_availability_guard
-        self.guard = guard or get_feature_availability_guard()
+        self.guard = guard or get_systematic_guard()
         self.strict_mode = strict_mode
         self._extraction_log: List[Dict[str, Any]] = []
     

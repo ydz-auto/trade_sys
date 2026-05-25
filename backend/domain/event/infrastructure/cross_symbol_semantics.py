@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from infrastructure.logging import get_logger
 from domain.event.infrastructure.event_time import (
     EventTimeManager,
@@ -9,13 +10,13 @@ from domain.event.infrastructure.event_time import (
 logger = get_logger("domain.event.infrastructure.cross_symbol")
 
 
+@dataclass
 class SymbolAvailability:
-    symbol: str
-    last_exchange_time: int
-    last_receive_time: int
-    last_available_at: int
-    is_ready: bool
-
+    symbol: str = ""
+    last_exchange_time: int = 0
+    last_receive_time: int = 0
+    last_available_at: int = 0
+    is_ready: bool = False
     pending_events: int = 0
     latency_ms: int = 0
 
@@ -31,14 +32,15 @@ class SymbolAvailability:
         }
 
 
+@dataclass
 class CrossSymbolAvailability:
-    query_time: int
-    symbols: dict
-    all_ready: bool
-    ready_symbols: list
-    pending_symbols: list
-    min_available_time: int
-    max_latency_ms: int
+    query_time: int = 0
+    symbols: dict = field(default_factory=dict)
+    all_ready: bool = False
+    ready_symbols: list = field(default_factory=list)
+    pending_symbols: list = field(default_factory=list)
+    min_available_time: int = 0
+    max_latency_ms: int = 0
 
     def get_safe_query_time(self) -> int:
         if not self.symbols:

@@ -7,7 +7,7 @@ from typing import Optional, Dict, List, Any
 
 from infrastructure.storage.data_lake.layer import DataLayer, LAYER_CONFIGS
 from infrastructure.persistence.database.clickhouse import ClickHouseManager
-from domain.schemas.data_lake import (
+from domain.execution.schemas.data_lake import (
     DATA_LAKE_TABLE_SCHEMAS,
     DATA_LAKE_MATERIALIZED_VIEWS,
     DATA_LAKE_SCHEMAS,

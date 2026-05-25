@@ -681,11 +681,12 @@ async def main():
 
     runtime = get_replay_runtime()
 
-    from runtimes.feature_runtime.feature_matrix_runtime import get_feature_matrix_runtime
+    from runtimes.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
     from runtimes.signal_runtime import get_signal_runtime
     from runtimes.execution_runtime import get_execution_runtime
 
-    runtime.attach_feature_runtime(get_feature_matrix_runtime(symbol="BTCUSDT"))
+    feature_config = FeatureConfig(symbol="BTCUSDT", mode=FeatureMode.REPLAY)
+    runtime.attach_feature_runtime(get_feature_runtime(feature_config))
     runtime.attach_signal_runtime(get_signal_runtime())
     runtime.attach_execution_runtime(get_execution_runtime())
 

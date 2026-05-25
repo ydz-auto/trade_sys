@@ -445,3 +445,119 @@ class BinanceFuturesAdapter(BaseExchangeAdapter):
             pos.average_price = 0
 
         pos.updated_at = datetime.now()
+
+    async def place_order(self, order_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        简单的下单方法，接受字典参数，返回字典结果
+        适用于更简单的集成场景
+        """
+        from domain.execution.models.enums import OrderSide, OrderType
+
+        # 从字典中解析参数
+        symbol = order_data.get("symbol", "BTCUSDT")
+        side_str = order_data.get("side", "buy").lower()
+        order_type_str = order_data.get("order_type", "market").lower()
+        quantity = order_data.get("quantity", 0.001)
+        price = order_data.get("price")
+        leverage = order_data.get("leverage", 10)
+        reduce_only = order_data.get("reduce_only", False)
+        client_order_id = order_data.get("client_order_id")
+
+        # 转换为枚举
+        side = OrderSide.BUY if side_str in ["buy", "long"] else OrderSide.SELL
+        order_type = OrderType.MARKET if order_type_str in ["market", "m"] else OrderType.LIMIT
+
+        # 构造 OrderRequest（需要先检查是否存在）
+        try:
+            from domain.execution.models import OrderRequest, TimeInForce
+            
+            request = OrderRequest(
+                symbol=symbol,
+                side=side,
+                order_type=order_type,
+                quantity=quantity,
+                price=price,
+                leverage=leverage,
+                reduce_only=reduce_only,
+                time_in_force=TimeInForce.GTC,
+                client_order_id=client_order_id,
+            )
+        except Exception:
+            # 如果 OrderRequest 没有可用，直接使用简化的字典参数
+            result = await self._simple_place_order(
+                symbol=symbol,
+                side=side_str,
+                order_type=order_type_str,
+                quantity=quantity,
+                price=price,
+                leverage=leverage,
+                reduce_only=reduce_only,
+            )
+            return result
+
+        # 使用官方的 create_order 方法
+        order_result = await self.create_order(request)
+        
+        if order_result.success:
+            return {
+                "success": True,
+                "order_id": order_result.order.order_id,
+                "symbol": order_result.order.symbol,
+                "side": order_result.order.side.value,
+                "order_type": order_result.order.order_type.value,
+                "quantity": order_result.order.quantity,
+                "price": order_result.order.price,
+                "status": order_result.order.status.value,
+            }
+        else:
+            return {
+                "success": False,
+                "error": order_result.error,
+            }
+
+    async def _simple_place_order(self, symbol: str, side: str, order_type: str, quantity: float,
+                                 price: float = None, leverage: int = 10, reduce_only: bool = False) -> Dict[str, Any]:
+        """简化的直接 API 调用方法"""
+        if not self._connected or not self.api_key:
+            return {
+                "success": False,
+                "error": "Not connected or no API credentials",
+            }
+
+        try:
+            symbol = symbol.upper().replace("/", "")
+            
+            if leverage > 1 and symbol not in self._leverage_cache:
+                await self.set_leverage(symbol, leverage)
+
+            params = {
+                "symbol": symbol,
+                "side": side.upper(),
+                "type": order_type.upper(),
+                "quantity": quantity,
+            }
+
+            if order_type.lower() == "limit":
+                params["price"] = price
+                params["timeInForce"] = "GTC"
+
+            if reduce_only:
+                params["reduceOnly"] = True
+
+            result = await self._request("POST", "/fapi/v1/order", params)
+            
+            return {
+                "success": True,
+                "order_id": result["clientOrderId"],
+                "symbol": result["symbol"],
+                "quantity": float(result["origQty"]),
+                "price": float(result.get("price")) if result.get("price") else None,
+                "status": result["status"],
+                "exchange_order_id": result["orderId"],
+            }
+        except Exception as e:
+            logger.error(f"Simple order failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }

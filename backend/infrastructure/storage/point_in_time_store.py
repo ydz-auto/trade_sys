@@ -29,6 +29,11 @@ import json
 import hashlib
 
 from infrastructure.logging import get_logger
+from domain.feature.availability import (
+    SystematicAvailabilityGuard,
+    get_systematic_guard,
+    AvailabilityStatus,
+)
 
 logger = get_logger("storage.point_in_time_store")
 
@@ -116,7 +121,7 @@ class PointInTimeFeatureStore:
     ):
         self.symbol = symbol
         self.interval_ms = interval_ms
-        self._feature_availability_guard = feature_availability_guard
+        self._feature_availability_guard = feature_availability_guard or get_systematic_guard()
         
         self._records: Dict[int, Dict[str, PointInTimeFeatureRecord]] = {}
         self._feature_index: Dict[str, List[int]] = {}
@@ -130,17 +135,7 @@ class PointInTimeFeatureStore:
         self._log_access = True
 
     def _get_guard(self):
-        guard = self._feature_availability_guard
-        if guard is None:
-            # ARCHITECTURE NOTE: infrastructure → runtime 反向依赖
-            # TODO: 应改为依赖注入，由调用方传入 FeatureAvailabilityGuard
-            from runtimes.replay_runtime.shared_replay.feature_availability_guard import (
-                FeatureAvailabilityGuard,
-                get_feature_availability_guard,
-            )
-            guard = get_feature_availability_guard(self.interval_ms)
-            self._feature_availability_guard = guard
-        return guard
+        return self._feature_availability_guard
         
     def store_feature(
         self,
@@ -172,11 +167,16 @@ class PointInTimeFeatureStore:
             return None
         
         if available_at is None:
-            available_at = self._get_guard().get_feature_available_at(feature_name, feature_timestamp)
+            rule = self._get_guard().get_rule(feature_name)
+            if rule:
+                from infrastructure.utilities.runtime_clock import get_clock
+                available_at = rule.compute_available_at(feature_timestamp, get_clock())
+            else:
+                available_at = feature_timestamp
         
         if delay_ms is None:
-            rule = self._get_guard()._rules.get(feature_name)
-            delay_ms = rule.delay_ms if rule else 0
+            rule = self._get_guard().get_rule(feature_name)
+            delay_ms = available_at - feature_timestamp if rule and available_at > feature_timestamp else 0
         
         record = PointInTimeFeatureRecord(
             feature_name=feature_name,
@@ -264,20 +264,20 @@ class PointInTimeFeatureStore:
             if record is None:
                 continue
             
-            check = self._get_guard().check_availability(
+            status = self._get_guard().check(
                 feature_name=feature_name,
                 feature_timestamp=record.feature_timestamp,
-                replay_clock=query_time,
+                query_time=query_time,
             )
             
-            if check.status.value == "available":
+            if status == AvailabilityStatus.AVAILABLE:
                 available_features[feature_name] = record.value
                 feature_timestamps[feature_name] = record.feature_timestamp
                 available_at_times[feature_name] = record.available_at
             else:
                 blocked_features.append(feature_name)
                 if self._log_access:
-                    self._log_blocked_access(feature_name, query_time, record, check)
+                    self._log_blocked_access(feature_name, query_time, record, status)
         
         snapshot = PointInTimeSnapshot(
             snapshot_timestamp=query_time,
@@ -374,7 +374,7 @@ class PointInTimeFeatureStore:
         feature_name: str,
         query_time: int,
         record: PointInTimeFeatureRecord,
-        check: Any,
+        status: AvailabilityStatus,
     ):
         """记录被阻止的访问"""
         self._leakage_attempts.append({
@@ -382,8 +382,8 @@ class PointInTimeFeatureStore:
             "query_time": query_time,
             "feature_timestamp": record.feature_timestamp,
             "available_at": record.available_at,
-            "status": check.status.value,
-            "message": check.message,
+            "status": status.value,
+            "message": f"Feature {feature_name} status: {status.value}",
             "timestamp": datetime.utcnow().isoformat(),
         })
     

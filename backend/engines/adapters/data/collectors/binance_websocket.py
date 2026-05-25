@@ -65,12 +65,17 @@ class BinanceConfig:
     # 限流
     max_speed: bool = False  # True = 启用最大速度流
     
+    # K线周期
+    kline_interval: str = "1m"  # 1分钟K线
+    
     def __post_init__(self):
         if self.stream_types is None:
             self.stream_types = [
                 StreamType.AGG_TRADE,
                 StreamType.LIQUIDATION,
-                StreamType.MARK_PRICE
+                StreamType.MARK_PRICE,
+                StreamType.KLINE,
+                StreamType.FUNDING_RATE,
             ]
         if self.symbols is None:
             self.symbols = ["btcusdt", "ethusdt", "bnbusdt", "solusdt"]
@@ -141,6 +146,12 @@ class BinanceWebSocketAdapter:
                     streams.append(f"{symbol}@aggTrade")
                 elif stream_type == StreamType.BOOK_TICKER:
                     streams.append(f"{symbol}@bookTicker")
+                elif stream_type == StreamType.KLINE:
+                    streams.append(f"{symbol}@kline_{self.config.kline_interval}")
+                elif stream_type == StreamType.FUNDING_RATE:
+                    streams.append(f"{symbol}@markPrice@1s")  # 资金费率在markPrice流中
+                elif stream_type == StreamType.OPEN_INTEREST:
+                    streams.append(f"{symbol}@openInterest")
         
         # 获取可用端点
         try:
@@ -408,7 +419,13 @@ class BinanceWebSocketAdapter:
             await self._handle_liquidation(data)
         elif event_type == "markPriceUpdate":
             await self._handle_mark_price(data)
-        elif "bookTicker" in data:
+        elif event_type == "kline":
+            await self._handle_kline(data)
+        elif event_type == "24hrTicker":
+            await self._handle_ticker(data)
+        elif event_type == "openInterest":
+            await self._handle_open_interest(data)
+        elif "bookTicker" in data or (data.get("u") and "b" in data and "a" in data):
             await self._handle_book_ticker(data)
     
     async def _handle_trade(self, data: Dict):
@@ -465,12 +482,12 @@ class BinanceWebSocketAdapter:
         
         event = StandardEvent(
             source=Source.BINANCE.value,
-            event_type=EventType.TECHNICAL.value,  # 用 TECHNICAL 表示技术性事件
+            event_type=EventType.LIQUIDATION.value,
             timestamp=data.get("E", 0),
             title=f"Liquidation: {symbol.upper()} {side} {quantity} @ {price}",
             content=f" Binance 强平: {symbol.upper()} {side} {quantity} @ ${price:.2f}",
             importance=0.85,
-            sentiment="bearish" if side == "BUY" else "bullish",  # 多头被强平=看空
+            sentiment="bearish" if side == "BUY" else "bullish",
             symbols=[symbol.upper()],
             tags=["liquidation", "force_order", side.lower()],
             metadata={
@@ -490,15 +507,16 @@ class BinanceWebSocketAdapter:
             await self.on_event(event)
     
     async def _handle_mark_price(self, data: Dict):
-        """处理标记价格更新"""
+        """处理标记价格更新 — 同时提取 funding rate"""
         self.stats["price_updates"] += 1
         
         symbol = data.get("s", "").lower()
         mark_price = float(data.get("p", 0))
+        funding_rate = float(data.get("r", 0))
         
         event = StandardEvent(
             source=Source.BINANCE.value,
-            event_type=EventType.PRICE_UPDATE.value,
+            event_type=EventType.MARK_PRICE.value,
             timestamp=data.get("E", 0),
             title=f"Mark Price: {symbol.upper()} = ${mark_price}",
             content=f" Binance 标记价格更新: {symbol.upper()} = ${mark_price}",
@@ -508,7 +526,9 @@ class BinanceWebSocketAdapter:
                 "symbol": symbol,
                 "mark_price": mark_price,
                 "index_price": float(data.get("i", 0)),
-                "settle_price": float(data.get("P", 0))
+                "settle_price": float(data.get("P", 0)),
+                "funding_rate": funding_rate,
+                "funding_time": data.get("T", 0),
             }
         )
         
@@ -516,6 +536,27 @@ class BinanceWebSocketAdapter:
             await self.on_price_update(event)
         if self.on_event:
             await self.on_event(event)
+        
+        if StreamType.FUNDING_RATE in self.config.stream_types and funding_rate != 0:
+            funding_event = StandardEvent(
+                source=Source.BINANCE.value,
+                event_type=EventType.FUNDING.value,
+                timestamp=data.get("E", 0),
+                title=f"Funding: {symbol.upper()} rate={funding_rate}",
+                content=f"Funding rate: {funding_rate}",
+                importance=0.4,
+                symbols=[symbol.upper()],
+                tags=["funding"],
+                metadata={
+                    "symbol": symbol,
+                    "funding_rate": funding_rate,
+                    "mark_price": mark_price,
+                    "index_price": float(data.get("i", 0)),
+                    "funding_time": data.get("T", 0),
+                }
+            )
+            if self.on_event:
+                await self.on_event(funding_event)
     
     async def _handle_book_ticker(self, data: Dict):
         """处理最优买卖价"""
@@ -535,6 +576,103 @@ class BinanceWebSocketAdapter:
                 "ask_price": float(data.get("a", 0)),
                 "bid_quantity": float(data.get("B", 0)),
                 "ask_quantity": float(data.get("A", 0))
+            }
+        )
+        
+        if self.on_event:
+            await self.on_event(event)
+    
+    async def _handle_kline(self, data: Dict):
+        """处理K线数据"""
+        if "klines" not in self.stats:
+            self.stats["klines"] = 0
+        self.stats["klines"] += 1
+        
+        kline_data = data.get("k", {})
+        symbol = data.get("s", "").lower()
+        is_closed = kline_data.get("x", False)
+        
+        event = StandardEvent(
+            source=Source.BINANCE.value,
+            event_type=EventType.KLINE.value,
+            timestamp=data.get("E", 0),
+            title=f"Kline: {symbol.upper()} {kline_data.get('i', '')} - {'Closed' if is_closed else 'Open'}",
+            content=f"O: {kline_data.get('o')} H: {kline_data.get('h')} L: {kline_data.get('l')} C: {kline_data.get('c')} V: {kline_data.get('v')}",
+            importance=0.4 if is_closed else 0.1,
+            symbols=[symbol.upper()],
+            tags=["kline", "candle"],
+            metadata={
+                "symbol": symbol,
+                "interval": kline_data.get("i", ""),
+                "open": float(kline_data.get("o", 0)),
+                "high": float(kline_data.get("h", 0)),
+                "low": float(kline_data.get("l", 0)),
+                "close": float(kline_data.get("c", 0)),
+                "volume": float(kline_data.get("v", 0)),
+                "is_closed": is_closed,
+                "start_time": kline_data.get("t", 0),
+                "end_time": kline_data.get("T", 0)
+            }
+        )
+        
+        if self.on_event:
+            await self.on_event(event)
+    
+    async def _handle_ticker(self, data: Dict):
+        """处理24hr行情数据"""
+        if "tickers" not in self.stats:
+            self.stats["tickers"] = 0
+        self.stats["tickers"] += 1
+        
+        symbol = data.get("s", "").lower()
+        
+        event = StandardEvent(
+            source=Source.BINANCE.value,
+            event_type=EventType.PRICE_UPDATE.value,
+            timestamp=data.get("E", 0),
+            title=f"24h Ticker: {symbol.upper()}",
+            content=f"Change: {data.get('P', 0)}% | High: {data.get('h', 0)} | Low: {data.get('l', 0)}",
+            importance=0.3,
+            symbols=[symbol.upper()],
+            metadata={
+                "symbol": symbol,
+                "price_change": float(data.get("p", 0)),
+                "price_change_percent": float(data.get("P", 0)),
+                "open": float(data.get("o", 0)),
+                "high": float(data.get("h", 0)),
+                "low": float(data.get("l", 0)),
+                "close": float(data.get("c", 0)),
+                "volume": float(data.get("v", 0)),
+                "quote_volume": float(data.get("q", 0))
+            }
+        )
+        
+        if self.on_event:
+            await self.on_event(event)
+    
+    async def _handle_open_interest(self, data: Dict):
+        """处理持仓量数据"""
+        if "open_interests" not in self.stats:
+            self.stats["open_interests"] = 0
+        self.stats["open_interests"] += 1
+        
+        symbol = data.get("s", "").lower()
+        oi = float(data.get("o", 0))
+        time = data.get("E", 0)
+        
+        event = StandardEvent(
+            source=Source.BINANCE.value,
+            event_type=EventType.OPEN_INTEREST.value,
+            timestamp=time,
+            title=f"Open Interest: {symbol.upper()}",
+            content=f"OI: {oi}",
+            importance=0.35,
+            symbols=[symbol.upper()],
+            tags=["open_interest", "oi"],
+            metadata={
+                "symbol": symbol,
+                "open_interest": oi,
+                "timestamp": time
             }
         )
         

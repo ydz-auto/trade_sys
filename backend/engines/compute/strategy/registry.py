@@ -169,6 +169,98 @@ class BollingerBandsStrategy(BaseStrategy):
         return None
 
 
+class StrategyBridge(BaseStrategy):
+    """桥接策略 - 把旧的策略接口桥接到新的 BaseStrategy 接口"""
+    
+    def __init__(self, params: Dict[str, Any] = None):
+        super().__init__(params)
+        self._strategy_instance = None
+        self._strategy_id = params.get("strategy_id") if params else None
+        
+        # 动态加载策略
+        if self._strategy_id:
+            self._load_strategy()
+            
+    def _load_strategy(self):
+        """加载旧策略系统中的策略"""
+        try:
+            from engines.compute.strategy.strategies import (
+                RSIStrategy, MACDStrategy, PanicReversalStrategy,
+                LongLiquidationBounceStrategy, VolumeClimaxFadeStrategy,
+                WeakBounceShortStrategy, DeadCatEchoStrategy,
+                ImbalancePressureStrategy, SweepDetectionStrategy,
+                LiquidityVacuumStrategy, AggressiveFlowStrategy,
+                BreakoutStrategy, TrendFollowingStrategy,
+                VolatilityExpansionStrategy, BBCompressionBreakoutStrategy,
+                MomentumIgnitionStrategy, OIFlushStrategy,
+                ShortSqueezeStrategy, FundingExhaustionTrapStrategy
+            )
+            
+            STRATEGY_MAP = {
+                "rsi_oversold": RSIStrategy,
+                "rsi_overbought": RSIStrategy,
+                "macd_cross": MACDStrategy,
+                "sma_cross": TrendFollowingStrategy,
+                "ema_cross": TrendFollowingStrategy,
+                "bollinger_bands": BBCompressionBreakoutStrategy,
+                "panic_reversal": PanicReversalStrategy,
+                "long_liquidation_bounce": LongLiquidationBounceStrategy,
+                "volume_climax_fade": VolumeClimaxFadeStrategy,
+                "weak_bounce_short": WeakBounceShortStrategy,
+                "dead_cat_echo": DeadCatEchoStrategy,
+                "oi_flush": OIFlushStrategy,
+                "short_squeeze": ShortSqueezeStrategy,
+                "funding_exhaustion_trap": FundingExhaustionTrapStrategy,
+                "imbalance_pressure": ImbalancePressureStrategy,
+                "sweep_detection": SweepDetectionStrategy,
+                "liquidity_vacuum": LiquidityVacuumStrategy,
+                "aggressive_flow": AggressiveFlowStrategy,
+                "breakout": BreakoutStrategy,
+                "trend_following": TrendFollowingStrategy,
+                "volatility_expansion": VolatilityExpansionStrategy,
+                "bb_compression_breakout": BBCompressionBreakoutStrategy,
+                "momentum_ignition": MomentumIgnitionStrategy,
+            }
+            
+            strategy_cls = STRATEGY_MAP.get(self._strategy_id)
+            if strategy_cls:
+                self._strategy_instance = strategy_cls(strategy_id=self._strategy_id)
+                
+        except Exception as e:
+            pass
+            
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号 - 桥接到旧策略系统"""
+        if not self._strategy_instance:
+            return None
+            
+        try:
+            data = features.copy()
+            if hasattr(self._strategy_instance, 'calculate'):
+                signal = self._strategy_instance.calculate(data)
+                if signal:
+                    action_type = getattr(signal, 'action', None)
+                    if action_type:
+                        from engines.compute.strategy.strategies import ActionType
+                        if action_type == ActionType.LONG:
+                            return {
+                                'signal_type': 'buy',
+                                'confidence': getattr(signal, 'confidence', 0.8),
+                                'reason': getattr(signal, 'reason', '')
+                            }
+                        elif action_type == ActionType.SHORT:
+                            return {
+                                'signal_type': 'sell',
+                                'confidence': getattr(signal, 'confidence', 0.8),
+                                'reason': getattr(signal, 'reason', '')
+                            }
+        except Exception as e:
+            pass
+            
+        return None
+
+
+# 完整的策略注册表 - 添加桥接版本
 _STRATEGY_REGISTRY: Dict[str, Type[BaseStrategy]] = {
     "rsi_oversold": RSIOversoldStrategy,
     "rsi_overbought": RSIOverboughtStrategy,
@@ -176,6 +268,25 @@ _STRATEGY_REGISTRY: Dict[str, Type[BaseStrategy]] = {
     "sma_cross": SMACrossStrategy,
     "ema_cross": EMACrossStrategy,
     "bollinger_bands": BollingerBandsStrategy,
+    "panic_reversal": StrategyBridge,
+    "long_liquidation_bounce": StrategyBridge,
+    "volume_climax_fade": StrategyBridge,
+    "weak_bounce_short": StrategyBridge,
+    "dead_cat_echo": StrategyBridge,
+    "oi_flush": StrategyBridge,
+    "short_squeeze": StrategyBridge,
+    "funding_exhaustion_trap": StrategyBridge,
+    "imbalance_pressure": StrategyBridge,
+    "sweep_detection": StrategyBridge,
+    "liquidity_vacuum": StrategyBridge,
+    "aggressive_flow": StrategyBridge,
+    "breakout": StrategyBridge,
+    "trend_following": StrategyBridge,
+    "volatility_expansion": StrategyBridge,
+    "bb_compression_breakout": StrategyBridge,
+    "momentum_ignition": StrategyBridge,
+    "lead_lag": StrategyBridge,
+    "premium_divergence": StrategyBridge,
 }
 
 _STRATEGY_INFO: Dict[str, StrategyInfo] = {
@@ -384,6 +495,13 @@ _STRATEGY_INFO: Dict[str, StrategyInfo] = {
 
 def get_strategy(strategy_id: str, params: Dict[str, Any] = None) -> BaseStrategy:
     """获取策略实例"""
+    if params is None:
+        params = {}
+    
+    # 自动注入 strategy_id
+    params = params.copy()
+    params["strategy_id"] = strategy_id
+    
     strategy_class = _STRATEGY_REGISTRY.get(strategy_id)
     if not strategy_class:
         raise ValueError(f"Unknown strategy: {strategy_id}")

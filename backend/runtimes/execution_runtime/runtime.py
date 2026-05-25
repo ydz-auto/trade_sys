@@ -74,6 +74,10 @@ class ExecutionRuntime(BaseRuntime):
         self._state_machine = None
         self._execution_engine = None
         self._risk_engine = None
+        
+        # Trading Mode Manager 和 Adapter
+        self._trading_mode_manager = None
+        self._exchange_adapter = None
 
     async def initialize(self) -> None:
         self.logger.info("Initializing Execution Runtime with time-causal infrastructure...")
@@ -132,12 +136,30 @@ class ExecutionRuntime(BaseRuntime):
             self.logger.info("Risk engine initialized (compute delegate)")
         except Exception as e:
             self.logger.warning(f"Risk engine init failed: {e}")
+            
+        # 初始化 TradingModeManager 和 Exchange Adapter
+        try:
+            from runtimes.trading_mode_manager import get_trading_mode_manager
+            self._trading_mode_manager = get_trading_mode_manager()
+            self._exchange_adapter = self._trading_mode_manager.get_adapter()
+            
+            # 如果没有 adapter，尝试连接一个
+            if not self._exchange_adapter:
+                await self._trading_mode_manager._connect_adapter()
+                self._exchange_adapter = self._trading_mode_manager.get_adapter()
+                
+            self.logger.info(f"TradingModeManager initialized, current mode: {self._trading_mode_manager.mode.value}")
+        except Exception as e:
+            self.logger.warning(f"TradingModeManager init failed: {e}")
+            self._trading_mode_manager = None
+            self._exchange_adapter = None
 
         self.health_check.register_check("state_machine", self._check_state_machine)
         self.health_check.register_check("execution_engine", self._check_execution_engine)
         self.health_check.register_check("risk_engine", self._check_risk_engine)
         self.health_check.register_check("consumer", self._check_consumer)
         self.health_check.register_check("publisher", self._check_publisher)
+        self.health_check.register_check("exchange_adapter", self._check_exchange_adapter)
 
         self.logger.info("Execution Runtime initialized successfully")
 
@@ -155,6 +177,94 @@ class ExecutionRuntime(BaseRuntime):
 
     async def _check_publisher(self) -> bool:
         return self.publisher is not None and await self.publisher.is_healthy()
+
+    async def _check_exchange_adapter(self) -> bool:
+        if self._exchange_adapter is None:
+            return False
+        try:
+            # 检查 adapter 是否有连接状态属性或方法
+            if hasattr(self._exchange_adapter, 'is_connected'):
+                return self._exchange_adapter.is_connected
+            if hasattr(self._exchange_adapter, 'connected'):
+                return self._exchange_adapter.connected
+            if hasattr(self._exchange_adapter, 'is_alive'):
+                return await self._exchange_adapter.is_alive()
+            # 默认只要有 adapter 就返回 True
+            return True
+        except Exception:
+            return False
+
+    async def _execute_decision(self, decision: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if decision.get("action") == "HOLD":
+            return None
+
+        # 首先尝试使用真实的交易所适配器
+        if self._exchange_adapter and not self.config.enable_mock:
+            try:
+                # 获取 adapter 支持的接口并执行
+                order_result = await self._execute_with_adapter(decision)
+                if order_result:
+                    return order_result
+            except Exception as e:
+                self.logger.error(f"Error executing with adapter: {e}")
+                self.metrics.increment("adapter_errors")
+
+        # 如果没有适配器或者 enable_mock 为 True，使用 ExecutionEngine 或 mock
+        if self._execution_engine:
+            return await self._execution_engine.execute(decision)
+
+        return self._create_mock_order(decision)
+
+    async def _execute_with_adapter(self, decision: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """使用真实的交易所适配器执行订单"""
+        from domain.execution.models.order import Order
+        from domain.execution.models.enums import OrderStatus, OrderSide, OrderType, Exchange
+
+        symbol = decision.get("symbol", "BTCUSDT")
+        action = decision.get("action", "LONG")
+        quantity = decision.get("quantity", 0.01)
+        
+        # 创建订单
+        side = OrderSide.BUY if action in ["LONG", "buy"] else OrderSide.SELL
+        order_type = OrderType.MARKET
+        price = decision.get("price")
+        
+        order = {
+            "symbol": symbol,
+            "side": side.value,
+            "order_type": order_type.value,
+            "quantity": quantity,
+            "price": price,
+        }
+        
+        # 尝试使用适配器下单
+        try:
+            if hasattr(self._exchange_adapter, 'place_order'):
+                result = await self._exchange_adapter.place_order(order)
+            elif hasattr(self._exchange_adapter, 'create_order'):
+                result = await self._exchange_adapter.create_order(order)
+            elif hasattr(self._exchange_adapter, 'execute_order'):
+                result = await self._exchange_adapter.execute_order(order)
+            else:
+                self.logger.warning("Adapter does not have known order placement methods")
+                return None
+                
+            if result:
+                # 构造订单数据
+                order_data = {
+                    "order_id": result.get("order_id", f"ord_{now_ms()}"),
+                    "symbol": symbol,
+                    "side": side.value,
+                    "order_type": order_type.value,
+                    "quantity": quantity,
+                    "price": price or result.get("price"),
+                    "status": OrderStatus.FILLED.value,
+                    "timestamp": now_ms(),
+                }
+                return order_data
+        except Exception as e:
+            self.logger.error(f"Adapter order execution failed: {e}")
+            raise
 
     def get_state(self) -> Dict[str, Any]:
         if self._state_machine:

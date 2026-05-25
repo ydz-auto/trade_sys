@@ -175,6 +175,74 @@ class FeatureRuntime:
         self._on_feature_callback = on_feature
         self._on_snapshot_callback = on_snapshot
     
+    async def initialize(self, symbol: Optional[str] = None, mode: Optional[str] = None):
+        """初始化特征运行时（供 ReplayRuntime 调用）"""
+        if symbol:
+            self.config.symbol = symbol
+            # 重新初始化 PIT Store 等基础设施
+            self._pit_store = get_point_in_time_store(self.config.symbol)
+            self._snapshot_store = get_immutable_snapshot_store(self.config.symbol)
+        
+        if mode:
+            self.config.mode = FeatureMode(mode)
+            self._setup_mode()
+        
+        logger.info(f"FeatureRuntime initialized: {self.config.symbol}, mode={self.config.mode.value}")
+    
+    async def update(self, event: Any):
+        """更新特征（供 ReplayRuntime 调用）"""
+        event_type, data, timestamp_ms = self._parse_event(event)
+        if event_type:
+            if self.config.mode == FeatureMode.REPLAY:
+                await self.process_event_immediately(event_type, data, timestamp_ms)
+            else:
+                await self.emit_event(event_type, data, timestamp_ms)
+
+    async def process_event_immediately(self, event_type: str, data: Dict[str, Any], timestamp_ms: Optional[int] = None):
+        """
+        同步处理事件 — Replay 模式专用
+
+        与 emit_event() 不同，此方法不经过异步队列，
+        而是立即执行特征计算并写入 PIT Store，
+        保证调用后 get_features() 能拿到最新结果。
+        """
+        if timestamp_ms is None:
+            timestamp_ms = now_ms()
+
+        event = FeatureEvent(
+            event_id=f"{event_type}_{timestamp_ms}",
+            event_type=event_type,
+            timestamp_ms=timestamp_ms,
+            data=data
+        )
+
+        await self._process_event(event)
+
+    def _parse_event(self, event: Any):
+        """从各种事件格式中提取 event_type / data / timestamp_ms"""
+        event_type = getattr(event, 'event_type', None) or (event.get('event_type') if isinstance(event, dict) else None)
+        data = getattr(event, 'data', None) or (event.get('data', {}) if isinstance(event, dict) else {})
+        timestamp_ms = getattr(event, 'timestamp_ms', None) or (event.get('timestamp_ms') if isinstance(event, dict) else None)
+
+        if not event_type:
+            if hasattr(event, 'open') and hasattr(event, 'close'):
+                event_type = 'kline'
+                data = {
+                    'open': getattr(event, 'open', 0),
+                    'high': getattr(event, 'high', 0),
+                    'low': getattr(event, 'low', 0),
+                    'close': getattr(event, 'close', 0),
+                    'volume': getattr(event, 'volume', 0),
+                    'symbol': getattr(event, 'symbol', self.config.symbol)
+                }
+                timestamp_ms = getattr(event, 'timestamp_ms', now_ms())
+
+        return event_type, data, timestamp_ms
+    
+    async def get_features(self, timestamp_ms: int, feature_names: Optional[List[str]] = None) -> Dict[str, float]:
+        """获取特征（供 ReplayRuntime 调用）"""
+        return self.get_features_at(timestamp_ms, feature_names)
+    
     async def start(self):
         """启动特征运行时"""
         if self._running:
@@ -211,10 +279,14 @@ class FeatureRuntime:
     
     async def _process_event(self, event: FeatureEvent):
         """处理单个事件（时间因果安全）"""
-        # 1. 时间因果检查
-        if event.timestamp_ms > self._clock.available_at_ms():
-            logger.warning(f"Event time {event.timestamp_ms} ahead of clock!")
-            return
+        # 1. 在 replay 模式下，先推进时钟再处理事件
+        #    live 模式下，事件时间不应超过时钟（但允许微小偏差）
+        if self.config.mode == FeatureMode.REPLAY:
+            self._clock.advance_to(event.timestamp_ms)
+        else:
+            if event.timestamp_ms > self._clock.available_at_ms() + 5000:
+                logger.warning(f"Event time {event.timestamp_ms} too far ahead of clock!")
+                return
         
         # 2. 根据事件类型处理
         if event.event_type == "kline":
@@ -223,6 +295,14 @@ class FeatureRuntime:
             await self._process_trade_event(event)
         elif event.event_type == "orderbook":
             await self._process_orderbook_event(event)
+        elif event.event_type == "funding":
+            await self._process_funding_event(event)
+        elif event.event_type == "liquidation":
+            await self._process_liquidation_event(event)
+        elif event.event_type == "open_interest":
+            await self._process_open_interest_event(event)
+        elif event.event_type == "mark_price":
+            await self._process_mark_price_event(event)
         
         # 3. 推进时钟
         self._clock.advance_to(event.timestamp_ms)
@@ -246,7 +326,7 @@ class FeatureRuntime:
         self._pit_store.store_features_batch(
             features=features,
             feature_timestamp=event.timestamp_ms,
-            source_types={feat: FeatureSourceType.CALCULATED for feat in features}
+            source_types={feat: FeatureSourceType.DERIVED for feat in features}
         )
         
         # 3. 触发回调
@@ -279,7 +359,6 @@ class FeatureRuntime:
         data = event.data
         symbol = data.get('symbol', self.config.symbol)
         
-        # 存储订单簿数据到 PIT Store
         book_data = {
             'bid_price_0': float(data.get('bids', [[0, 0]])[0][0]),
             'bid_volume_0': float(data.get('bids', [[0, 0]])[0][1]),
@@ -291,6 +370,78 @@ class FeatureRuntime:
             features=book_data,
             feature_timestamp=event.timestamp_ms,
             source_types={key: FeatureSourceType.RAW for key in book_data}
+        )
+
+    async def _process_funding_event(self, event: FeatureEvent):
+        """处理资金费率事件"""
+        data = event.data
+        funding_rate = float(data.get('funding_rate', 0))
+        mark_price = float(data.get('mark_price', 0))
+        index_price = float(data.get('index_price', 0))
+
+        features = {
+            'funding_rate': funding_rate,
+            'funding_mark_price': mark_price,
+            'funding_index_price': index_price,
+        }
+
+        self._pit_store.store_features_batch(
+            features=features,
+            feature_timestamp=event.timestamp_ms,
+            source_types={k: FeatureSourceType.RAW for k in features}
+        )
+
+    async def _process_liquidation_event(self, event: FeatureEvent):
+        """处理强平事件"""
+        data = event.data
+        side = data.get('side', '')
+        price = float(data.get('price', 0))
+        quantity = float(data.get('quantity', 0))
+        value_usd = price * quantity
+
+        features = {
+            'liquidation_side': 1.0 if side.upper() == 'BUY' else -1.0,
+            'liquidation_price': price,
+            'liquidation_quantity': quantity,
+            'liquidation_value_usd': value_usd,
+        }
+
+        self._pit_store.store_features_batch(
+            features=features,
+            feature_timestamp=event.timestamp_ms,
+            source_types={k: FeatureSourceType.RAW for k in features}
+        )
+
+    async def _process_open_interest_event(self, event: FeatureEvent):
+        """处理持仓量事件"""
+        data = event.data
+        oi = float(data.get('open_interest', 0))
+
+        features = {
+            'open_interest': oi,
+        }
+
+        self._pit_store.store_features_batch(
+            features=features,
+            feature_timestamp=event.timestamp_ms,
+            source_types={k: FeatureSourceType.RAW for k in features}
+        )
+
+    async def _process_mark_price_event(self, event: FeatureEvent):
+        """处理标记价格事件"""
+        data = event.data
+        mark_price = float(data.get('mark_price', 0))
+        index_price = float(data.get('index_price', 0))
+
+        features = {
+            'mark_price': mark_price,
+            'index_price': index_price,
+        }
+
+        self._pit_store.store_features_batch(
+            features=features,
+            feature_timestamp=event.timestamp_ms,
+            source_types={k: FeatureSourceType.RAW for k in features}
         )
     
     async def emit_event(self, event_type: str, data: Dict[str, Any], timestamp_ms: Optional[int] = None):
@@ -317,21 +468,22 @@ class FeatureRuntime:
         
         这是唯一的特征读取入口！
         """
-        # 1. 时间因果检查
         current_clock = self._clock.available_at_ms()
-        safe_timestamp = min(timestamp_ms, current_clock)
-        
-        # 2. 从 PIT Store 获取
-        snapshot = self._pit_store.get_features_at_time(safe_timestamp)
+
+        if self.config.mode == FeatureMode.REPLAY:
+            query_time = timestamp_ms
+        else:
+            query_time = min(timestamp_ms, current_clock)
+
+        snapshot = self._pit_store.get_features_at_time(query_time)
         features = snapshot.features if hasattr(snapshot, 'features') else snapshot
-        
-        # 3. 检查特征可用性
+
         if feature_names is not None:
             safe_features = {}
             for name in feature_names:
                 status = self._availability_guard.check(
                     feature_name=name,
-                    feature_timestamp=safe_timestamp,
+                    feature_timestamp=query_time,
                     query_time=current_clock,
                     clock=self._clock
                 )
@@ -340,7 +492,7 @@ class FeatureRuntime:
                 if status == AvailabilityStatus.AVAILABLE and name in features:
                     safe_features[name] = features[name]
                 elif status != AvailabilityStatus.UNKNOWN and status != AvailabilityStatus.PARTIAL_ONLY:
-                    logger.warning(f"Feature '{name}' not available at {safe_timestamp}: {status.value}")
+                    logger.warning(f"Feature '{name}' not available at {query_time}: {status.value}")
             
             return safe_features
         
@@ -433,7 +585,7 @@ class FeatureRuntime:
                 self._pit_store.store_features_batch(
                     features=checkpoint["features"],
                     feature_timestamp=ts,
-                    source_types={k: FeatureSourceType.CALCULATED for k in checkpoint["features"]}
+                    source_types={k: FeatureSourceType.DERIVED for k in checkpoint["features"]}
                 )
 
     def get_state(self) -> Dict[str, Any]:

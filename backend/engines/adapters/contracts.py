@@ -16,6 +16,12 @@ class EventType(Enum):
     FUNDAMENTAL = "fundamental"
     TECHNICAL = "technical"
 
+    KLINE = "kline"
+    FUNDING = "funding"
+    LIQUIDATION = "liquidation"
+    OPEN_INTEREST = "open_interest"
+    MARK_PRICE = "mark_price"
+
     ONCHAIN_TRANSFER = "onchain_transfer"
     ONCHAIN_WHALE = "onchain_whale"
     ONCHAIN_PROTOCOL = "onchain_protocol"

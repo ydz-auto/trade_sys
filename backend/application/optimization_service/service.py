@@ -1,4 +1,4 @@
-﻿"""
+"""
 Optimization Service - 策略参数优化服务
 
 核心职责：
@@ -41,7 +41,7 @@ def _run_single_backtest_sync(
     backtest_config: BacktestConfig,
     metric: str,
 ) -> Dict[str, Any]:
-    """独立的同步回测函数（可被 pickle）"""
+    """独立的同步回测函数（可被 pickle），使用真正的策略"""
     import pandas as pd
     import numpy as np
     from datetime import datetime
@@ -66,17 +66,14 @@ def _run_single_backtest_sync(
     
     # 统一时间处理逻辑：检测时间列类型并转换
     if "timestamp_ms" in df.columns:
-        # 已经是 int64 ms 格式
         timestamp_col = "timestamp_ms"
     elif "timestamp" in df.columns:
-        # 可能是 pd.Timestamp，需要转换
         timestamp_col = "timestamp"
         df[timestamp_col] = pd.to_datetime(df[timestamp_col])
         df["timestamp_ms"] = df[timestamp_col].astype("int64") // 10**6
         timestamp_col = "timestamp_ms"
     elif "open_time" in df.columns:
         timestamp_col = "open_time"
-        # 检查 open_time 格式
         if pd.api.types.is_datetime64_any_dtype(df[timestamp_col]):
             df["timestamp_ms"] = df[timestamp_col].astype("int64") // 10**6
         else:
@@ -90,8 +87,6 @@ def _run_single_backtest_sync(
             "error": "No timestamp column found in data",
         }
     
-    # 使用时间权威系统转换 start/end 时间
-    # 这里我们实现一个简单的转换，因为在子进程中无法导入完整模块
     def _simple_normalize_time_ms(time_val):
         if isinstance(time_val, int):
             if time_val < 10**12:
@@ -120,102 +115,136 @@ def _run_single_backtest_sync(
             "error": "No data in date range",
         }
     
-    fast = params.get("fast", 10)
-    slow = params.get("slow", 50)
+    # 初始化策略实例
+    from engines.compute.strategy.registry import get_strategy
+    strategy = None
+    try:
+        strategy = get_strategy(strategy_id, params)
+    except Exception as e:
+        return {
+            "params": params,
+            "score": -float('inf'),
+            "result": None,
+            "error": f"Failed to initialize strategy: {e}",
+        }
     
-    df["fast_ma"] = df["close"].rolling(fast).mean()
-    df["slow_ma"] = df["close"].rolling(slow).mean()
-    df["signal"] = 0
-    df.loc[df["fast_ma"] > df["slow_ma"], "signal"] = 1
-    df.loc[df["fast_ma"] < df["slow_ma"], "signal"] = -1
-    
+    # 预处理特征数据
     position = None
     trades = []
     capital = backtest_config.initial_capital
     
-    for i in range(slow, len(df)):
-        row = df.iloc[i]
-        current_price = row["close"]
-        current_signal = row["signal"]
+    # 模拟特征窗口（用于策略）
+    close_prices = []
+    high_prices = []
+    low_prices = []
+    volumes = []
+    
+    for i, row in df.iterrows():
+        current_price = row.get("close", 0)
+        open_price = row.get("open", 0)
+        high_price = row.get("high", 0)
+        low_price = row.get("low", 0)
+        volume = row.get("volume", 0)
         
-        if pd.isna(row["fast_ma"]) or pd.isna(row["slow_ma"]):
-            continue
+        # 更新价格窗口
+        close_prices.append(current_price)
+        high_prices.append(high_price)
+        low_prices.append(low_price)
+        volumes.append(volume)
         
+        # 构建特征字典
+        features = row.to_dict()
+        features["close_prices"] = close_prices
+        features["high_prices"] = high_prices
+        features["low_prices"] = low_prices
+        features["volumes"] = volumes
+        features["symbol"] = symbol
+        
+        # 调用策略生成信号
+        signal_result = None
+        try:
+            signal_result = strategy.generate_signal(features)
+        except Exception as e:
+            continue  # 跳过无法生成信号的点
+        
+        # 处理信号逻辑
+        if signal_result:
+            signal_type = signal_result.get("signal_type")
+            confidence = signal_result.get("confidence", 0.5)
+            
+            # 简单策略实现：根据信号开平仓
+            if signal_type == "buy" and position is None:
+                position_value = capital * backtest_config.position_size * confidence
+                quantity = position_value / current_price
+                position = {
+                    "entry_time": row[timestamp_col],
+                    "entry_price": current_price * (1 + backtest_config.slippage),
+                    "quantity": quantity,
+                    "direction": "long",
+                }
+            elif signal_type == "sell" and position is None:
+                position_value = capital * backtest_config.position_size * confidence
+                quantity = position_value / current_price
+                position = {
+                    "entry_time": row[timestamp_col],
+                    "entry_price": current_price * (1 - backtest_config.slippage),
+                    "quantity": quantity,
+                    "direction": "short",
+                }
+        
+        # 持仓管理：止损止盈
         if position is not None:
             pnl_pct = (current_price - position["entry_price"]) / position["entry_price"]
             if position["direction"] == "short":
                 pnl_pct = -pnl_pct
             
+            should_exit = False
+            exit_reason = ""
+            
             if pnl_pct <= -backtest_config.stop_loss:
-                exit_price = current_price * (1 - backtest_config.slippage)
-                pnl = position["quantity"] * (exit_price - position["entry_price"])
-                if position["direction"] == "short":
-                    pnl = position["quantity"] * (position["entry_price"] - exit_price)
-                trades.append({
-                    "entry_time": position["entry_time"],
-                    "exit_time": row["timestamp"],
-                    "entry_price": position["entry_price"],
-                    "exit_price": exit_price,
-                    "quantity": position["quantity"],
-                    "direction": position["direction"],
-                    "pnl": pnl,
-                    "pnl_pct": pnl_pct,
-                    "exit_reason": "stop_loss",
-                })
-                capital += pnl
-                position = None
+                should_exit = True
+                exit_reason = "stop_loss"
             elif pnl_pct >= backtest_config.take_profit:
-                exit_price = current_price * (1 - backtest_config.slippage)
-                pnl = position["quantity"] * (exit_price - position["entry_price"])
-                if position["direction"] == "short":
+                should_exit = True
+                exit_reason = "take_profit"
+            
+            if should_exit:
+                exit_price = current_price
+                if position["direction"] == "long":
+                    exit_price *= (1 - backtest_config.slippage)
+                    pnl = position["quantity"] * (exit_price - position["entry_price"])
+                else:
+                    exit_price *= (1 + backtest_config.slippage)
                     pnl = position["quantity"] * (position["entry_price"] - exit_price)
+                
                 trades.append({
                     "entry_time": position["entry_time"],
-                    "exit_time": row["timestamp"],
+                    "exit_time": row[timestamp_col],
                     "entry_price": position["entry_price"],
                     "exit_price": exit_price,
                     "quantity": position["quantity"],
                     "direction": position["direction"],
                     "pnl": pnl,
                     "pnl_pct": pnl_pct,
-                    "exit_reason": "take_profit",
+                    "exit_reason": exit_reason,
                 })
                 capital += pnl
                 position = None
-            elif current_signal == -1 and position["direction"] == "long":
-                exit_price = current_price * (1 - backtest_config.slippage)
-                pnl = position["quantity"] * (exit_price - position["entry_price"])
-                trades.append({
-                    "entry_time": position["entry_time"],
-                    "exit_time": row["timestamp"],
-                    "entry_price": position["entry_price"],
-                    "exit_price": exit_price,
-                    "quantity": position["quantity"],
-                    "direction": position["direction"],
-                    "pnl": pnl,
-                    "pnl_pct": pnl_pct,
-                    "exit_reason": "signal",
-                })
-                capital += pnl
-                position = None
-        
-        if position is None and current_signal == 1:
-            position_value = capital * backtest_config.position_size
-            quantity = position_value / current_price
-            position = {
-                "entry_time": row["timestamp"],
-                "entry_price": current_price * (1 + backtest_config.slippage),
-                "quantity": quantity,
-                "direction": "long",
-            }
     
-    if position is not None:
-        last_price = df.iloc[-1]["close"]
-        exit_price = last_price * (1 - backtest_config.slippage)
-        pnl = position["quantity"] * (exit_price - position["entry_price"])
+    # 清仓
+    if position is not None and len(df) > 0:
+        last_price = df.iloc[-1].get("close", 0)
+        exit_price = last_price
+        if position["direction"] == "long":
+            exit_price *= (1 - backtest_config.slippage)
+            pnl = position["quantity"] * (exit_price - position["entry_price"])
+        else:
+            exit_price *= (1 + backtest_config.slippage)
+            pnl = position["quantity"] * (position["entry_price"] - exit_price)
+        
         trades.append({
             "entry_time": position["entry_time"],
-            "exit_time": df.iloc[-1]["timestamp"],
+            "exit_time": df.iloc[-1][timestamp_col],
             "entry_price": position["entry_price"],
             "exit_price": exit_price,
             "quantity": position["quantity"],
@@ -228,6 +257,7 @@ def _run_single_backtest_sync(
     
     total_return = (capital - backtest_config.initial_capital) / backtest_config.initial_capital
     
+    score = -float('inf')
     if trades:
         wins = [t for t in trades if t["pnl"] > 0]
         losses = [t for t in trades if t["pnl"] <= 0]
@@ -241,8 +271,6 @@ def _run_single_backtest_sync(
             score = len(wins) / len(trades) if trades else 0
         else:
             score = total_return
-    else:
-        score = -float('inf')
     
     return {
         "params": params,

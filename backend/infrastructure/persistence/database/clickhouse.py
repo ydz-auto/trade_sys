@@ -40,7 +40,7 @@ def _build_allowed_tables() -> Set[str]:
     except Exception:
         pass
     try:
-        from domain.schemas.data_lake import DATA_LAKE_TABLE_SCHEMAS
+        from domain.execution.schemas.data_lake import DATA_LAKE_TABLE_SCHEMAS
         allowed.update(DATA_LAKE_TABLE_SCHEMAS.keys())
     except Exception:
         pass
@@ -402,3 +402,24 @@ async def close_clickhouse() -> None:
     if _clickhouse_manager:
         await _clickhouse_manager.disconnect()
         _clickhouse_manager = None
+
+
+def candle_to_clickhouse_row(candle: Any) -> Dict[str, Any]:
+    return {
+        "exchange": candle.exchange.value if hasattr(candle.exchange, 'value') else str(candle.exchange),
+        "symbol": candle.symbol,
+        "timeframe": candle.timeframe.value if hasattr(candle.timeframe, 'value') else str(candle.timeframe),
+        "open_time": candle.open_time,
+        "open_time_dt": candle.open_time,
+        "close_time": candle.close_time,
+        "open": candle.open,
+        "high": candle.high,
+        "low": candle.low,
+        "close": candle.close,
+        "volume": candle.volume,
+        "quote_volume": getattr(candle, 'quote_volume', 0),
+        "trade_count": getattr(candle, 'trade_count', 0),
+        "is_closed": getattr(candle, 'is_closed', True),
+        "is_complete": getattr(candle, 'is_complete', True),
+        "missing_count": getattr(candle, 'missing_count', 0),
+    }
