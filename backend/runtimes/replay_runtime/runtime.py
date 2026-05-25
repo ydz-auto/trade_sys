@@ -7,6 +7,7 @@ Replay Runtime - 时间因果一致的回放运行时（完整 Kernel）
 3. 注入机制 - Strategy/Feature/Execution Runtime
 4. 状态查询 - get_session_state
 5. 数据源加载 - load_dataset
+6. 集成 BacktestExecutionEngine - 支持真实交易成本模型
 
 架构定位：
 - 全系统唯一的 Replay Driver
@@ -17,6 +18,7 @@ Replay Runtime - 时间因果一致的回放运行时（完整 Kernel）
 - 不能偷看未来数据
 - Replay/Live 特征完全一致
 - 事件严格按时间推进
+- 交易成本模型：手续费、滑点、保证金、爆仓、资金费
 """
 
 from typing import Dict, List, Optional, Any, Callable
@@ -66,6 +68,14 @@ from domain.event.infrastructure.event_ordering import (
 from runtimes.verification_runtime.replay_live_verifier import (
     ReplayLiveConsistencyVerifier,
     create_consistency_verifier
+)
+
+# 引入回测执行引擎
+from runtimes.replay_runtime.models import (
+    BacktestExecutionEngine,
+    create_backtest_engine,
+    OrderSide,
+    OrderType
 )
 
 
@@ -123,9 +133,24 @@ class SessionState:
     current_time_ms: int = 0
     total_events: int = 0
     processed_events: int = 0
+    
+    # 账户信息（来自 BacktestExecutionEngine）
     capital: float = 0.0
-    equity_curve: List[float] = field(default_factory=list)
+    equity: float = 0.0
+    wallet_balance: float = 0.0
+    used_margin: float = 0.0
+    available_balance: float = 0.0
+    unrealized_pnl: float = 0.0
+    realized_pnl: float = 0.0
+    total_fees: float = 0.0
+    total_funding: float = 0.0
+    
+    # 交易记录和曲线
+    equity_curve: List[Dict[str, Any]] = field(default_factory=list)
     trades: List[Dict[str, Any]] = field(default_factory=list)
+    positions: List[Dict[str, Any]] = field(default_factory=list)
+    
+    # 错误和指标
     errors: List[str] = field(default_factory=list)
     metrics: Dict[str, float] = field(default_factory=dict)
 
@@ -173,19 +198,22 @@ class TimeCausalReplayRuntime:
         self._execution_runtime = None
         self._strategy = None
         
-        # 5. Event 源和队列
+        # 5. 回测执行引擎（核心）
+        self._backtest_engine = None
+        
+        # 6. Event 源和队列
         self._event_source = None
         self._event_iterator = None
         self._warmup_data = None  # 预热数据副本（不消耗主迭代器）
         self._event_queue = asyncio.Queue()
         
-        # 6. 控制标志
+        # 7. 控制标志
         self._running = False
         self._paused = False
         self._step_mode = False
         self._step_event = asyncio.Event()
         
-        # 7. 回调函数
+        # 8. 回调函数
         self._on_event_callback = None
         self._on_step_callback = None
         self._on_session_start_callback = None
@@ -306,6 +334,20 @@ class TimeCausalReplayRuntime:
         # 重置其他基础设施
         self._event_ordering.reset_sequence()
         self._warmup_manager.reset_all()
+        
+        # 初始化回测执行引擎（核心）
+        self._backtest_engine = create_backtest_engine(
+            symbol=self.config.symbol,
+            initial_capital=self._session_state.capital,
+            default_leverage=5,
+            maker_fee=0.0002,
+            taker_fee=0.0005,
+            base_slippage_bps=2.0,
+            enable_slippage=True,
+            enable_liquidation=True,
+            enable_funding=True
+        )
+        logger.info(f"BacktestExecutionEngine initialized with capital: {self._session_state.capital}")
         
         # 通知注入的 Runtime 初始化
         if self._feature_runtime:
@@ -511,18 +553,113 @@ class TimeCausalReplayRuntime:
                     event.timestamp_ms
                 )
             
-            # 7. 执行
-            if signal and self._execution_runtime:
-                trade_result = await self._execution_runtime.execute_signal(signal)
-                
-                if trade_result:
-                    self._session_state.trades.append(trade_result)
-                    self._session_state.capital += trade_result.get('pnl', 0)
+            # 7. 执行（使用 BacktestExecutionEngine）
+            if signal and self._backtest_engine:
+                try:
+                    signal_type = signal.get('signal_type', 'buy')
+                    size = signal.get('size', 0.001)
+                    
+                    # 从多个可能的字段获取价格
+                    price = event.data.get('price', 0.0) or \
+                            event.data.get('close', 0.0) or \
+                            signal.get('price', 0.0)
+                    
+                    if price <= 0:
+                        logger.warning(f"No price available for signal execution")
+                    else:
+                        side = OrderSide.BUY if signal_type == 'buy' else OrderSide.SELL
+                        
+                        trade_result = await self._backtest_engine.execute_order(
+                            side=side,
+                            size=size,
+                            price=price,
+                            order_type=OrderType.MARKET,
+                            is_maker=False,
+                            timestamp_ms=event.timestamp_ms,
+                            current_funding_rate=event.data.get('funding_rate', 0.0),
+                            avg_daily_volume=event.data.get('volume', 1000000.0),
+                            current_spread_bps=2.0,
+                            volatility=0.002,
+                            orderbook_depth=100.0
+                        )
+                        
+                        if trade_result.success:
+                            # 记录交易
+                            trade_dict = {
+                                'order_id': trade_result.order_id,
+                                'timestamp_ms': event.timestamp_ms,
+                                'side': trade_result.side.value,
+                                'requested_price': trade_result.requested_price,
+                                'execution_price': trade_result.execution_price,
+                                'size': trade_result.size,
+                                'fee': trade_result.fee,
+                                'fee_rate': trade_result.fee_rate,
+                                'slippage_bps': trade_result.slippage_bps,
+                                'pnl': trade_result.pnl,
+                                'realized_pnl': trade_result.realized_pnl,
+                                'liquidation_occurred': trade_result.liquidation_occurred,
+                                'position_before': trade_result.position_before,
+                                'position_after': trade_result.position_after
+                            }
+                            self._session_state.trades.append(trade_dict)
+                            
+                            # 如果发生爆仓，记录错误
+                            if trade_result.liquidation_occurred:
+                                error_msg = f"Liquidation occurred at {event.timestamp_ms}: {trade_result.liquidation_details}"
+                                logger.error(error_msg)
+                                self._session_state.errors.append(error_msg)
+                        else:
+                            # 执行失败，记录错误
+                            error_msg = f"Order execution failed: {trade_result.error}"
+                            logger.error(error_msg)
+                            self._session_state.errors.append(error_msg)
+                            
+                except Exception as e:
+                    error_msg = f"Error executing signal: {str(e)}"
+                    logger.error(error_msg)
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    self._session_state.errors.append(error_msg)
             
-            # 8. 更新状态
+            # 8. 更新状态（从 BacktestExecutionEngine 获取）
             self._session_state.current_time_ms = event.timestamp_ms
             self._session_state.processed_events += 1
-            self._session_state.equity_curve.append(self._session_state.capital)
+            
+            if self._backtest_engine:
+                account_state = self._backtest_engine.get_account_state()
+                self._session_state.capital = account_state.get('current_balance', 0.0)
+                self._session_state.equity = account_state.get('equity', 0.0)
+                self._session_state.wallet_balance = account_state.get('current_balance', 0.0)
+                self._session_state.used_margin = account_state.get('used_margin', 0.0)
+                self._session_state.available_balance = account_state.get('available_balance', 0.0)
+                self._session_state.unrealized_pnl = account_state.get('unrealized_pnl', 0.0)
+                self._session_state.realized_pnl = account_state.get('total_realized_pnl', 0.0)
+                self._session_state.total_fees = account_state.get('total_fees', 0.0)
+                self._session_state.total_funding = account_state.get('total_funding', 0.0)
+                
+                # 更新仓位记录
+                position = self._backtest_engine.get_position()
+                if position:
+                    self._session_state.positions.append({
+                        'timestamp_ms': event.timestamp_ms,
+                        'quantity': position.quantity,
+                        'average_price': position.average_price,
+                        'current_price': position.current_price,
+                        'leverage': position.leverage,
+                        'margin': position.margin,
+                        'liquidation_price': position.liquidation_price,
+                        'unrealized_pnl': position.unrealized_pnl
+                    })
+            
+            # 记录权益曲线
+            self._session_state.equity_curve.append({
+                'timestamp_ms': event.timestamp_ms,
+                'equity': self._session_state.equity,
+                'capital': self._session_state.capital,
+                'unrealized_pnl': self._session_state.unrealized_pnl,
+                'realized_pnl': self._session_state.realized_pnl,
+                'fees': self._session_state.total_fees
+            })
             
             # 8. 生成不可变快照
             snapshot = self.create_snapshot(

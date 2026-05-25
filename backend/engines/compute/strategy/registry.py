@@ -40,6 +40,9 @@ class RSIOversoldStrategy(BaseStrategy):
         rsi = features.get('rsi_14', 50)
         oversold = self.params.get('oversold', 30)
 
+        if rsi is None:
+            return None
+
         if rsi < oversold:
             return {
                 'signal_type': 'buy',
@@ -55,6 +58,9 @@ class RSIOverboughtStrategy(BaseStrategy):
     def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         rsi = features.get('rsi_14', 50)
         overbought = self.params.get('overbought', 70)
+
+        if rsi is None:
+            return None
 
         if rsi > overbought:
             return {

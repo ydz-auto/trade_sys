@@ -233,23 +233,96 @@ async def test_minimum_closed_loop():
     
     # 检查交易
     print(f"\n📊 交易记录：{len(session_state.trades)} 笔")
+    
+    # 验证交易成本字段存在
+    cost_fields_verified = True
+    required_trade_fields = ['fee', 'fee_rate', 'slippage_bps', 'execution_price', 'requested_price', 'pnl']
+    
     for i, trade in enumerate(session_state.trades, 1):
-        print(f"   {i}. {trade.get('side', 'unknown')} {trade.get('quantity', 0)} {trade.get('symbol', symbol)}")
+        print(f"   {i}. {trade.get('side', 'unknown')} {trade.get('size', 0):.4f} @ {trade.get('execution_price', 0):.2f}")
+        
+        # 检查交易成本字段
+        for field in required_trade_fields:
+            if field not in trade:
+                print(f"      ❌ 缺失字段: {field}")
+                cost_fields_verified = False
+            elif trade[field] is None:
+                print(f"      ⚠️ 字段值为 None: {field}")
+        
+        # 打印成本详情
+        if trade.get('fee'):
+            print(f"         手续费: ${trade['fee']:.4f} (费率: {trade.get('fee_rate', 0) * 100:.4f}%)")
+        if trade.get('slippage_bps') and trade['slippage_bps'] > 0:
+            print(f"         滑点: {trade['slippage_bps']:.2f} bps")
+        if trade.get('pnl'):
+            print(f"         P&L: ${trade['pnl']:.2f}")
+    
+    # 验证账户字段（来自 BacktestExecutionEngine）
+    print("\n🏦 账户状态验证：")
+    account_fields = [
+        ('equity', '权益'),
+        ('wallet_balance', '钱包余额'),
+        ('used_margin', '已用保证金'),
+        ('available_balance', '可用余额'),
+        ('unrealized_pnl', '未实现盈亏'),
+        ('realized_pnl', '已实现盈亏'),
+        ('total_fees', '总手续费'),
+        ('total_funding', '总资金费'),
+    ]
+    
+    for field, desc in account_fields:
+        value = getattr(session_state, field, None)
+        if value is not None:
+            print(f"   ✅ {desc}: ${value:.2f}")
+        else:
+            print(f"   ❌ {desc}: 缺失")
+            cost_fields_verified = False
+    
+    # 验证权益曲线包含成本信息
+    print("\n📈 权益曲线验证：")
+    if session_state.equity_curve:
+        sample_curve = session_state.equity_curve[-1] if len(session_state.equity_curve) > 0 else {}
+        required_curve_fields = ['timestamp_ms', 'equity', 'capital', 'unrealized_pnl', 'fees']
+        
+        has_all_fields = all(field in sample_curve for field in required_curve_fields)
+        if has_all_fields:
+            print(f"   ✅ 权益曲线包含完整字段")
+            print(f"      最后权益: ${sample_curve.get('equity', 0):.2f}")
+            print(f"      最后未实现盈亏: ${sample_curve.get('unrealized_pnl', 0):.2f}")
+        else:
+            print(f"   ❌ 权益曲线字段不完整")
+            cost_fields_verified = False
+    else:
+        print(f"   ⚠️ 权益曲线为空")
     
     # 检查状态
     print(f"\n📈 最终资金：${session_state.capital:.2f}")
+    print(f"📈 最终权益：${session_state.equity:.2f}")
     print(f"📈 初始资金：$10000.00")
     
     # 验证 SessionState
     print(f"\n🟢 Session 状态：{session_state.status.value if hasattr(session_state.status, 'value') else session_state.status}")
     
     print("\n" + "=" * 80)
+    
+    # 交易成本模型验证结果
+    if cost_fields_verified:
+        print("✅ 交易成本模型验证通过")
+        print("   - 手续费字段存在")
+        print("   - 滑点字段存在")
+        print("   - 保证金字段存在")
+        print("   - 账户快照完整")
+    else:
+        print("❌ 交易成本模型验证失败")
+        success = False
+    
     if success:
         print("✅ Minimum Closed-Loop Test PASSED!")
         print("   - FeatureRuntime 工作正常")
         print("   - SignalRuntime 工作正常")
-        print("   - ExecutionRuntime 工作正常")
+        print("   - BacktestExecutionEngine 工作正常")
         print("   - 完整回测链路已通")
+        print("   - 交易成本模型已集成")
     else:
         print("❌ Minimum Closed-Loop Test FAILED")
     
