@@ -75,6 +75,37 @@ class BaseStrategy:
         """
         raise NotImplementedError
 
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        生成信号（新接口）
+
+        Args:
+            features: 特征数据
+
+        Returns:
+            信号字典或 None
+        """
+        try:
+            signal = self.calculate(features)
+            if signal:
+                action_type = getattr(signal, 'action', None)
+                if action_type == ActionType.LONG:
+                    return {
+                        'signal_type': 'buy',
+                        'confidence': getattr(signal, 'confidence', 0.8),
+                        'reason': getattr(signal, 'reason', '')
+                    }
+                elif action_type == ActionType.SHORT:
+                    return {
+                        'signal_type': 'sell',
+                        'confidence': getattr(signal, 'confidence', 0.8),
+                        'reason': getattr(signal, 'reason', '')
+                    }
+            return None
+        except Exception as e:
+            logger.exception(f"Error generating signal in {self.strategy_id}: {e}")
+            return None
+
 
 class RSIStrategy(BaseStrategy):
     """
