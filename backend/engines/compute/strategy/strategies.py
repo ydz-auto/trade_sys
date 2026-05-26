@@ -85,26 +85,7 @@ class BaseStrategy:
         Returns:
             信号字典或 None
         """
-        try:
-            signal = self.calculate(features)
-            if signal:
-                action_type = getattr(signal, 'action', None)
-                if action_type == ActionType.LONG:
-                    return {
-                        'signal_type': 'buy',
-                        'confidence': getattr(signal, 'confidence', 0.8),
-                        'reason': getattr(signal, 'reason', '')
-                    }
-                elif action_type == ActionType.SHORT:
-                    return {
-                        'signal_type': 'sell',
-                        'confidence': getattr(signal, 'confidence', 0.8),
-                        'reason': getattr(signal, 'reason', '')
-                    }
-            return None
-        except Exception as e:
-            logger.exception(f"Error generating signal in {self.strategy_id}: {e}")
-            return None
+        raise NotImplementedError
 
 
 class RSIStrategy(BaseStrategy):
@@ -203,6 +184,32 @@ class RSIStrategy(BaseStrategy):
         self._rsi_prev = rsi
 
         return signal
+
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）"""
+        if not self._enabled:
+            return None
+
+        rsi = features.get('rsi_14')
+        if rsi is None:
+            return None
+
+        oversold = self.params.get('oversold', self.oversold)
+        overbought = self.params.get('overbought', self.overbought)
+
+        if rsi < oversold:
+            return {
+                'signal_type': 'buy',
+                'confidence': 1.0 - rsi / 100,
+                'reason': f"RSI {rsi:.1f} < {oversold}"
+            }
+        elif rsi > overbought:
+            return {
+                'signal_type': 'sell',
+                'confidence': (rsi - 50) / 50,
+                'reason': f"RSI {rsi:.1f} > {overbought}"
+            }
+        return None
 
 
 class MACDStrategy(BaseStrategy):
@@ -314,6 +321,41 @@ class MACDStrategy(BaseStrategy):
 
         return signal
 
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）"""
+        if not self._enabled:
+            return None
+
+        macd = features.get('macd')
+        signal = features.get('macd_signal')
+        
+        if macd is None or signal is None:
+            return None
+
+        if self._macd_prev is None:
+            self._macd_prev = macd
+            self._signal_prev = signal
+            return None
+
+        if self._macd_prev <= self._signal_prev and macd > signal:
+            result = {
+                'signal_type': 'buy',
+                'confidence': 0.7,
+                'reason': f"MACD 金叉: {macd:.4f} > {signal:.4f}"
+            }
+        elif self._macd_prev >= self._signal_prev and macd < signal:
+            result = {
+                'signal_type': 'sell',
+                'confidence': 0.7,
+                'reason': f"MACD 死叉: {macd:.4f} < {signal:.4f}"
+            }
+        else:
+            result = None
+
+        self._macd_prev = macd
+        self._signal_prev = signal
+        return result
+
 
 class PanicReversalStrategy(BaseStrategy):
     """
@@ -378,6 +420,30 @@ class PanicReversalStrategy(BaseStrategy):
 
         return signal
 
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）"""
+        if not self._enabled:
+            return None
+
+        return_1h = features.get('return_1h')
+        volume_ratio = features.get('volume_ratio')
+
+        if return_1h is None or volume_ratio is None:
+            return None
+
+        drop_threshold = self.params.get('drop_threshold', self.drop_threshold) if hasattr(self, 'params') else self.drop_threshold
+        volume_ratio_threshold = self.params.get('volume_ratio_threshold', self.volume_ratio_threshold) if hasattr(self, 'params') else self.volume_ratio_threshold
+
+        if return_1h <= drop_threshold and volume_ratio >= volume_ratio_threshold:
+            confidence = min(0.9, (abs(return_1h) - abs(drop_threshold)) * 50 + 0.5)
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"恐慌反转: 1h跌幅={return_1h*100:.2f}%, 成交量比={volume_ratio:.2f}"
+            }
+
+        return None
+
 
 class LongLiquidationBounceStrategy(BaseStrategy):
     """
@@ -400,12 +466,14 @@ class LongLiquidationBounceStrategy(BaseStrategy):
         rsi_threshold: float = 25.0,
         volume_ratio_threshold: float = 2.0,
         default_quantity: float = 0.01,
+        params: Dict[str, Any] = None,
     ):
         super().__init__(strategy_id)
         self.drop_threshold = drop_threshold
         self.rsi_threshold = rsi_threshold
         self.volume_ratio_threshold = volume_ratio_threshold
         self.default_quantity = default_quantity
+        self.params = params or {}
 
         self._rsi_prev = None
 
@@ -508,6 +576,49 @@ class LongLiquidationBounceStrategy(BaseStrategy):
         self._rsi_prev = rsi
 
         return signal
+
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        return_1h = features.get('return_1h')
+        volume_ratio = features.get('volume_ratio')
+        rsi_14 = features.get('rsi_14')
+        long_liquidations_spike = features.get('long_liquidations_spike')
+
+        if return_1h is None or volume_ratio is None:
+            return None
+
+        drop_threshold = self.params.get('drop_threshold', self.drop_threshold)
+        volume_ratio_threshold = self.params.get('volume_ratio_threshold', self.volume_ratio_threshold)
+
+        conditions_met = 0
+        total_conditions = 2
+
+        if return_1h <= drop_threshold:
+            conditions_met += 1
+
+        if volume_ratio >= volume_ratio_threshold:
+            conditions_met += 1
+
+        if rsi_14 is not None and rsi_14 <= self.rsi_threshold:
+            total_conditions += 1
+            conditions_met += 1
+
+        if long_liquidations_spike:
+            total_conditions += 1
+            conditions_met += 1
+
+        if conditions_met >= 2:
+            confidence = min(0.9, (conditions_met / total_conditions) * 0.7 + 0.2)
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"多头踩踏反弹: 1h跌幅={return_1h*100:.2f}%, 成交量比={volume_ratio:.2f}, RSI={rsi_14}"
+            }
+
+        return None
 
 
 class SymbolStrategyConfig:
@@ -944,6 +1055,39 @@ class VolumeClimaxFadeStrategy(BaseStrategy):
 
         return signal
 
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）"""
+        if not self._enabled:
+            return None
+
+        volume_ratio = features.get('volume_ratio')
+        upper_shadow_ratio = features.get('upper_shadow_ratio')
+        return_1h = features.get('return_1h')
+
+        if volume_ratio is None or upper_shadow_ratio is None or return_1h is None:
+            return None
+
+        volume_ratio_threshold = getattr(self, 'params', {}).get('volume_ratio_threshold', self.volume_ratio_threshold)
+        upper_shadow_threshold = getattr(self, 'params', {}).get('upper_shadow_threshold', self.upper_shadow_threshold)
+        price_threshold = getattr(self, 'params', {}).get('price_threshold', self.price_threshold)
+
+        if (volume_ratio >= volume_ratio_threshold and
+            upper_shadow_ratio >= upper_shadow_threshold and
+            return_1h >= price_threshold):
+
+            confidence = min(0.9, (
+                (volume_ratio / volume_ratio_threshold) * 0.3 +
+                (upper_shadow_ratio / upper_shadow_threshold) * 0.4 + 0.2
+            ))
+
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"放量高潮衰竭: 成交量比={volume_ratio:.2f}, 上影线比={upper_shadow_ratio:.2f}, 1h涨幅={return_1h*100:.2f}%"
+            }
+
+        return None
+
 
 class WeakBounceShortStrategy(BaseStrategy):
     """
@@ -1022,6 +1166,41 @@ class WeakBounceShortStrategy(BaseStrategy):
 
         return signal
 
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）"""
+        if not self._enabled:
+            return None
+
+        return_4h = features.get('return_4h')
+        return_1h = features.get('return_1h')
+        volume_ratio = features.get('volume_ratio')
+
+        if return_4h is None or return_1h is None or volume_ratio is None:
+            return None
+
+        drop_threshold = getattr(self, 'params', {}).get('drop_threshold_4h', self.drop_threshold_4h)
+        bounce_min = getattr(self, 'params', {}).get('bounce_min', self.bounce_min)
+        bounce_max = getattr(self, 'params', {}).get('bounce_max', self.bounce_max)
+        volume_threshold = getattr(self, 'params', {}).get('volume_ratio_threshold', self.volume_ratio_threshold)
+
+        if (return_4h <= drop_threshold and
+            bounce_min <= return_1h <= bounce_max and
+            volume_ratio >= volume_threshold):
+
+            confidence = min(0.9, (
+                (abs(return_4h) / abs(drop_threshold)) * 0.4 +
+                (return_1h / bounce_max) * 0.3 +
+                (volume_ratio / volume_threshold) * 0.3
+            ))
+
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"弱反弹做空: 4h跌幅={return_4h*100:.2f}%, 反弹幅={return_1h*100:.2f}%, 成交量比={volume_ratio:.2f}"
+            }
+
+        return None
+
 
 class OIFlushStrategy(BaseStrategy):
     """
@@ -1097,6 +1276,55 @@ class OIFlushStrategy(BaseStrategy):
 
         return signal
 
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        oi_delta = features.get('oi_delta')
+        funding_delta = features.get('funding_delta')
+        return_1h = features.get('return_1h')
+        close = features.get('close')
+        liquidation_pressure = features.get('liquidation_pressure', 0.0)
+
+        if oi_delta is None or funding_delta is None:
+            return None
+
+        oi_flush_threshold = getattr(self, 'params', {}).get('oi_flush_threshold', self.oi_flush_threshold)
+        funding_threshold = getattr(self, 'params', {}).get('funding_normalization_threshold', self.funding_normalization_threshold)
+
+        if oi_delta >= oi_flush_threshold:
+            return None
+
+        if abs(funding_delta) <= funding_threshold:
+            return None
+
+        if return_1h is None and close is None:
+            return None
+
+        price_change = return_1h if return_1h is not None else 0.0
+        if close is not None and 'close_prev' in features:
+            price_change = (close - features.get('close_prev', close)) / features.get('close_prev', close)
+
+        if price_change < 0:
+            signal_type = 'buy'
+            reason = f"OI清洗做多: OI变化={oi_delta*100:.2f}%, 资金费率变化={funding_delta:.4f}, 价格变化={price_change*100:.2f}%"
+        else:
+            signal_type = 'sell'
+            reason = f"OI清洗做空: OI变化={oi_delta*100:.2f}%, 资金费率变化={funding_delta:.4f}, 价格变化={price_change*100:.2f}%"
+
+        confidence = min(0.9, (
+            (abs(oi_delta) / abs(oi_flush_threshold)) * 0.4 +
+            (abs(funding_delta) / funding_threshold) * 0.3 +
+            abs(liquidation_pressure) * 0.3
+        ))
+
+        return {
+            'signal_type': signal_type,
+            'confidence': confidence,
+            'reason': reason
+        }
+
 
 class ShortSqueezeStrategy(BaseStrategy):
     """
@@ -1167,6 +1395,40 @@ class ShortSqueezeStrategy(BaseStrategy):
 
         return signal
 
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        funding_zscore = features.get('funding_zscore')
+        oi_delta = features.get('oi_delta')
+        short_pressure = features.get('short_pressure')
+
+        if funding_zscore is None or oi_delta is None:
+            return None
+
+        funding_threshold = self.params.get('funding_extreme_threshold', self.funding_extreme_threshold) if hasattr(self, 'params') else self.funding_extreme_threshold
+        oi_threshold = self.params.get('oi_growth_threshold', self.oi_growth_threshold) if hasattr(self, 'params') else self.oi_growth_threshold
+        price_momentum_threshold = self.params.get('price_momentum_threshold', self.price_momentum_threshold) if hasattr(self, 'params') else self.price_momentum_threshold
+
+        if (funding_zscore < funding_threshold and
+            oi_delta > oi_threshold and
+            oi_delta > 0.02):
+
+            confidence = min(0.9, (
+                (abs(funding_zscore) / abs(funding_threshold)) * 0.4 +
+                (oi_delta / max(abs(oi_delta), 0.01)) * 0.3 +
+                abs(short_pressure) * 0.3 if short_pressure is not None else 0.0
+            ))
+
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"空头挤压做多: 资金费率Z={funding_zscore:.2f}, OI变化={oi_delta*100:.2f}%, 空头压力={short_pressure}"
+            }
+
+        return None
+
 
 class FundingExhaustionTrapStrategy(BaseStrategy):
     """
@@ -1233,6 +1495,36 @@ class FundingExhaustionTrapStrategy(BaseStrategy):
         )
 
         return signal
+
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        funding_zscore = features.get('funding_zscore')
+        funding_divergence = features.get('funding_divergence')
+
+        if funding_zscore is None:
+            return None
+
+        threshold = self.params.get('funding_extreme_threshold', self.funding_extreme_threshold) if hasattr(self, 'params') else self.funding_extreme_threshold
+
+        if funding_zscore > threshold:
+            confidence = min(0.9, (funding_zscore / threshold) * 0.5 + abs(funding_divergence or 0) * 0.3)
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"资金费率耗尽做空: funding_zscore={funding_zscore:.2f} > {threshold}, 背离={funding_divergence}"
+            }
+        elif funding_zscore < -threshold:
+            confidence = min(0.9, (abs(funding_zscore) / threshold) * 0.5 + abs(funding_divergence or 0) * 0.3)
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"资金费率耗尽做多: funding_zscore={funding_zscore:.2f} < -{threshold}, 背离={funding_divergence}"
+            }
+
+        return None
 
 
 class DeadCatEchoStrategy(BaseStrategy):
@@ -1318,6 +1610,44 @@ class DeadCatEchoStrategy(BaseStrategy):
             )
 
         return signal
+
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        return_4h = features.get('return_4h')
+        return_1h = features.get('return_1h')
+        volume_ratio = features.get('volume_ratio')
+
+        if return_4h is None or volume_ratio is None:
+            return None
+
+        drop_threshold = getattr(self, 'params', {}).get('drop_threshold_4h', self.drop_threshold_4h)
+        bounce_ratio_max = getattr(self, 'params', {}).get('bounce_ratio_max', self.bounce_ratio_max)
+        volume_fade_threshold = getattr(self, 'params', {}).get('volume_fade_threshold', self.volume_fade_threshold)
+
+        abs_drop = abs(return_4h)
+        bounce_ratio = return_1h / abs_drop if abs_drop > 0 and return_4h < 0 else 0.0
+
+        if (abs_drop >= abs(drop_threshold) and
+            bounce_ratio <= bounce_ratio_max and
+            volume_ratio <= volume_fade_threshold):
+
+            confidence = min(0.9, (
+                (abs_drop / abs(drop_threshold)) * 0.35 +
+                (1.0 - bounce_ratio / bounce_ratio_max) * 0.35 +
+                (1.0 - volume_ratio / volume_fade_threshold) * 0.15 +
+                0.15
+            ))
+
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"死猫回声做空: 4h跌幅={abs_drop*100:.2f}%, 反弹比={bounce_ratio*100:.2f}%, 成交量衰减={volume_ratio:.2f}"
+            }
+
+        return None
 
 
 class DynamicStrategySelector:
@@ -1469,6 +1799,51 @@ class BreakoutStrategy(BaseStrategy):
 
         return signal
 
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        close = features.get('close')
+        high = features.get('high')
+        low = features.get('low')
+        volume_ratio = features.get('volume_ratio')
+
+        if close is None or high is None or low is None or volume_ratio is None:
+            return None
+
+        range_high = features.get('range_high')
+        range_low = features.get('range_low')
+
+        if range_high is None or range_low is None:
+            return None
+
+        volume_ratio_threshold = getattr(self, 'params', {}).get(
+            'volume_ratio_threshold', self.volume_ratio_threshold
+        )
+
+        if close > range_high and volume_ratio >= volume_ratio_threshold:
+            breakout_magnitude = (close - range_high) / range_high if range_high > 0 else 0
+            confidence = min(0.9, breakout_magnitude * 50 + (volume_ratio / volume_ratio_threshold) * 0.3)
+
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"向上突破: 价格={close:.2f}, 区间高点={range_high:.2f}, 成交量比={volume_ratio:.2f}"
+            }
+
+        if close < range_low and volume_ratio >= volume_ratio_threshold:
+            breakout_magnitude = (range_low - close) / range_low if range_low > 0 else 0
+            confidence = min(0.9, breakout_magnitude * 50 + (volume_ratio / volume_ratio_threshold) * 0.3)
+
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"向下突破: 价格={close:.2f}, 区间低点={range_low:.2f}, 成交量比={volume_ratio:.2f}"
+            }
+
+        return None
+
 
 class TrendFollowingStrategy(BaseStrategy):
     """
@@ -1576,6 +1951,53 @@ class TrendFollowingStrategy(BaseStrategy):
         self._ema_slow_prev = ema_slow
 
         return signal
+
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        ema_fast = features.get('ema_fast')
+        ema_slow = features.get('ema_slow')
+
+        if ema_fast is None or ema_slow is None:
+            return None
+
+        if self._ema_fast_prev is None or self._ema_slow_prev is None:
+            self._ema_fast_prev = ema_fast
+            self._ema_slow_prev = ema_slow
+            return None
+
+        if ema_fast > ema_slow and ema_fast > self._ema_fast_prev and ema_slow > self._ema_slow_prev:
+            ema_separation = abs(ema_fast - ema_slow) / ema_slow if ema_slow > 0 else 0
+            confidence = min(0.9, ema_separation * 200 + 0.4)
+
+            self._ema_fast_prev = ema_fast
+            self._ema_slow_prev = ema_slow
+
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"上升趋势: EMA{self.fast_period}={ema_fast:.2f} > EMA{self.slow_period}={ema_slow:.2f}, 均线上升"
+            }
+
+        elif ema_fast < ema_slow and ema_fast < self._ema_fast_prev and ema_slow < self._ema_slow_prev:
+            ema_separation = abs(ema_fast - ema_slow) / ema_slow if ema_slow > 0 else 0
+            confidence = min(0.9, ema_separation * 200 + 0.4)
+
+            self._ema_fast_prev = ema_fast
+            self._ema_slow_prev = ema_slow
+
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"下降趋势: EMA{self.fast_period}={ema_fast:.2f} < EMA{self.slow_period}={ema_slow:.2f}, 均线下降"
+            }
+
+        self._ema_fast_prev = ema_fast
+        self._ema_slow_prev = ema_slow
+
+        return None
 
 
 class VolatilityExpansionStrategy(BaseStrategy):
@@ -1709,6 +2131,43 @@ class VolatilityExpansionStrategy(BaseStrategy):
 
         return signal
 
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        atr_ratio = features.get('atr_ratio')
+        price_position = features.get('price_position')
+        close = features.get('close')
+
+        if atr_ratio is None or price_position is None:
+            return None
+
+        atr_expansion_ratio = getattr(self, 'params', {}).get(
+            'atr_expansion_ratio', self.atr_expansion_ratio
+        )
+
+        if atr_ratio < atr_expansion_ratio:
+            return None
+
+        if price_position > 0.5:
+            confidence = min(0.9, (atr_ratio / atr_expansion_ratio) * 0.4 + price_position * 0.4 + 0.1)
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"波动率扩张向上: ATR比={atr_ratio:.2f}, 价格位置={price_position:.2f}"
+            }
+
+        if price_position < -0.5:
+            confidence = min(0.9, (atr_ratio / atr_expansion_ratio) * 0.4 + abs(price_position) * 0.4 + 0.1)
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"波动率扩张向下: ATR比={atr_ratio:.2f}, 价格位置={price_position:.2f}"
+            }
+
+        return None
+
 
 class BBCompressionBreakoutStrategy(BaseStrategy):
     """
@@ -1821,6 +2280,59 @@ class BBCompressionBreakoutStrategy(BaseStrategy):
 
         return signal
 
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        bb_upper = features.get('bb_upper')
+        bb_lower = features.get('bb_lower')
+        bb_middle = features.get('bb_middle')
+        close = features.get('close')
+
+        if bb_upper is None or bb_lower is None or bb_middle is None or close is None:
+            return None
+
+        compression_threshold = getattr(self, 'params', {}).get('compression_threshold', self.compression_threshold)
+
+        bb_width = (bb_upper - bb_lower) / bb_middle if bb_middle > 0 else 1.0
+
+        if bb_width >= compression_threshold:
+            self._prev_above_middle = close > bb_middle
+            return None
+
+        currently_above_middle = close > bb_middle
+
+        if self._prev_above_middle is None:
+            self._prev_above_middle = currently_above_middle
+            return None
+
+        compression_degree = (compression_threshold - bb_width) / compression_threshold
+
+        if not self._prev_above_middle and currently_above_middle:
+            breakout_strength = (close - bb_middle) / bb_middle if bb_middle > 0 else 0
+            confidence = min(0.9, compression_degree * 0.5 + breakout_strength * 100 + 0.3)
+
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"BB压缩向上突破: 带宽={bb_width:.4f}, 压缩度={compression_degree:.2f}"
+            }
+
+        elif self._prev_above_middle and not currently_above_middle:
+            breakout_strength = (bb_middle - close) / bb_middle if bb_middle > 0 else 0
+            confidence = min(0.9, compression_degree * 0.5 + breakout_strength * 100 + 0.3)
+
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"BB压缩向下突破: 带宽={bb_width:.4f}, 压缩度={compression_degree:.2f}"
+            }
+
+        self._prev_above_middle = currently_above_middle
+
+        return None
+
 
 class MomentumIgnitionStrategy(BaseStrategy):
     """
@@ -1908,6 +2420,43 @@ class MomentumIgnitionStrategy(BaseStrategy):
             )
 
         return signal
+
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        volume_ratio = features.get('volume_ratio')
+        return_1h = features.get('return_1h')
+
+        if volume_ratio is None or return_1h is None:
+            return None
+
+        volume_spike_ratio = getattr(self, 'params', {}).get('volume_spike_ratio', self.volume_spike_ratio)
+        return_threshold = getattr(self, 'params', {}).get('return_threshold', self.return_threshold)
+
+        if volume_ratio >= volume_spike_ratio and return_1h >= return_threshold:
+            confidence = min(0.9, (
+                (volume_ratio / volume_spike_ratio) * 0.4 +
+                (return_1h / return_threshold) * 0.4 + 0.1
+            ))
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"动量点火做多: 成交量急放={volume_ratio:.2f}x, 1h涨幅={return_1h*100:.2f}%"
+            }
+        elif volume_ratio >= volume_spike_ratio and return_1h <= -return_threshold:
+            confidence = min(0.9, (
+                (volume_ratio / volume_spike_ratio) * 0.4 +
+                (abs(return_1h) / return_threshold) * 0.4 + 0.1
+            ))
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"动量点火做空: 成交量急放={volume_ratio:.2f}x, 1h跌幅={return_1h*100:.2f}%"
+            }
+
+        return None
 
 
 class ImbalancePressureStrategy(BaseStrategy):
@@ -1997,6 +2546,45 @@ class ImbalancePressureStrategy(BaseStrategy):
 
         return signal
 
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        imbalance_5 = features.get('imbalance_5')
+        microprice = features.get('microprice')
+        mid_price = features.get('mid_price')
+
+        if imbalance_5 is None or microprice is None or mid_price is None:
+            return None
+
+        if mid_price == 0:
+            return None
+
+        imbalance_threshold = self.params.get('imbalance_threshold', self.imbalance_threshold) if hasattr(self, 'params') else self.imbalance_threshold
+
+        if imbalance_5 > imbalance_threshold and microprice > mid_price:
+            imbalance_strength = (imbalance_5 - imbalance_threshold) / (1.0 - imbalance_threshold)
+            confidence = min(0.9, imbalance_strength * 0.7 + 0.2)
+
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"订单簿买盘失衡: imbalance_5={imbalance_5:.3f}, microprice偏移={((microprice - mid_price) / mid_price) * 100:.4f}%"
+            }
+
+        elif imbalance_5 < -imbalance_threshold and microprice < mid_price:
+            imbalance_strength = (abs(imbalance_5) - imbalance_threshold) / (1.0 - imbalance_threshold)
+            confidence = min(0.9, imbalance_strength * 0.7 + 0.2)
+
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"订单簿卖盘失衡: imbalance_5={imbalance_5:.3f}, microprice偏移={((microprice - mid_price) / mid_price) * 100:.4f}%"
+            }
+
+        return None
+
 
 class SweepDetectionStrategy(BaseStrategy):
     """
@@ -2079,6 +2667,41 @@ class SweepDetectionStrategy(BaseStrategy):
             )
 
         return signal
+
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        sweep_buy_score = features.get('sweep_buy_score')
+        sweep_sell_score = features.get('sweep_sell_score')
+
+        if sweep_buy_score is None or sweep_sell_score is None:
+            return None
+
+        sweep_threshold = getattr(self, 'params', {}).get('sweep_threshold', self.sweep_threshold)
+
+        if sweep_buy_score > sweep_threshold:
+            sweep_strength = (sweep_buy_score - sweep_threshold) / (1.0 - sweep_threshold) if sweep_threshold < 1.0 else sweep_buy_score
+            confidence = min(0.9, sweep_strength * 0.7 + 0.2)
+
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"买方扫单: sweep_buy_score={sweep_buy_score:.3f} > {sweep_threshold}"
+            }
+
+        if sweep_sell_score > sweep_threshold:
+            sweep_strength = (sweep_sell_score - sweep_threshold) / (1.0 - sweep_threshold) if sweep_threshold < 1.0 else sweep_sell_score
+            confidence = min(0.9, sweep_strength * 0.7 + 0.2)
+
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"卖方扫单: sweep_sell_score={sweep_sell_score:.3f} > {sweep_threshold}"
+            }
+
+        return None
 
 
 class LiquidityVacuumStrategy(BaseStrategy):
@@ -2166,6 +2789,58 @@ class LiquidityVacuumStrategy(BaseStrategy):
             )
 
         return signal
+
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        spread = features.get('spread')
+        top5_depth = features.get('top5_depth')
+        cancel_rate = features.get('cancel_rate')
+        trade_delta = features.get('trade_delta')
+
+        if spread is None or top5_depth is None or cancel_rate is None or trade_delta is None:
+            return None
+
+        spread_expansion_factor = getattr(self, 'params', {}).get('spread_expansion_factor', self.spread_expansion_factor)
+        cancel_rate_threshold = getattr(self, 'params', {}).get('cancel_rate_threshold', self.cancel_rate_threshold)
+
+        if self._avg_spread is None:
+            self._avg_spread = spread
+            self._prev_top5_depth = top5_depth
+            return None
+
+        self._avg_spread = self._avg_spread * 0.95 + spread * 0.05
+
+        spread_expansion = spread / self._avg_spread if self._avg_spread > 0 else 1.0
+
+        depth_declining = False
+        depth_decline_ratio = 0.0
+        if self._prev_top5_depth is not None and self._prev_top5_depth > 0:
+            depth_decline_ratio = (self._prev_top5_depth - top5_depth) / self._prev_top5_depth
+            depth_declining = depth_decline_ratio > 0.1
+
+        self._prev_top5_depth = top5_depth
+
+        if spread_expansion >= spread_expansion_factor and depth_declining and cancel_rate >= cancel_rate_threshold:
+            spread_score = min((spread_expansion - spread_expansion_factor) / spread_expansion_factor, 1.0)
+            depth_score = min(depth_decline_ratio / 0.3, 1.0)
+            cancel_score = min(cancel_rate / 0.5, 1.0)
+            confidence = min(0.9, spread_score * 0.4 + depth_score * 0.3 + cancel_score * 0.2 + 0.1)
+
+            if trade_delta > 0:
+                signal_type = 'buy'
+            else:
+                signal_type = 'sell'
+
+            return {
+                'signal_type': signal_type,
+                'confidence': confidence,
+                'reason': f"流动性真空突破: spread扩张={spread_expansion:.2f}x, 深度下降={depth_decline_ratio*100:.1f}%, cancel_rate={cancel_rate:.3f}, trade_delta={trade_delta:.1f}"
+            }
+
+        return None
 
 
 class AggressiveFlowStrategy(BaseStrategy):
@@ -2256,6 +2931,56 @@ class AggressiveFlowStrategy(BaseStrategy):
 
         return signal
 
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        cumulative_delta = features.get('cumulative_delta')
+        aggressive_buy_volume = features.get('aggressive_buy_volume')
+        aggressive_sell_volume = features.get('aggressive_sell_volume')
+
+        if cumulative_delta is None or aggressive_buy_volume is None or aggressive_sell_volume is None:
+            return None
+
+        flow_imbalance_threshold = getattr(self, 'params', {}).get(
+            'flow_imbalance_threshold', self.flow_imbalance_threshold
+        )
+
+        if aggressive_sell_volume > 0:
+            buy_sell_ratio = aggressive_buy_volume / aggressive_sell_volume
+        else:
+            buy_sell_ratio = float('inf') if aggressive_buy_volume > 0 else 1.0
+
+        if aggressive_buy_volume > 0:
+            sell_buy_ratio = aggressive_sell_volume / aggressive_buy_volume
+        else:
+            sell_buy_ratio = float('inf') if aggressive_sell_volume > 0 else 1.0
+
+        if buy_sell_ratio >= flow_imbalance_threshold and cumulative_delta > 0:
+            flow_imbalance = min((buy_sell_ratio - flow_imbalance_threshold) / flow_imbalance_threshold, 1.0)
+            delta_alignment = min(abs(cumulative_delta) / 100.0, 1.0)
+            confidence = min(0.9, flow_imbalance * 0.5 + delta_alignment * 0.3 + 0.2)
+
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"激进买盘主导: 买/卖比={buy_sell_ratio:.2f}, cumulative_delta={cumulative_delta:.1f}"
+            }
+
+        elif sell_buy_ratio >= flow_imbalance_threshold and cumulative_delta < 0:
+            flow_imbalance = min((sell_buy_ratio - flow_imbalance_threshold) / flow_imbalance_threshold, 1.0)
+            delta_alignment = min(abs(cumulative_delta) / 100.0, 1.0)
+            confidence = min(0.9, flow_imbalance * 0.5 + delta_alignment * 0.3 + 0.2)
+
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"激进卖盘主导: 卖/买比={sell_buy_ratio:.2f}, cumulative_delta={cumulative_delta:.1f}"
+            }
+
+        return None
+
 
 class LeadLagStrategy(BaseStrategy):
     """
@@ -2338,6 +3063,41 @@ class LeadLagStrategy(BaseStrategy):
 
         return signal
 
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        binance_return = features.get('binance_return')
+        okx_return = features.get('okx_return')
+
+        if binance_return is None or okx_return is None:
+            return None
+
+        threshold = self.params.get('divergence_threshold', self.divergence_threshold) if hasattr(self, 'params') else self.divergence_threshold
+
+        return_diff = binance_return - okx_return
+
+        if return_diff > threshold:
+            divergence_magnitude = (return_diff - threshold) / threshold
+            confidence = min(0.9, divergence_magnitude * 0.7 + 0.2)
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"领先滞后做多: Binance领先, 收益率差={return_diff*100:.3f}%, threshold={threshold*100:.3f}%"
+            }
+
+        elif return_diff < -threshold:
+            divergence_magnitude = (abs(return_diff) - threshold) / threshold
+            confidence = min(0.9, divergence_magnitude * 0.7 + 0.2)
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"领先滞后做空: Binance领跌, 收益率差={return_diff*100:.3f}%, threshold={threshold*100:.3f}%"
+            }
+
+        return None
+
 
 class PremiumDivergenceStrategy(BaseStrategy):
     """
@@ -2414,6 +3174,54 @@ class PremiumDivergenceStrategy(BaseStrategy):
                 },
             )
         return signal
+
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        premium = features.get('premium')
+        basis = features.get('basis')
+        spread = features.get('spread')
+
+        if premium is None:
+            return None
+
+        premium_threshold = self.params.get('premium_threshold', self.premium_threshold) if hasattr(self, 'params') else self.premium_threshold
+
+        if premium > premium_threshold:
+            premium_magnitude = (premium - premium_threshold) / premium_threshold if premium_threshold > 0 else 0
+            basis_alignment = min(abs(basis) / 0.01, 1.0) if basis is not None else 0.5
+            confidence = min(0.9, premium_magnitude * 0.5 + basis_alignment * 0.3 + 0.2)
+
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"溢价背离做空: 溢价={premium*100:.3f}%, 基差={basis*100:.3f}%",
+                'metadata': {
+                    'premium': premium,
+                    'basis': basis,
+                    'spread': spread,
+                }
+            }
+
+        elif premium < -premium_threshold:
+            premium_magnitude = (abs(premium) - premium_threshold) / premium_threshold if premium_threshold > 0 else 0
+            basis_alignment = min(abs(basis) / 0.01, 1.0) if basis is not None else 0.5
+            confidence = min(0.9, premium_magnitude * 0.5 + basis_alignment * 0.3 + 0.2)
+
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"溢价背离做多: 溢价={premium*100:.3f}%, 基差={basis*100:.3f}%",
+                'metadata': {
+                    'premium': premium,
+                    'basis': basis,
+                    'spread': spread,
+                }
+            }
+
+        return None
 
 
 class SMACrossoverStrategy(BaseStrategy):
@@ -2507,6 +3315,46 @@ class SMACrossoverStrategy(BaseStrategy):
         self._slow_prev = slow_sma
 
         return signal
+
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）- 直接从features获取特征"""
+        if not self._enabled:
+            return None
+
+        sma_fast = features.get('sma_fast')
+        sma_slow = features.get('sma_slow')
+
+        if sma_fast is None or sma_slow is None:
+            return None
+
+        if self._fast_prev is None or self._slow_prev is None:
+            self._fast_prev = sma_fast
+            self._slow_prev = sma_slow
+            return None
+
+        if sma_fast > sma_slow and self._fast_prev <= self._slow_prev:
+            confidence = min(0.9, 0.5 + (sma_fast - sma_slow) / sma_slow * 2)
+            self._fast_prev = sma_fast
+            self._slow_prev = sma_slow
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"SMA金叉: SMA{self.fast_period}={sma_fast:.2f} > SMA{self.slow_period}={sma_slow:.2f}"
+            }
+        elif sma_fast < sma_slow and self._fast_prev >= self._slow_prev:
+            confidence = min(0.9, 0.5 + (sma_slow - sma_fast) / sma_slow * 2)
+            self._fast_prev = sma_fast
+            self._slow_prev = sma_slow
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"SMA死叉: SMA{self.fast_period}={sma_fast:.2f} < SMA{self.slow_period}={sma_slow:.2f}"
+            }
+
+        self._fast_prev = sma_fast
+        self._slow_prev = sma_slow
+
+        return None
 
 
 class EMACrossoverStrategy(BaseStrategy):
@@ -2605,6 +3453,46 @@ class EMACrossoverStrategy(BaseStrategy):
 
         return signal
 
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """基于特征生成交易信号"""
+        if not self._enabled:
+            return None
+
+        ema_fast = features.get('ema_fast')
+        ema_slow = features.get('ema_slow')
+        symbol = features.get('symbol', 'BTCUSDT')
+        price = features.get('close', features.get('price', 0))
+
+        if ema_fast is None or ema_slow is None:
+            return None
+
+        action = None
+        if ema_fast > ema_slow:
+            action = ActionType.LONG
+        elif ema_fast < ema_slow:
+            action = ActionType.SHORT
+
+        if action is None:
+            return None
+
+        confidence = min(0.9, 0.5 + abs(ema_fast - ema_slow) / ema_slow * 2)
+
+        return {
+            'strategy_id': self.strategy_id,
+            'action': action,
+            'quantity': self.default_quantity,
+            'price': price,
+            'confidence': confidence,
+            'symbol': symbol,
+            'reason': f"EMA交叉: EMA{self.fast_period}={ema_fast:.2f} vs EMA{self.slow_period}={ema_slow:.2f}",
+            'metadata': {
+                'ema_fast': ema_fast,
+                'ema_slow': ema_slow,
+                'fast_period': self.fast_period,
+                'slow_period': self.slow_period,
+            }
+        }
+
 
 class BollingerBandsStrategy(BaseStrategy):
     """
@@ -2702,6 +3590,52 @@ class BollingerBandsStrategy(BaseStrategy):
 
         return signal
 
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """从特征数据生成交易信号"""
+        if not self._enabled:
+            return None
+
+        close = features.get('close')
+        bb_upper = features.get('bb_upper')
+        bb_lower = features.get('bb_lower')
+
+        if close is None or bb_upper is None or bb_lower is None:
+            return None
+
+        signal = None
+
+        if self._price_prev is not None:
+            if self._price_prev > bb_lower and close <= bb_lower:
+                confidence = min(0.9, 0.5 + (bb_lower - close) / bb_lower)
+                signal = {
+                    'signal_type': 'buy',
+                    'confidence': confidence,
+                    'reason': f"布林带跌破下轨: 价格={close:.2f}, 下轨={bb_lower:.2f}",
+                    'metadata': {
+                        'bb_upper': bb_upper,
+                        'bb_lower': bb_lower,
+                        'period': self.period,
+                        'std_dev': self.std_dev,
+                    }
+                }
+            elif self._price_prev < bb_upper and close >= bb_upper:
+                confidence = min(0.9, 0.5 + (close - bb_upper) / bb_upper)
+                signal = {
+                    'signal_type': 'sell',
+                    'confidence': confidence,
+                    'reason': f"布林带突破上轨: 价格={close:.2f}, 上轨={bb_upper:.2f}",
+                    'metadata': {
+                        'bb_upper': bb_upper,
+                        'bb_lower': bb_lower,
+                        'period': self.period,
+                        'std_dev': self.std_dev,
+                    }
+                }
+
+        self._price_prev = close
+
+        return signal
+
 
 class MomentumStrategy(BaseStrategy):
     """
@@ -2777,3 +3711,43 @@ class MomentumStrategy(BaseStrategy):
             )
 
         return signal
+
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）"""
+        if not self._enabled:
+            return None
+
+        momentum = features.get('momentum')
+        close = features.get('close')
+
+        if momentum is None:
+            return None
+
+        threshold = self.params.get('threshold', self.threshold)
+
+        if momentum > threshold:
+            confidence = min(0.9, 0.5 + momentum / threshold * 0.4)
+            return {
+                'signal_type': 'buy',
+                'confidence': confidence,
+                'reason': f"动量向上: momentum={momentum*100:.2f}%",
+                'metadata': {
+                    'threshold': threshold,
+                    'momentum': momentum,
+                    'close': close,
+                }
+            }
+        elif momentum < -threshold:
+            confidence = min(0.9, 0.5 + abs(momentum) / threshold * 0.4)
+            return {
+                'signal_type': 'sell',
+                'confidence': confidence,
+                'reason': f"动量向下: momentum={momentum*100:.2f}%",
+                'metadata': {
+                    'threshold': threshold,
+                    'momentum': momentum,
+                    'close': close,
+                }
+            }
+
+        return None
