@@ -319,7 +319,10 @@ class StrategyAdapter:
                 elif signal.action == ActionType.SHORT:
                     return SignalType.SELL
                 elif signal.action == ActionType.CLOSE:
-                    return SignalType.SELL  # CLOSE 用于平多仓，返回 SELL 信号
+                    # 安全阀：只有在持有多仓时才返回 SELL，否则 HOLD
+                    if position is not None and position.get("side") == SignalType.BUY and position.get("quantity", 0) > 0:
+                        return SignalType.SELL
+                    return SignalType.HOLD
         except Exception as e:
             pass
 
