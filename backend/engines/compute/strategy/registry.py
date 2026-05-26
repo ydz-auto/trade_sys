@@ -20,6 +20,8 @@ class StrategyInfo:
     direction: str
     default_params: Dict[str, Any] = field(default_factory=dict)
     required_features: List[str] = field(default_factory=list)
+    tier: int = 2  # 默认第二梯队
+    supported_symbols: List[str] = field(default_factory=list)
 
 
 class BaseStrategy:
@@ -199,16 +201,25 @@ class StrategyBridge(BaseStrategy):
                 BreakoutStrategy, TrendFollowingStrategy,
                 VolatilityExpansionStrategy, BBCompressionBreakoutStrategy,
                 MomentumIgnitionStrategy, OIFlushStrategy,
-                ShortSqueezeStrategy, FundingExhaustionTrapStrategy
+                ShortSqueezeStrategy, FundingExhaustionTrapStrategy,
+                SMACrossoverStrategy, EMACrossoverStrategy,
+                BollingerBandsStrategy, MomentumStrategy,
+                LeadLagStrategy, PremiumDivergenceStrategy
+            )
+            from engines.compute.strategy.behavioral_strategies import (
+                OpenInterestBehaviorStrategy, FundingExtremeReversalStrategy,
+                LiquidationCascadeStrategy, CVDDivergenceStrategy,
+                WhaleTradeStrategy, FundingSettlementStrategy
             )
             
             STRATEGY_MAP = {
                 "rsi_oversold": RSIStrategy,
                 "rsi_overbought": RSIStrategy,
                 "macd_cross": MACDStrategy,
-                "sma_cross": TrendFollowingStrategy,
-                "ema_cross": TrendFollowingStrategy,
-                "bollinger_bands": BBCompressionBreakoutStrategy,
+                "sma_cross": SMACrossoverStrategy,
+                "ema_cross": EMACrossoverStrategy,
+                "bollinger_bands": BollingerBandsStrategy,
+                "momentum": MomentumStrategy,
                 "panic_reversal": PanicReversalStrategy,
                 "long_liquidation_bounce": LongLiquidationBounceStrategy,
                 "volume_climax_fade": VolumeClimaxFadeStrategy,
@@ -226,6 +237,14 @@ class StrategyBridge(BaseStrategy):
                 "volatility_expansion": VolatilityExpansionStrategy,
                 "bb_compression_breakout": BBCompressionBreakoutStrategy,
                 "momentum_ignition": MomentumIgnitionStrategy,
+                "lead_lag": LeadLagStrategy,
+                "premium_divergence": PremiumDivergenceStrategy,
+                "oi_behavior": OpenInterestBehaviorStrategy,
+                "funding_extreme_reversal": FundingExtremeReversalStrategy,
+                "liquidation_cascade": LiquidationCascadeStrategy,
+                "cvd_divergence": CVDDivergenceStrategy,
+                "whale_trade": WhaleTradeStrategy,
+                "funding_settlement": FundingSettlementStrategy,
             }
             
             strategy_cls = STRATEGY_MAP.get(self._strategy_id)
@@ -298,8 +317,15 @@ _STRATEGY_REGISTRY: Dict[str, Type[BaseStrategy]] = {
     "volatility_expansion": StrategyBridge,
     "bb_compression_breakout": StrategyBridge,
     "momentum_ignition": StrategyBridge,
+    "momentum": StrategyBridge,
     "lead_lag": StrategyBridge,
     "premium_divergence": StrategyBridge,
+    "oi_behavior": StrategyBridge,
+    "funding_extreme_reversal": StrategyBridge,
+    "liquidation_cascade": StrategyBridge,
+    "cvd_divergence": StrategyBridge,
+    "whale_trade": StrategyBridge,
+    "funding_settlement": StrategyBridge,
 }
 
 _STRATEGY_INFO: Dict[str, StrategyInfo] = {
@@ -399,7 +425,9 @@ _STRATEGY_INFO: Dict[str, StrategyInfo] = {
         description="OI清洗后趋势恢复",
         direction="both",
         default_params={"oi_drop_threshold": -0.10, "funding_reversal_threshold": 0.5},
-        required_features=["oi_delta", "oi_zscore", "funding_delta"]
+        required_features=["oi_delta", "oi_zscore", "funding_delta"],
+        tier=1,
+        supported_symbols=["BTCUSDT", "ETHUSDT"]
     ),
     "short_squeeze": StrategyInfo(
         strategy_id="short_squeeze",
@@ -407,7 +435,9 @@ _STRATEGY_INFO: Dict[str, StrategyInfo] = {
         description="空头挤压",
         direction="long",
         default_params={"funding_zscore_threshold": -2.0, "oi_growth_threshold": 0.02},
-        required_features=["funding_zscore", "oi_delta", "short_pressure"]
+        required_features=["funding_zscore", "oi_delta", "short_pressure"],
+        tier=1,
+        supported_symbols=["BTCUSDT", "ETHUSDT"]
     ),
     "funding_exhaustion_trap": StrategyInfo(
         strategy_id="funding_exhaustion_trap",
@@ -415,7 +445,9 @@ _STRATEGY_INFO: Dict[str, StrategyInfo] = {
         description="资金费率极端反转",
         direction="both",
         default_params={"funding_zscore_threshold": 2.5},
-        required_features=["funding_zscore", "funding_divergence"]
+        required_features=["funding_zscore", "funding_divergence"],
+        tier=1,
+        supported_symbols=["BTCUSDT", "ETHUSDT"]
     ),
     "panic_reversal": StrategyInfo(
         strategy_id="panic_reversal",
@@ -423,7 +455,9 @@ _STRATEGY_INFO: Dict[str, StrategyInfo] = {
         description="恐慌反转",
         direction="long",
         default_params={"drop_threshold": -0.015, "volume_ratio_threshold": 1.5},
-        required_features=["return_1h", "volume_ratio", "liquidation_spike"]
+        required_features=["return_1h", "volume_ratio", "liquidation_spike"],
+        tier=1,
+        supported_symbols=["BTCUSDT", "ETHUSDT"]
     ),
     "long_liquidation_bounce": StrategyInfo(
         strategy_id="long_liquidation_bounce",
@@ -431,7 +465,9 @@ _STRATEGY_INFO: Dict[str, StrategyInfo] = {
         description="多头踩踏反弹",
         direction="long",
         default_params={"drop_threshold": -0.02, "rsi_threshold": 25.0},
-        required_features=["return_1h", "rsi_14", "volume_ratio", "long_liquidations"]
+        required_features=["return_1h", "rsi_14", "volume_ratio", "long_liquidations"],
+        tier=1,
+        supported_symbols=["BTCUSDT", "ETHUSDT"]
     ),
     "dead_cat_echo": StrategyInfo(
         strategy_id="dead_cat_echo",
@@ -529,6 +565,14 @@ _STRATEGY_INFO: Dict[str, StrategyInfo] = {
         default_params={"volume_spike_threshold": 3.0, "return_threshold": 0.01},
         required_features=["close", "volume"]
     ),
+    "momentum": StrategyInfo(
+        strategy_id="momentum",
+        name="Momentum",
+        description="动量策略",
+        direction="both",
+        default_params={"period": 10, "threshold": 0.02},
+        required_features=["close"]
+    ),
     "lead_lag": StrategyInfo(
         strategy_id="lead_lag",
         name="Lead-Lag",
@@ -544,6 +588,60 @@ _STRATEGY_INFO: Dict[str, StrategyInfo] = {
         direction="both",
         default_params={"premium_threshold": 0.005},
         required_features=["basis", "premium", "spread"]
+    ),
+    "oi_behavior": StrategyInfo(
+        strategy_id="oi_behavior",
+        name="OI Behavior",
+        description="持仓量行为策略（第一梯队）",
+        direction="both",
+        default_params={"lookback_periods": 12, "min_oi_change_threshold": 0.01, "min_price_change_threshold": 0.005},
+        required_features=["close_prices", "oi_history", "oi_delta", "oi_zscore", "volumes"],
+        tier=1,
+        supported_symbols=["BTCUSDT", "ETHUSDT"]
+    ),
+    "funding_extreme_reversal": StrategyInfo(
+        strategy_id="funding_extreme_reversal",
+        name="Funding Extreme Reversal",
+        description="资金费率极端反转策略（第一梯队）",
+        direction="both",
+        default_params={"funding_zscore_threshold": 2.5, "oi_new_high_threshold": 1.5},
+        required_features=["close_prices", "oi_history", "funding_rate", "funding_zscore", "oi_funding_divergence", "funding_extreme_reversal"],
+        tier=1,
+        supported_symbols=["BTCUSDT", "ETHUSDT"]
+    ),
+    "liquidation_cascade": StrategyInfo(
+        strategy_id="liquidation_cascade",
+        name="Liquidation Cascade",
+        description="爆仓连锁策略（第一梯队）",
+        direction="both",
+        default_params={"long_liq_spike_threshold": 1000000.0, "oi_drop_threshold": -0.05, "price_drop_threshold": -0.03},
+        required_features=["close_prices", "oi_history", "liquidation_long", "liquidation_short", "liquidation_spike", "liquidation_reversal_signal"],
+        tier=1,
+        supported_symbols=["BTCUSDT", "ETHUSDT"]
+    ),
+    "cvd_divergence": StrategyInfo(
+        strategy_id="cvd_divergence",
+        name="CVD Divergence",
+        description="CVD背离策略（第二梯队）",
+        direction="both",
+        default_params={"lookback_periods": 24, "divergence_threshold": 0.1},
+        required_features=["close_prices", "cvd_history"]
+    ),
+    "whale_trade": StrategyInfo(
+        strategy_id="whale_trade",
+        name="Whale Trade",
+        description="大单策略（第二梯队）",
+        direction="both",
+        default_params={"whale_threshold_btc": 100.0, "lookback_trades": 5, "oi_change_threshold": 0.01},
+        required_features=["close_prices", "oi_history", "whale_buy_count", "whale_sell_count", "whale_buy_volume", "whale_sell_volume", "aggressive_flow"]
+    ),
+    "funding_settlement": StrategyInfo(
+        strategy_id="funding_settlement",
+        name="Funding Settlement",
+        description="资金费率结算事件策略（第二梯队）",
+        direction="both",
+        default_params={"minutes_before_settlement": 30, "minutes_after_settlement": 60},
+        required_features=["close_prices", "timestamp", "funding_rate"]
     ),
 }
 

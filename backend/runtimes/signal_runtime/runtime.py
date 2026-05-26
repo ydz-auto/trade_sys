@@ -53,6 +53,13 @@ from domain.feature.infrastructure.feature_lineage import (
     get_feature_lineage
 )
 from runtimes.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
+from engines.compute.strategy.registry import (
+    get_strategy,
+    list_strategies,
+    get_strategy_info,
+    StrategyBridge
+)
+from runtimes.regime_runtime import get_regime_runtime
 
 
 logger = get_logger("signal_runtime")
@@ -82,6 +89,10 @@ class TimeCausalSignalRuntime:
     - Label 物理隔离
     - 跨币种时间对齐
     - 特征血缘追踪
+    
+    新增功能：
+    - 自动从 Registry 加载策略
+    - Regime Runtime 集成（策略权重/启用）
     """
     
     def __init__(
@@ -105,12 +116,88 @@ class TimeCausalSignalRuntime:
         self._signal_callbacks: List[Callable] = []
         self._signal_sequence = 0
         
-        # 3. 设置模式
+        # 3. Regime Runtime 集成
+        self._regime_runtime = None
+        
+        # 4. 设置模式
         self._setup_mode()
         
         self._running = False
         
         logger.info(f"Time-Causal Signal Runtime initialized for {self.config.symbols}")
+    
+    def load_strategies_from_registry(self, strategy_ids: Optional[List[str]] = None,
+                                     tier: Optional[int] = None,
+                                     symbol: Optional[str] = None) -> int:
+        """
+        从策略注册表加载策略
+        
+        参数：
+            strategy_ids: 要加载的策略ID列表，None则加载所有
+            tier: 只加载指定梯队的策略
+            symbol: 为特定币种加载策略
+        """
+        if strategy_ids is None:
+            # 获取所有策略信息
+            strategy_info_list = list_strategies()
+            strategy_ids = [s.strategy_id for s in strategy_info_list]
+        
+        loaded_count = 0
+        
+        for strategy_id in strategy_ids:
+            try:
+                # 获取策略信息
+                info = get_strategy_info(strategy_id)
+                if info:
+                    # 梯队过滤
+                    if tier is not None and info.tier != tier:
+                        continue
+                    
+                    # 币种支持过滤
+                    if symbol and info.supported_symbols and symbol not in info.supported_symbols:
+                        continue
+                
+                # 加载策略
+                strategy = get_strategy(strategy_id)
+                self.register_strategy(strategy_id, strategy)
+                
+                loaded_count += 1
+                logger.info(f"Loaded strategy from registry: {strategy_id}")
+                
+            except Exception as e:
+                logger.error(f"Failed to load strategy {strategy_id}: {e}")
+        
+        logger.info(f"Loaded {loaded_count} strategies from registry")
+        return loaded_count
+    
+    def attach_regime_runtime(self):
+        """连接 Regime Runtime 来动态控制策略"""
+        self._regime_runtime = get_regime_runtime()
+        logger.info("Attached Regime Runtime to Signal Runtime")
+    
+    def apply_regime_filter(self):
+        """根据 Regime 状态启用/禁用策略"""
+        if not self._regime_runtime:
+            return
+        
+        active_strategy_ids = self._regime_runtime.get_active_strategies()
+        
+        for strategy_id, strategy in self._strategies.items():
+            # 检查策略是否应该启用
+            base_id = strategy_id.rsplit("_", 1)[0] if "_" in strategy_id else strategy_id
+            
+            should_enable = (
+                base_id in active_strategy_ids or
+                strategy_id in active_strategy_ids or
+                not active_strategy_ids  # 如果没有指定策略，都启用
+            )
+            
+            if should_enable and not strategy.is_enabled:
+                strategy.enable()
+                logger.debug(f"Regime enabled: {strategy_id}")
+            elif not should_enable and strategy.is_enabled:
+                strategy.disable()
+                logger.debug(f"Regime disabled: {strategy_id}")
     
     def _setup_mode(self):
         """设置模式"""
@@ -155,9 +242,13 @@ class TimeCausalSignalRuntime:
         """
         self._signal_callbacks.append(callback)
     
-    async def initialize(self, symbol: Optional[str] = None, mode: Optional[str] = None) -> None:
+    async def initialize(self, symbol: Optional[str] = None, mode: Optional[str] = None,
+                        auto_load_strategies: bool = True) -> None:
         """
         初始化信号运行时（供 ReplayRuntime 调用）
+        
+        新增功能：
+            auto_load_strategies: 是否自动从 registry 加载策略
         """
         if symbol and symbol not in self.config.symbols:
             self.config.symbols.append(symbol)
@@ -165,6 +256,23 @@ class TimeCausalSignalRuntime:
             self.config.mode = mode
             self._mode = mode  # 同步设置 _mode，否则 generate_signal() 中的时间检查会失败
             self._setup_mode()
+        
+        # 自动从 registry 加载策略
+        if auto_load_strategies and self.config.enable_strategy_registry:
+            try:
+                # 先加载第一梯队策略（高优先级）
+                tier1_count = self.load_strategies_from_registry(tier=1, symbol=symbol)
+                # 再加载第二梯队策略
+                tier2_count = self.load_strategies_from_registry(tier=2, symbol=symbol)
+                logger.info(f"Auto-loaded {tier1_count} tier 1 strategies and {tier2_count} tier 2 strategies")
+            except Exception as e:
+                logger.warning(f"Failed to auto-load strategies: {e}")
+        
+        # 尝试连接 Regime Runtime
+        try:
+            self.attach_regime_runtime()
+        except Exception as e:
+            logger.warning(f"Failed to attach Regime Runtime: {e}")
         
         logger.info(f"Signal Runtime initialized for {self.config.symbols}")
     
@@ -220,9 +328,15 @@ class TimeCausalSignalRuntime:
         重点防护：
         1. 只能使用 <= 当前时间的特征
         2. Label 隔离（不能在特征中混入 future_return）
+        
+        新增功能：
+        - Regime 过滤
         """
         if timestamp_ms is None:
             timestamp_ms = now_ms()
+        
+        # 0. 应用 Regime 过滤器（动态启用/禁用策略）
+        self.apply_regime_filter()
         
         # 1. 确保不会使用未来特征
         safe_timestamp = min(timestamp_ms, self._clock.available_at_ms())
@@ -230,10 +344,14 @@ class TimeCausalSignalRuntime:
         # 2. 获取安全特征
         features = await self._get_safe_features(symbol, safe_timestamp)
         
-        # 3. 调用所有已注册策略生成信号
+        # 3. 调用所有已注册且启用的策略生成信号
         signals = []
         for strategy_id, strategy in self._strategies.items():
             try:
+                # 跳过禁用的策略
+                if not strategy.is_enabled:
+                    continue
+                
                 signal = await self.generate_signal(strategy, features, safe_timestamp)
                 if signal:
                     signal['strategy_id'] = strategy_id

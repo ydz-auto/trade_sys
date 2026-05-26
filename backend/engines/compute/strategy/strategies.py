@@ -642,15 +642,26 @@ class MultiStrategyOrchestrator:
         return None
 
 
-def create_default_strategies(symbols: List[str] = None) -> MultiStrategyOrchestrator:
+def create_default_strategies(symbols: List[str] = None, attach_regime: bool = True) -> MultiStrategyOrchestrator:
     """
     创建默认策略集合（按币种独立）
 
     Args:
         symbols: 币种列表
+        attach_regime: 是否自动 attach Regime Runtime
     """
     symbols = symbols or ["BTCUSDT", "ETHUSDT"]
     orchestrator = MultiStrategyOrchestrator(symbols)
+    
+    if attach_regime:
+        try:
+            from runtimes.regime_runtime import get_regime_runtime
+            regime_runtime = get_regime_runtime()
+            orchestrator.attach_regime_runtime(regime_runtime)
+        except ImportError as e:
+            logger.warning(f"无法导入 Regime Runtime: {e}，跳过 attach")
+        except Exception as e:
+            logger.error(f"attach Regime Runtime 失败: {e}")
 
     for symbol in symbols:
         rsi_strategy = RSIStrategy(
@@ -790,6 +801,34 @@ def create_default_strategies(symbols: List[str] = None) -> MultiStrategyOrchest
             premium_threshold=0.005,
         )
         orchestrator.add_strategy(premium_divergence_strategy, symbol)
+
+        sma_crossover_strategy = SMACrossoverStrategy(
+            strategy_id=f"sma_crossover_{symbol}",
+            fast_period=10,
+            slow_period=20,
+        )
+        orchestrator.add_strategy(sma_crossover_strategy, symbol)
+
+        ema_crossover_strategy = EMACrossoverStrategy(
+            strategy_id=f"ema_crossover_{symbol}",
+            fast_period=10,
+            slow_period=20,
+        )
+        orchestrator.add_strategy(ema_crossover_strategy, symbol)
+
+        bollinger_bands_strategy = BollingerBandsStrategy(
+            strategy_id=f"bollinger_bands_{symbol}",
+            period=20,
+            std_dev=2.0,
+        )
+        orchestrator.add_strategy(bollinger_bands_strategy, symbol)
+
+        momentum_strategy = MomentumStrategy(
+            strategy_id=f"momentum_{symbol}",
+            period=10,
+            threshold=0.02,
+        )
+        orchestrator.add_strategy(momentum_strategy, symbol)
 
     logger.info(f"Default strategies created for {len(symbols)} symbols: {symbols}")
     return orchestrator
@@ -2341,6 +2380,368 @@ class PremiumDivergenceStrategy(BaseStrategy):
                     "basis": basis,
                     "premium": premium,
                     "spread_cross_exchange": spread_cross_exchange,
+                },
+            )
+        return signal
+
+
+class SMACrossoverStrategy(BaseStrategy):
+    """
+    SMA交叉策略
+    
+    核心逻辑：
+    - 短期SMA上穿长期SMA → 做多
+    - 短期SMA下穿长期SMA → 做空
+    """
+
+    def __init__(
+        self,
+        strategy_id: str = "sma_crossover",
+        fast_period: int = 10,
+        slow_period: int = 20,
+        default_quantity: float = 0.01,
+    ):
+        super().__init__(strategy_id)
+        self.fast_period = fast_period
+        self.slow_period = slow_period
+        self.default_quantity = default_quantity
+        self._fast_prev = None
+        self._slow_prev = None
+
+    def _calculate_sma(self, prices: list, period: int) -> float:
+        """计算简单移动平均"""
+        if len(prices) < period:
+            return 0.0
+        return sum(prices[-period:]) / period
+
+    def calculate(self, data: Dict) -> Optional[StrategySignal]:
+        """执行策略"""
+        if not self._enabled:
+            return None
+
+        close_prices = data.get("close_prices", [])
+        symbol = data.get("symbol", "BTCUSDT")
+
+        if len(close_prices) < max(self.fast_period, self.slow_period) + 1:
+            return None
+
+        current_price = close_prices[-1]
+
+        fast_sma = self._calculate_sma(close_prices, self.fast_period)
+        slow_sma = self._calculate_sma(close_prices, self.slow_period)
+
+        signal = None
+
+        if self._fast_prev is not None and self._slow_prev is not None:
+            # 金叉：快线上穿慢线
+            if self._fast_prev <= self._slow_prev and fast_sma > slow_sma:
+                confidence = min(0.9, 0.5 + (fast_sma - slow_sma) / slow_sma * 2)
+                signal = StrategySignal(
+                    strategy_id=self.strategy_id,
+                    strategy_type=StrategyType.TECHNICAL,
+                    symbol=symbol,
+                    action=ActionType.LONG,
+                    quantity=self.default_quantity,
+                    price=current_price,
+                    confidence=confidence,
+                    reason=f"SMA金叉: SMA{self.fast_period}={fast_sma:.2f} > SMA{self.slow_period}={slow_sma:.2f}",
+                    metadata={
+                        "fast_sma": fast_sma,
+                        "slow_sma": slow_sma,
+                        "fast_period": self.fast_period,
+                        "slow_period": self.slow_period,
+                    },
+                )
+            # 死叉：快线下穿慢线
+            elif self._fast_prev >= self._slow_prev and fast_sma < slow_sma:
+                confidence = min(0.9, 0.5 + (slow_sma - fast_sma) / slow_sma * 2)
+                signal = StrategySignal(
+                    strategy_id=self.strategy_id,
+                    strategy_type=StrategyType.TECHNICAL,
+                    symbol=symbol,
+                    action=ActionType.SHORT,
+                    quantity=self.default_quantity,
+                    price=current_price,
+                    confidence=confidence,
+                    reason=f"SMA死叉: SMA{self.fast_period}={fast_sma:.2f} < SMA{self.slow_period}={slow_sma:.2f}",
+                    metadata={
+                        "fast_sma": fast_sma,
+                        "slow_sma": slow_sma,
+                        "fast_period": self.fast_period,
+                        "slow_period": self.slow_period,
+                    },
+                )
+
+        self._fast_prev = fast_sma
+        self._slow_prev = slow_sma
+
+        return signal
+
+
+class EMACrossoverStrategy(BaseStrategy):
+    """
+    EMA交叉策略
+    
+    核心逻辑：
+    - 短期EMA上穿长期EMA → 做多
+    - 短期EMA下穿长期EMA → 做空
+    """
+
+    def __init__(
+        self,
+        strategy_id: str = "ema_crossover",
+        fast_period: int = 10,
+        slow_period: int = 20,
+        default_quantity: float = 0.01,
+    ):
+        super().__init__(strategy_id)
+        self.fast_period = fast_period
+        self.slow_period = slow_period
+        self.default_quantity = default_quantity
+        self._fast_prev = None
+        self._slow_prev = None
+
+    def _calculate_ema(self, prices: list, period: int) -> float:
+        """计算指数移动平均"""
+        if len(prices) < period:
+            return 0.0
+        k = 2 / (period + 1)
+        ema = sum(prices[:period]) / period
+        for price in prices[period:]:
+            ema = price * k + ema * (1 - k)
+        return ema
+
+    def calculate(self, data: Dict) -> Optional[StrategySignal]:
+        """执行策略"""
+        if not self._enabled:
+            return None
+
+        close_prices = data.get("close_prices", [])
+        symbol = data.get("symbol", "BTCUSDT")
+
+        if len(close_prices) < max(self.fast_period, self.slow_period) + 1:
+            return None
+
+        current_price = close_prices[-1]
+
+        fast_ema = self._calculate_ema(close_prices, self.fast_period)
+        slow_ema = self._calculate_ema(close_prices, self.slow_period)
+
+        signal = None
+
+        if self._fast_prev is not None and self._slow_prev is not None:
+            # 金叉：快线上穿慢线
+            if self._fast_prev <= self._slow_prev and fast_ema > slow_ema:
+                confidence = min(0.9, 0.5 + (fast_ema - slow_ema) / slow_ema * 2)
+                signal = StrategySignal(
+                    strategy_id=self.strategy_id,
+                    strategy_type=StrategyType.TECHNICAL,
+                    symbol=symbol,
+                    action=ActionType.LONG,
+                    quantity=self.default_quantity,
+                    price=current_price,
+                    confidence=confidence,
+                    reason=f"EMA金叉: EMA{self.fast_period}={fast_ema:.2f} > EMA{self.slow_period}={slow_ema:.2f}",
+                    metadata={
+                        "fast_ema": fast_ema,
+                        "slow_ema": slow_ema,
+                        "fast_period": self.fast_period,
+                        "slow_period": self.slow_period,
+                    },
+                )
+            # 死叉：快线下穿慢线
+            elif self._fast_prev >= self._slow_prev and fast_ema < slow_ema:
+                confidence = min(0.9, 0.5 + (slow_ema - fast_ema) / slow_ema * 2)
+                signal = StrategySignal(
+                    strategy_id=self.strategy_id,
+                    strategy_type=StrategyType.TECHNICAL,
+                    symbol=symbol,
+                    action=ActionType.SHORT,
+                    quantity=self.default_quantity,
+                    price=current_price,
+                    confidence=confidence,
+                    reason=f"EMA死叉: EMA{self.fast_period}={fast_ema:.2f} < EMA{self.slow_period}={slow_ema:.2f}",
+                    metadata={
+                        "fast_ema": fast_ema,
+                        "slow_ema": slow_ema,
+                        "fast_period": self.fast_period,
+                        "slow_period": self.slow_period,
+                    },
+                )
+
+        self._fast_prev = fast_ema
+        self._slow_prev = slow_ema
+
+        return signal
+
+
+class BollingerBandsStrategy(BaseStrategy):
+    """
+    布林带策略
+    
+    核心逻辑：
+    - 价格跌破下轨 → 超卖，做多
+    - 价格突破上轨 → 超买，做空
+    """
+
+    def __init__(
+        self,
+        strategy_id: str = "bollinger_bands",
+        period: int = 20,
+        std_dev: float = 2.0,
+        default_quantity: float = 0.01,
+    ):
+        super().__init__(strategy_id)
+        self.period = period
+        self.std_dev = std_dev
+        self.default_quantity = default_quantity
+        self._price_prev = None
+
+    def _calculate_bollinger_bands(self, prices: list) -> tuple:
+        """计算布林带"""
+        if len(prices) < self.period:
+            return (0.0, 0.0, 0.0)
+        
+        recent_prices = np.array(prices[-self.period:])
+        middle = np.mean(recent_prices)
+        std = np.std(recent_prices)
+        upper = middle + self.std_dev * std
+        lower = middle - self.std_dev * std
+        return (upper, middle, lower)
+
+    def calculate(self, data: Dict) -> Optional[StrategySignal]:
+        """执行策略"""
+        if not self._enabled:
+            return None
+
+        close_prices = data.get("close_prices", [])
+        symbol = data.get("symbol", "BTCUSDT")
+
+        if len(close_prices) < self.period + 1:
+            return None
+
+        current_price = close_prices[-1]
+        upper, middle, lower = self._calculate_bollinger_bands(close_prices)
+
+        signal = None
+
+        if self._price_prev is not None:
+            # 价格跌破下轨（超卖）→ 做多
+            if self._price_prev > lower and current_price <= lower:
+                confidence = min(0.9, 0.5 + (lower - current_price) / lower)
+                signal = StrategySignal(
+                    strategy_id=self.strategy_id,
+                    strategy_type=StrategyType.TECHNICAL,
+                    symbol=symbol,
+                    action=ActionType.LONG,
+                    quantity=self.default_quantity,
+                    price=current_price,
+                    confidence=confidence,
+                    reason=f"布林带跌破下轨: 价格={current_price:.2f}, 下轨={lower:.2f}",
+                    metadata={
+                        "upper": upper,
+                        "middle": middle,
+                        "lower": lower,
+                        "period": self.period,
+                        "std_dev": self.std_dev,
+                    },
+                )
+            # 价格突破上轨（超买）→ 做空
+            elif self._price_prev < upper and current_price >= upper:
+                confidence = min(0.9, 0.5 + (current_price - upper) / upper)
+                signal = StrategySignal(
+                    strategy_id=self.strategy_id,
+                    strategy_type=StrategyType.TECHNICAL,
+                    symbol=symbol,
+                    action=ActionType.SHORT,
+                    quantity=self.default_quantity,
+                    price=current_price,
+                    confidence=confidence,
+                    reason=f"布林带突破上轨: 价格={current_price:.2f}, 上轨={upper:.2f}",
+                    metadata={
+                        "upper": upper,
+                        "middle": middle,
+                        "lower": lower,
+                        "period": self.period,
+                        "std_dev": self.std_dev,
+                    },
+                )
+
+        self._price_prev = current_price
+
+        return signal
+
+
+class MomentumStrategy(BaseStrategy):
+    """
+    动量策略
+    
+    核心逻辑：
+    - 价格在N期内涨幅超过阈值 → 做多
+    - 价格在N期内跌幅超过阈值 → 做空
+    """
+
+    def __init__(
+        self,
+        strategy_id: str = "momentum",
+        period: int = 10,
+        threshold: float = 0.02,
+        default_quantity: float = 0.01,
+    ):
+        super().__init__(strategy_id)
+        self.period = period
+        self.threshold = threshold
+        self.default_quantity = default_quantity
+
+    def calculate(self, data: Dict) -> Optional[StrategySignal]:
+        """执行策略"""
+        if not self._enabled:
+            return None
+
+        close_prices = data.get("close_prices", [])
+        symbol = data.get("symbol", "BTCUSDT")
+
+        if len(close_prices) < self.period + 1:
+            return None
+
+        current_price = close_prices[-1]
+        prev_price = close_prices[-(self.period + 1)]
+        price_change = (current_price - prev_price) / prev_price
+
+        signal = None
+
+        if price_change > self.threshold:
+            confidence = min(0.9, 0.5 + price_change / self.threshold * 0.4)
+            signal = StrategySignal(
+                strategy_id=self.strategy_id,
+                strategy_type=StrategyType.TECHNICAL,
+                symbol=symbol,
+                action=ActionType.LONG,
+                quantity=self.default_quantity,
+                price=current_price,
+                confidence=confidence,
+                reason=f"动量向上: {self.period}期涨幅={price_change*100:.2f}%",
+                metadata={
+                    "period": self.period,
+                    "threshold": self.threshold,
+                    "price_change": price_change,
+                },
+            )
+        elif price_change < -self.threshold:
+            confidence = min(0.9, 0.5 + abs(price_change) / self.threshold * 0.4)
+            signal = StrategySignal(
+                strategy_id=self.strategy_id,
+                strategy_type=StrategyType.TECHNICAL,
+                symbol=symbol,
+                action=ActionType.SHORT,
+                quantity=self.default_quantity,
+                price=current_price,
+                confidence=confidence,
+                reason=f"动量向下: {self.period}期跌幅={abs(price_change)*100:.2f}%",
+                metadata={
+                    "period": self.period,
+                    "threshold": self.threshold,
+                    "price_change": price_change,
                 },
             )
 

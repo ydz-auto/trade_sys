@@ -325,24 +325,30 @@ class FeatureRuntime:
     
     async def _process_trade_event(self, event: FeatureEvent):
         """处理交易事件"""
-        # 交易事件可以用来计算成交量相关特征
         data = event.data
         symbol = data.get('symbol', self.config.symbol)
-        price = float(data.get('price', 0))
-        volume = float(data.get('volume', 0))
         
-        # 更新 PIT Store（交易级数据）
-        self._pit_store.store_features_batch(
-            features={
-                'trade_price': price,
-                'trade_volume': volume
-            },
-            feature_timestamp=event.timestamp_ms,
-            source_types={
-                'trade_price': FeatureSourceType.RAW,
-                'trade_volume': FeatureSourceType.RAW
-            }
+        # 提取交易列表（支持单个或多个交易）
+        trades = data.get('trades', [data])
+        
+        # 使用 UnifiedFeatureCalculator 计算 Trade 特征
+        features = self._calculator.update_trades(
+            symbol=symbol,
+            trades=trades,
+            window_ms=data.get('window_ms', 60000)
         )
+        
+        # 存储到 PIT Store
+        if features:
+            self._pit_store.store_features_batch(
+                features=features,
+                feature_timestamp=event.timestamp_ms,
+                source_types={k: FeatureSourceType.DERIVED for k in features}
+            )
+            
+            # 触发回调
+            if self._on_feature_callback:
+                await self._on_feature_callback(event.timestamp_ms, features)
     
     async def _process_orderbook_event(self, event: FeatureEvent):
         """处理订单簿事件"""
@@ -384,38 +390,79 @@ class FeatureRuntime:
     async def _process_liquidation_event(self, event: FeatureEvent):
         """处理强平事件"""
         data = event.data
-        side = data.get('side', '')
-        price = float(data.get('price', 0))
-        quantity = float(data.get('quantity', 0))
-        value_usd = price * quantity
-
-        features = {
-            'liquidation_side': 1.0 if side.upper() == 'BUY' else -1.0,
-            'liquidation_price': price,
-            'liquidation_quantity': quantity,
-            'liquidation_value_usd': value_usd,
-        }
-
-        self._pit_store.store_features_batch(
-            features=features,
-            feature_timestamp=event.timestamp_ms,
-            source_types={k: FeatureSourceType.RAW for k in features}
+        symbol = data.get('symbol', self.config.symbol)
+        
+        # 提取爆仓列表（支持单个或多个爆仓）
+        liquidations = data.get('liquidations', [data])
+        
+        # 使用 UnifiedFeatureCalculator 计算 Liquidation 特征
+        features = self._calculator.update_liquidations(
+            symbol=symbol,
+            liquidations=liquidations,
+            window_ms=data.get('window_ms', 60000)
         )
+        
+        # 存储到 PIT Store
+        if features:
+            self._pit_store.store_features_batch(
+                features=features,
+                feature_timestamp=event.timestamp_ms,
+                source_types={k: FeatureSourceType.DERIVED for k in features}
+            )
+            
+            # 触发回调
+            if self._on_feature_callback:
+                await self._on_feature_callback(event.timestamp_ms, features)
 
     async def _process_open_interest_event(self, event: FeatureEvent):
         """处理持仓量事件"""
         data = event.data
-        oi = float(data.get('open_interest', 0))
-
-        features = {
-            'open_interest': oi,
-        }
-
-        self._pit_store.store_features_batch(
-            features=features,
-            feature_timestamp=event.timestamp_ms,
-            source_types={k: FeatureSourceType.RAW for k in features}
+        symbol = data.get('symbol', self.config.symbol)
+        oi = float(data.get('open_interest', data.get('oi', 0)))
+        
+        # 使用 UnifiedFeatureCalculator 计算 OI 特征
+        features = self._calculator.update_oi(
+            symbol=symbol,
+            oi=oi,
+            timestamp=event.timestamp_ms
         )
+        
+        # 存储到 PIT Store
+        if features:
+            self._pit_store.store_features_batch(
+                features=features,
+                feature_timestamp=event.timestamp_ms,
+                source_types={k: FeatureSourceType.DERIVED for k in features}
+            )
+            
+            # 触发回调
+            if self._on_feature_callback:
+                await self._on_feature_callback(event.timestamp_ms, features)
+
+    async def _process_funding_event(self, event: FeatureEvent):
+        """处理资金费率事件"""
+        data = event.data
+        symbol = data.get('symbol', self.config.symbol)
+        funding_rate = float(data.get('funding_rate', 0))
+        
+        # 使用 UnifiedFeatureCalculator 计算 Funding 特征
+        features = self._calculator.update_funding(
+            symbol=symbol,
+            funding_rate=funding_rate,
+            timestamp=event.timestamp_ms
+        )
+        
+        # 存储到 PIT Store
+        if features:
+            self._pit_store.store_features_batch(
+                features=features,
+                feature_timestamp=event.timestamp_ms,
+                source_types={k: FeatureSourceType.DERIVED for k in features}
+            )
+            
+            # 触发回调
+            if self._on_feature_callback:
+                await self._on_feature_callback(event.timestamp_ms, features)
 
     async def _process_mark_price_event(self, event: FeatureEvent):
         """处理标记价格事件"""
@@ -597,6 +644,14 @@ class FeatureRuntime:
             self._calculator._volume_buffer.clear()
             self._calculator._high_buffer.clear()
             self._calculator._low_buffer.clear()
+            self._calculator._trade_extractor.clear()
+            self._calculator._liquidation_extractor.clear()
+            self._calculator._oi_funding_correlator.clear()
+            self._calculator._trade_buffer.clear()
+            self._calculator._liquidation_buffer.clear()
+            self._calculator._oi_buffer.clear()
+            self._calculator._funding_buffer.clear()
+            self._calculator._oi_timestamp_buffer.clear()
         logger.info(f"FeatureRuntime reset for {self.config.symbol}")
 
 

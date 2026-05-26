@@ -316,6 +316,15 @@ class ImmutableSnapshotStore:
             "attempts": self._modification_attempts[-20:],
         }
     
+    def reset(self):
+        """重置存储状态（用于新 session）"""
+        self._snapshots.clear()
+        self._time_index.clear()
+        self._version_counter = 0
+        self._access_log.clear()
+        self._modification_attempts.clear()
+        logger.info(f"ImmutableSnapshotStore reset for {self.symbol}")
+    
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息"""
         return {

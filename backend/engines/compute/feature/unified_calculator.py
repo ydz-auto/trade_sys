@@ -39,6 +39,11 @@ import numpy as np
 
 import logging
 
+# Import feature extractors
+from domain.feature.trade.trade_feature import TradeFeatureExtractor, Trade
+from domain.feature.liquidation.liquidation_feature import LiquidationFeatureExtractor, Liquidation
+from domain.feature.oi.oi_funding_correlation import OIFundingCorrelator
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,6 +57,7 @@ class FeatureSchema:
 
 
 DEFAULT_SCHEMAS = {
+    # Technical indicators
     "rsi_14": FeatureSchema("rsi_14", "technical", 14, "RSI 14周期"),
     "rsi_7": FeatureSchema("rsi_7", "technical", 7, "RSI 7周期"),
     "rsi_21": FeatureSchema("rsi_21", "technical", 21, "RSI 21周期"),
@@ -65,6 +71,48 @@ DEFAULT_SCHEMAS = {
     "bb_lower": FeatureSchema("bb_lower", "technical", 20, "Bollinger Lower"),
     "volume_ratio": FeatureSchema("volume_ratio", "volume", 20, "Volume Ratio"),
     "atr_14": FeatureSchema("atr_14", "volatility", 14, "ATR 14"),
+    # Trade features
+    "trade_delta": FeatureSchema("trade_delta", "trade", 1, "主动买卖差"),
+    "cumulative_delta": FeatureSchema("cumulative_delta", "trade", 1, "累积主动流"),
+    "aggressive_buy_volume": FeatureSchema("aggressive_buy_volume", "trade", 1, "主动买入量"),
+    "aggressive_sell_volume": FeatureSchema("aggressive_sell_volume", "trade", 1, "主动卖出量"),
+    "total_volume": FeatureSchema("total_volume", "trade", 1, "总成交量"),
+    "total_value": FeatureSchema("total_value", "trade", 1, "总成交金额"),
+    "num_trades": FeatureSchema("num_trades", "trade", 1, "成交笔数"),
+    "trade_velocity": FeatureSchema("trade_velocity", "trade", 1, "成交速度"),
+    "avg_trade_size": FeatureSchema("avg_trade_size", "trade", 1, "平均成交大小"),
+    "max_trade_size": FeatureSchema("max_trade_size", "trade", 1, "最大成交大小"),
+    "large_trade_ratio": FeatureSchema("large_trade_ratio", "trade", 1, "大单占比"),
+    "large_trade_volume": FeatureSchema("large_trade_volume", "trade", 1, "大单成交量"),
+    "sweep_buy_score": FeatureSchema("sweep_buy_score", "trade", 1, "扫单买入评分"),
+    "sweep_sell_score": FeatureSchema("sweep_sell_score", "trade", 1, "扫单卖出评分"),
+    "liquidity_vacuum": FeatureSchema("liquidity_vacuum", "trade", 1, "流动性真空"),
+    "trade_imbalance": FeatureSchema("trade_imbalance", "trade", 1, "买卖失衡"),
+    "buy_sell_ratio": FeatureSchema("buy_sell_ratio", "trade", 1, "买卖比率"),
+    # Liquidation features
+    "liquidation_long": FeatureSchema("liquidation_long", "liquidation", 1, "多头爆仓量"),
+    "liquidation_short": FeatureSchema("liquidation_short", "liquidation", 1, "空头爆仓量"),
+    "liquidation_total": FeatureSchema("liquidation_total", "liquidation", 1, "总爆仓量"),
+    "liquidation_spike": FeatureSchema("liquidation_spike", "liquidation", 10, "爆仓尖峰"),
+    "liquidation_pressure": FeatureSchema("liquidation_pressure", "liquidation", 1, "爆仓压力"),
+    "long_liq_ratio": FeatureSchema("long_liq_ratio", "liquidation", 1, "多头爆仓比率"),
+    "liquidation_cluster": FeatureSchema("liquidation_cluster", "liquidation", 5, "爆仓聚集"),
+    "liquidation_acceleration": FeatureSchema("liquidation_acceleration", "liquidation", 3, "爆仓加速"),
+    "liquidation_chain_probability": FeatureSchema("liquidation_chain_probability", "liquidation", 10, "连锁爆仓概率"),
+    "long_short_liq_ratio": FeatureSchema("long_short_liq_ratio", "liquidation", 1, "多空爆仓比率"),
+    "liquidation_reversal_signal": FeatureSchema("liquidation_reversal_signal", "liquidation", 10, "清算反转信号"),
+    # OI/Funding features
+    "oi": FeatureSchema("oi", "oi", 1, "持仓量"),
+    "oi_delta": FeatureSchema("oi_delta", "oi", 2, "持仓量变化"),
+    "oi_zscore": FeatureSchema("oi_zscore", "oi", 24, "持仓量Z分数"),
+    "funding_rate": FeatureSchema("funding_rate", "funding", 1, "资金费率"),
+    "funding_zscore": FeatureSchema("funding_zscore", "funding", 24, "资金费率Z分数"),
+    "funding_delta": FeatureSchema("funding_delta", "funding", 2, "资金费率变化"),
+    "oi_funding_divergence": FeatureSchema("oi_funding_divergence", "oi_funding", 24, "OI-资金背离"),
+    "oi_squeeze_probability": FeatureSchema("oi_squeeze_probability", "oi_funding", 24, "杠杆挤压概率"),
+    "oi_liq_pressure": FeatureSchema("oi_liq_pressure", "oi_funding", 24, "潜在踩踏压力"),
+    "funding_extreme_reversal": FeatureSchema("funding_extreme_reversal", "oi_funding", 24, "资金极端反转"),
+    "leverage_crowdedness": FeatureSchema("leverage_crowdedness", "oi_funding", 24, "杠杆拥挤度"),
 }
 
 
@@ -90,6 +138,18 @@ class UnifiedFeatureCalculator:
         self._volume_buffer: Dict[str, deque] = {}
         self._high_buffer: Dict[str, deque] = {}
         self._low_buffer: Dict[str, deque] = {}
+        
+        # Feature extractors
+        self._trade_extractor: Dict[str, TradeFeatureExtractor] = {}
+        self._liquidation_extractor: Dict[str, LiquidationFeatureExtractor] = {}
+        self._oi_funding_correlator: Dict[str, OIFundingCorrelator] = {}
+        
+        # Data buffers for trade/liquidation/OI
+        self._trade_buffer: Dict[str, List[Trade]] = {}
+        self._liquidation_buffer: Dict[str, List[Liquidation]] = {}
+        self._oi_buffer: Dict[str, List[float]] = {}
+        self._funding_buffer: Dict[str, List[float]] = {}
+        self._oi_timestamp_buffer: Dict[str, List[int]] = {}
         
         self._torch_calculator = None
         self._gpu_available = False
@@ -407,6 +467,143 @@ class UnifiedFeatureCalculator:
         momentum_10 = (prices[-1] - prices[-11]) / prices[-11] if prices[-11] > 0 else 0.0
         
         return {"momentum_10": momentum_10}
+    
+    def _get_trade_extractor(self, symbol: str) -> TradeFeatureExtractor:
+        """获取或初始化 Trade 特征提取器"""
+        if symbol not in self._trade_extractor:
+            self._trade_extractor[symbol] = TradeFeatureExtractor()
+            self._trade_buffer[symbol] = []
+        return self._trade_extractor[symbol]
+    
+    def update_trades(self, symbol: str, trades: List[Dict], window_ms: int = 60000) -> Dict[str, float]:
+        """更新 Trade 数据并计算特征"""
+        extractor = self._get_trade_extractor(symbol)
+        
+        # Convert dict trades to Trade objects
+        trade_objects = []
+        for t in trades:
+            trade_obj = Trade(
+                timestamp=t.get("timestamp", 0),
+                price=t.get("price", 0.0),
+                quantity=t.get("quantity", t.get("qty", 0.0)),
+                quote_quantity=t.get("quote_quantity", t.get("quote_qty", 0.0)),
+                is_buyer_maker=t.get("is_buyer_maker", False),
+                trade_id=str(t.get("trade_id", t.get("id", "")))
+            )
+            trade_objects.append(trade_obj)
+        
+        # Add to buffer
+        self._trade_buffer[symbol].extend(trade_objects)
+        
+        # Extract features
+        features_list = extractor.extract_features(trade_objects, symbol, window_ms)
+        
+        if features_list:
+            latest_feature = features_list[-1]
+            return latest_feature.to_dict()
+        
+        return {}
+    
+    def _get_liquidation_extractor(self, symbol: str) -> LiquidationFeatureExtractor:
+        """获取或初始化 Liquidation 特征提取器"""
+        if symbol not in self._liquidation_extractor:
+            self._liquidation_extractor[symbol] = LiquidationFeatureExtractor()
+            self._liquidation_buffer[symbol] = []
+        return self._liquidation_extractor[symbol]
+    
+    def update_liquidations(self, symbol: str, liquidations: List[Dict], window_ms: int = 60000) -> Dict[str, float]:
+        """更新 Liquidation 数据并计算特征"""
+        extractor = self._get_liquidation_extractor(symbol)
+        
+        # Convert dict liquidations to Liquidation objects
+        liq_objects = []
+        for l in liquidations:
+            liq_obj = Liquidation(
+                timestamp=l.get("timestamp", 0),
+                symbol=symbol,
+                side=l.get("side", "long"),
+                quantity=l.get("quantity", l.get("qty", 0.0)),
+                price=l.get("price", 0.0),
+                quote_quantity=l.get("quote_quantity", l.get("quote_qty", 0.0))
+            )
+            liq_objects.append(liq_obj)
+        
+        # Add to buffer
+        self._liquidation_buffer[symbol].extend(liq_objects)
+        
+        # Extract features
+        features_list = extractor.extract_features(liq_objects, window_ms)
+        
+        if features_list:
+            latest_feature = features_list[-1]
+            return latest_feature.to_dict()
+        
+        return {}
+    
+    def _get_oi_funding_correlator(self, symbol: str) -> OIFundingCorrelator:
+        """获取或初始化 OI/Funding 关联分析器"""
+        if symbol not in self._oi_funding_correlator:
+            self._oi_funding_correlator[symbol] = OIFundingCorrelator()
+            self._oi_buffer[symbol] = []
+            self._funding_buffer[symbol] = []
+            self._oi_timestamp_buffer[symbol] = []
+        return self._oi_funding_correlator[symbol]
+    
+    def update_oi(self, symbol: str, oi: float, timestamp: int) -> Dict[str, float]:
+        """更新 OI 数据"""
+        correlator = self._get_oi_funding_correlator(symbol)
+        self._oi_buffer[symbol].append(oi)
+        self._oi_timestamp_buffer[symbol].append(timestamp)
+        
+        # Keep buffer size limited
+        if len(self._oi_buffer[symbol]) > 1008:
+            self._oi_buffer[symbol].pop(0)
+            self._oi_timestamp_buffer[symbol].pop(0)
+        
+        # If we have funding data, compute correlation
+        if self._funding_buffer.get(symbol):
+            latest_funding = self._funding_buffer[symbol][-1] if self._funding_buffer[symbol] else 0.0
+            corr = correlator.compute_correlation(oi, latest_funding, timestamp)
+            return corr.to_dict()
+        
+        # Just return basic OI features
+        features = {"oi": oi}
+        if len(self._oi_buffer[symbol]) >= 2:
+            features["oi_delta"] = self._oi_buffer[symbol][-1] - self._oi_buffer[symbol][-2]
+        if len(self._oi_buffer[symbol]) >= 24:
+            oi_window = np.array(self._oi_buffer[symbol][-24:])
+            oi_mean = np.mean(oi_window)
+            oi_std = np.std(oi_window) + 1e-8
+            features["oi_zscore"] = (oi - oi_mean) / oi_std
+        
+        return features
+    
+    def update_funding(self, symbol: str, funding_rate: float, timestamp: int) -> Dict[str, float]:
+        """更新 Funding 数据"""
+        correlator = self._get_oi_funding_correlator(symbol)
+        self._funding_buffer[symbol].append(funding_rate)
+        
+        # Keep buffer size limited
+        if len(self._funding_buffer[symbol]) > 1008:
+            self._funding_buffer[symbol].pop(0)
+        
+        # If we have OI data, compute correlation
+        if self._oi_buffer.get(symbol):
+            latest_oi = self._oi_buffer[symbol][-1] if self._oi_buffer[symbol] else 0.0
+            corr = correlator.compute_correlation(latest_oi, funding_rate, timestamp)
+            return corr.to_dict()
+        
+        # Just return basic funding features
+        features = {"funding_rate": funding_rate}
+        if len(self._funding_buffer[symbol]) >= 2:
+            features["funding_delta"] = self._funding_buffer[symbol][-1] - self._funding_buffer[symbol][-2]
+        if len(self._funding_buffer[symbol]) >= 24:
+            funding_window = np.array(self._funding_buffer[symbol][-24:])
+            funding_mean = np.mean(funding_window)
+            funding_std = np.std(funding_window) + 1e-8
+            features["funding_zscore"] = (funding_rate - funding_mean) / funding_std
+        
+        return features
     
     def get_schema(self, feature_name: str) -> Optional[FeatureSchema]:
         """获取特征 Schema"""

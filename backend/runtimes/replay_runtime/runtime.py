@@ -331,6 +331,13 @@ class TimeCausalReplayRuntime:
         self._clock.reset()
         self._clock.advance_to(self.config.start_time_ms)
         
+        # 重置时间权威的单调检查状态（关键！防止多窗口之间时间冲突）
+        self._time_authority.reset_monotonic()
+        self._time_authority.start_session(self.config.start_time_ms)
+        
+        # 重置 snapshot store（防止多窗口之间 snapshot 冲突）
+        self._snapshot_store.reset()
+        
         # 重置其他基础设施
         self._event_ordering.reset_sequence()
         self._warmup_manager.reset_all()

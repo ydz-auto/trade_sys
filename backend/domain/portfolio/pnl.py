@@ -175,6 +175,10 @@ class Portfolio:
         return self.current_capital + self.unrealized_pnl
 
     @property
+    def equity(self) -> float:
+        return self.total_value
+
+    @property
     def total_margin(self) -> float:
         return sum(p.margin_used for p in self.positions.values())
 

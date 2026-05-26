@@ -177,7 +177,7 @@ def compute_oi_funding_correlation(
         oi_df.sort_values("timestamp"),
         funding_df.sort_values("timestamp"),
         on="timestamp",
-        direction="nearest"
+        direction="backward"
     )
 
     results = []
