@@ -58,6 +58,17 @@ class TradeFeature:
     liquidity_vacuum: float = 0.0
     trade_imbalance: float = 0.0
     buy_sell_ratio: float = 0.0
+    taker_buy_ratio: float = 0.0
+    
+    # OI 替代指标 - 压力代理
+    trade_pressure_score: float = 0.0
+    long_pressure_score: float = 0.0
+    short_pressure_score: float = 0.0
+    squeeze_pressure_score: float = 0.0
+    flush_pressure_score: float = 0.0
+    cvd_delta: float = 0.0
+    cvd_zscore: float = 0.0
+    volume_zscore: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -81,6 +92,15 @@ class TradeFeature:
             "liquidity_vacuum": self.liquidity_vacuum,
             "trade_imbalance": self.trade_imbalance,
             "buy_sell_ratio": self.buy_sell_ratio,
+            "taker_buy_ratio": self.taker_buy_ratio,
+            "trade_pressure_score": self.trade_pressure_score,
+            "long_pressure_score": self.long_pressure_score,
+            "short_pressure_score": self.short_pressure_score,
+            "squeeze_pressure_score": self.squeeze_pressure_score,
+            "flush_pressure_score": self.flush_pressure_score,
+            "cvd_delta": self.cvd_delta,
+            "cvd_zscore": self.cvd_zscore,
+            "volume_zscore": self.volume_zscore,
         }
 
 
@@ -92,11 +112,20 @@ class TradeFeatureExtractor:
         self.prev_price = 0.0
         self.large_trade_threshold = 10000.0
         self.sweep_threshold = 0.001
+        
+        # 历史数据用于计算 z-score
+        self.volume_history: List[float] = []
+        self.cvd_history: List[float] = []
+        self.max_history = 240  # 4小时数据 (240 * 1分钟)
+        self.prev_trade_delta = 0.0
 
     def reset(self):
         """重置状态"""
         self.cumulative_delta = 0.0
         self.prev_price = 0.0
+        self.volume_history = []
+        self.cvd_history = []
+        self.prev_trade_delta = 0.0
 
     def extract_features(self, trades: List[Trade], symbol: str = "UNKNOWN", window_ms: int = 60000) -> List[TradeFeature]:
         """提取特征"""
@@ -197,6 +226,64 @@ class TradeFeatureExtractor:
 
         buy_sell_ratio = buy_volume / sell_volume if sell_volume > 0 else (float('inf') if buy_volume > 0 else 1.0)
         trade_imbalance = (buy_volume - sell_volume) / (buy_volume + sell_volume) if total_volume > 0 else 0.0
+        
+        # 计算 taker 比例
+        taker_buy_ratio = buy_volume / total_volume if total_volume > 0 else 0.5
+        
+        # 计算 OI 替代指标 - 压力代理
+        # 1. 更新历史数据
+        self.volume_history.append(total_volume)
+        self.cvd_history.append(trade_delta)
+        
+        # 保持历史数据长度
+        if len(self.volume_history) > self.max_history:
+            self.volume_history.pop(0)
+        if len(self.cvd_history) > self.max_history:
+            self.cvd_history.pop(0)
+        
+        # 2. 计算 z-score
+        volume_zscore = 0.0
+        cvd_zscore = 0.0
+        
+        if len(self.volume_history) > 24:  # 需要至少24个数据点
+            volume_mean = np.mean(self.volume_history)
+            volume_std = np.std(self.volume_history)
+            volume_zscore = (total_volume - volume_mean) / volume_std if volume_std > 0 else 0.0
+        
+        if len(self.cvd_history) > 24:
+            cvd_mean = np.mean(self.cvd_history)
+            cvd_std = np.std(self.cvd_history)
+            cvd_zscore = (trade_delta - cvd_mean) / cvd_std if cvd_std > 0 else 0.0
+        
+        # 3. 计算 CVD delta
+        cvd_delta = trade_delta - self.prev_trade_delta
+        self.prev_trade_delta = trade_delta
+        
+        # 4. 计算压力评分
+        # trade_pressure_score = 0.4 * cvd_zscore + 0.3 * volume_zscore + 0.3 * trade_imbalance
+        trade_pressure_score = 0.4 * cvd_zscore + 0.3 * volume_zscore + 0.3 * trade_imbalance
+        
+        # long_pressure_score 用于衡量多头压力
+        long_pressure_score = 0.4 * cvd_zscore + 0.3 * volume_zscore + 0.3 * trade_imbalance
+        
+        # short_pressure_score 用于衡量空头压力
+        short_pressure_score = -0.4 * cvd_zscore + 0.3 * volume_zscore - 0.3 * trade_imbalance
+        
+        # squeeze_pressure_score (替代 oi_growth 条件)
+        # 原条件: volume_zscore > 1.5 and abs(cvd_zscore) > 1.5
+        squeeze_pressure_score = 0.0
+        if volume_zscore > 1.5 and abs(cvd_zscore) > 1.5:
+            squeeze_pressure_score = min(3.0, volume_zscore + abs(cvd_zscore))
+        
+        # flush_pressure_score (替代长期 squeeze)
+        flush_pressure_score = 0.0
+        
+        # 分别计算多头 squeeze 和空头 flush
+        if price_change > 0 and cvd_zscore > 2.0 and taker_buy_ratio > 0.6 and volume_zscore > 1.5:
+            squeeze_pressure_score = cvd_zscore * taker_buy_ratio * volume_zscore
+        
+        if price_change < 0 and cvd_zscore < -2.0 and taker_buy_ratio < 0.4 and volume_zscore > 1.5:
+            flush_pressure_score = -cvd_zscore * (1 - taker_buy_ratio) * volume_zscore
 
         return TradeFeature(
             timestamp=window_end,
@@ -218,6 +305,15 @@ class TradeFeatureExtractor:
             liquidity_vacuum=liquidity_vacuum,
             trade_imbalance=trade_imbalance,
             buy_sell_ratio=buy_sell_ratio,
+            taker_buy_ratio=taker_buy_ratio,
+            trade_pressure_score=trade_pressure_score,
+            long_pressure_score=long_pressure_score,
+            short_pressure_score=short_pressure_score,
+            squeeze_pressure_score=squeeze_pressure_score,
+            flush_pressure_score=flush_pressure_score,
+            cvd_delta=cvd_delta,
+            cvd_zscore=cvd_zscore,
+            volume_zscore=volume_zscore,
         )
 
     def _compute_sweep_score(self, trades: List[Trade], price_change: float) -> float:

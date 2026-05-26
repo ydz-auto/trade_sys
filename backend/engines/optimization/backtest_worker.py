@@ -74,6 +74,56 @@ def run_single_backtest_worker(task: Dict[str, Any]) -> Dict[str, Any]:
                 self._volumes = []
                 self._funding_df = fund_df
                 self._oi_df = oi_df
+                self._funding_rates = []
+                self._oi_values = []
+            
+            def _calculate_rsi(self, prices, period=14):
+                """Calculate RSI indicator"""
+                if len(prices) < period + 1:
+                    return 50.0
+                
+                import numpy as np
+                deltas = np.diff(prices)
+                gains = np.where(deltas > 0, deltas, 0)
+                losses = np.where(deltas < 0, -deltas, 0)
+                
+                avg_gain = np.mean(gains[-period:])
+                avg_loss = np.mean(losses[-period:])
+                
+                if avg_loss == 0:
+                    return 100.0
+                
+                rs = avg_gain / avg_loss
+                return 100.0 - (100.0 / (1.0 + rs))
+            
+            def _calculate_volume_ratio(self, volumes, period=24):
+                """Calculate volume ratio (current / average)"""
+                if len(volumes) < period + 1:
+                    return 1.0
+                
+                import numpy as np
+                current_volume = volumes[-1]
+                avg_volume = np.mean(volumes[-period-1:-1])
+                
+                if avg_volume == 0:
+                    return 1.0
+                
+                return current_volume / avg_volume
+            
+            def _calculate_zscore(self, values, period=240):
+                """Calculate z-score for a series"""
+                if len(values) < period:
+                    return 0.0
+                
+                import numpy as np
+                recent = values[-period:]
+                mean = np.mean(recent)
+                std = np.std(recent)
+                
+                if std == 0:
+                    return 0.0
+                
+                return (values[-1] - mean) / std
             
             def _get_supplementary_data(self, timestamp, closes):
                 data = {}
@@ -85,7 +135,13 @@ def run_single_backtest_worker(task: Dict[str, Any]) -> Dict[str, Any]:
                         mask = self._funding_df["timestamp"] <= ts_naive
                         if mask.any():
                             latest = self._funding_df.iloc[-1]
-                            data["funding_rate"] = float(latest.get("fundingRate", 0.0))
+                            funding_rate = float(latest.get("fundingRate", 0.0))
+                            data["funding_rate"] = funding_rate
+                            self._funding_rates.append(funding_rate)
+                            if len(self._funding_rates) > 1000:
+                                self._funding_rates = self._funding_rates[-1000:]
+                            # Calculate funding z-score
+                            data["funding_zscore"] = self._calculate_zscore(self._funding_rates)
                     
                     if self._oi_df is not None:
                         mask = self._oi_df["timestamp"] <= ts_naive
@@ -93,12 +149,20 @@ def run_single_backtest_worker(task: Dict[str, Any]) -> Dict[str, Any]:
                             latest = self._oi_df.iloc[-1]
                             sum_oi = latest.get("sumOpenInterest", 0.0)
                             sum_oi = float(sum_oi) if sum_oi != "" else 0.0
+                            self._oi_values.append(sum_oi)
+                            if len(self._oi_values) > 1000:
+                                self._oi_values = self._oi_values[-1000:]
+                            
                             if mask.sum() > 24:
                                 prev_oi = self._oi_df.iloc[-(mask.sum() - 24)].get("sumOpenInterest", 0.0)
                                 prev_oi = float(prev_oi) if prev_oi != "" else 0.0
                                 if prev_oi > 0:
                                     data["oi_delta"] = (sum_oi - prev_oi) / prev_oi
-                except:
+                    
+                    # Add short pressure (simplified)
+                    data["short_pressure"] = 0.5
+                    
+                except Exception as e:
                     pass
                 return data
             
@@ -114,28 +178,63 @@ def run_single_backtest_worker(task: Dict[str, Any]) -> Dict[str, Any]:
                     self._lows = self._lows[-600:]
                     self._volumes = self._volumes[-600:]
                 
-                from engines.compute.strategy.strategies import ActionType
-                
-                basic_data = {
+                # Calculate basic features
+                features = {
                     "close_prices": self._closes,
                     "high_prices": self._highs,
                     "low_prices": self._lows,
                     "volumes": self._volumes,
+                    "close": bar.close,
+                    "high": bar.high,
+                    "low": bar.low,
+                    "volume": bar.volume,
                     "symbol": "BTCUSDT",
                     "timestamp": bar.timestamp
                 }
                 
-                supplementary = self._get_supplementary_data(bar.timestamp, self._closes)
-                basic_data.update(supplementary)
+                # Calculate return_1h
+                if len(self._closes) > 24:
+                    features["return_1h"] = (self._closes[-1] - self._closes[-24]) / self._closes[-24]
                 
+                # Calculate volume_ratio
+                features["volume_ratio"] = self._calculate_volume_ratio(self._volumes)
+                
+                # Calculate RSI
+                features["rsi_14"] = self._calculate_rsi(self._closes)
+                
+                # Calculate EMA
+                if len(self._closes) > 50:
+                    import numpy as np
+                    def ema(data, period):
+                        weights = np.exp(np.linspace(-1., 0., period))
+                        weights /= weights.sum()
+                        return np.convolve(data, weights, mode='valid')[-1]
+                    
+                    features["ema_fast"] = ema(self._closes, 10)
+                    features["ema_slow"] = ema(self._closes, 50)
+                
+                # Calculate BB
+                if len(self._closes) > 20:
+                    import numpy as np
+                    sma = np.mean(self._closes[-20:])
+                    std = np.std(self._closes[-20:])
+                    features["bb_upper"] = sma + 2 * std
+                    features["bb_middle"] = sma
+                    features["bb_lower"] = sma - 2 * std
+                
+                # Add supplementary features
+                supplementary = self._get_supplementary_data(bar.timestamp, self._closes)
+                features.update(supplementary)
+                
+                # Use generate_signal interface
                 try:
-                    signal = self.strategy.calculate(basic_data)
-                    if signal:
-                        if signal.action == ActionType.LONG:
+                    signal_dict = self.strategy.generate_signal(features)
+                    if signal_dict:
+                        if signal_dict.get("signal_type") == "buy":
                             return SignalType.BUY
-                        elif signal.action == ActionType.SHORT:
+                        elif signal_dict.get("signal_type") == "sell":
                             return SignalType.SELL
-                except:
+                except Exception as e:
                     pass
                 
                 return SignalType.HOLD

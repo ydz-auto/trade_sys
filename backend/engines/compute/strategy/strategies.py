@@ -2163,3 +2163,382 @@ class MomentumStrategy(BaseStrategy):
             }
 
         return None
+
+
+class TradePressureCalculator:
+    """
+    Trade Pressure 计算器（替代 OI Framework）
+    
+    计算公式：
+    - long_pressure_score = 0.4 * cvd_zscore + 0.3 * volume_zscore + 0.3 * buy_sell_imbalance
+    - short_pressure_score = -0.4 * cvd_zscore + 0.3 * volume_zscore - 0.3 * buy_sell_imbalance
+    - squeeze_pressure = cvd_zscore > threshold AND volume_zscore > threshold
+    - flush_pressure = cvd_zscore < -threshold AND volume_zscore > threshold
+    """
+    
+    @staticmethod
+    def calculate_pressure_scores(
+        cvd_zscore: float,
+        volume_zscore: float,
+        buy_sell_imbalance: float
+    ) -> Dict[str, float]:
+        """计算所有压力指标"""
+        long_pressure = (
+            0.4 * cvd_zscore +
+            0.3 * volume_zscore +
+            0.3 * buy_sell_imbalance
+        )
+        
+        short_pressure = (
+            -0.4 * cvd_zscore +
+            0.3 * volume_zscore -
+            0.3 * buy_sell_imbalance
+        )
+        
+        squeeze_pressure = (
+            max(0, cvd_zscore) * 0.5 +
+            max(0, volume_zscore) * 0.5
+        )
+        
+        flush_pressure = (
+            max(0, -cvd_zscore) * 0.5 +
+            max(0, volume_zscore) * 0.5
+        )
+        
+        return {
+            "long_pressure": long_pressure,
+            "short_pressure": short_pressure,
+            "squeeze_pressure": squeeze_pressure,
+            "flush_pressure": flush_pressure,
+            "net_pressure": long_pressure - short_pressure,
+            "total_pressure": abs(long_pressure) + abs(short_pressure)
+        }
+    
+    @staticmethod
+    def detect_squeeze(
+        cvd_zscore: float,
+        volume_zscore: float,
+        taker_buy_ratio: float,
+        cvd_threshold: float = 1.5,
+        volume_threshold: float = 1.5
+    ) -> Dict[str, bool]:
+        """检测 Short Squeeze 条件"""
+        cvd_squeeze = cvd_zscore > cvd_threshold
+        volume_squeeze = volume_zscore > volume_threshold
+        buyer_dominant = taker_buy_ratio > 0.55
+        
+        return {
+            "is_squeeze": cvd_squeeze and volume_squeeze,
+            "cvd_squeeze": cvd_squeeze,
+            "volume_squeeze": volume_squeeze,
+            "buyer_dominant": buyer_dominant,
+            "confidence": (cvd_squeeze + volume_squeeze + buyer_dominant) / 3
+        }
+    
+    @staticmethod
+    def detect_flush(
+        cvd_zscore: float,
+        volume_zscore: float,
+        taker_buy_ratio: float,
+        cvd_threshold: float = 1.5,
+        volume_threshold: float = 1.5
+    ) -> Dict[str, bool]:
+        """检测 Long Flush 条件"""
+        cvd_flush = cvd_zscore < -cvd_threshold
+        volume_flush = volume_zscore > volume_threshold
+        seller_dominant = taker_buy_ratio < 0.45
+        
+        return {
+            "is_flush": cvd_flush and volume_flush,
+            "cvd_flush": cvd_flush,
+            "volume_flush": volume_flush,
+            "seller_dominant": seller_dominant,
+            "confidence": (cvd_flush + volume_flush + seller_dominant) / 3
+        }
+
+
+class TradePressureBounceStrategy(BaseStrategy):
+    """Trade Pressure 反弹策略（替代 long_liquidation_bounce）"""
+    
+    def __init__(self, params: Dict[str, Any] = None):
+        if params and isinstance(params, dict):
+            strategy_id = params.get("strategy_id", "trade_pressure_bounce")
+            super().__init__(strategy_id)
+            self.cvd_threshold = params.get("cvd_threshold", 1.5)
+            self.volume_threshold = params.get("volume_threshold", 1.5)
+            self.min_pressure_score = params.get("min_pressure_score", 2.0)
+        else:
+            # 支持旧调用方式
+            strategy_id = params or "trade_pressure_bounce"
+            super().__init__(strategy_id)
+            self.cvd_threshold = 1.5
+            self.volume_threshold = 1.5
+            self.min_pressure_score = 2.0
+    
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not self._enabled:
+            return None
+        
+        cvd_zscore = features.get("cvd_zscore", 0)
+        volume_zscore = features.get("volume_zscore", 0)
+        taker_buy_ratio = features.get("taker_buy_ratio", 0.5)
+        close = features.get("close", 0)
+        
+        if cvd_zscore == 0 and volume_zscore == 0:
+            return None
+        
+        flush = TradePressureCalculator.detect_flush(
+            cvd_zscore, volume_zscore, taker_buy_ratio,
+            self.cvd_threshold, self.volume_threshold
+        )
+        
+        if not flush["is_flush"]:
+            return None
+        
+        pressure_scores = TradePressureCalculator.calculate_pressure_scores(
+            cvd_zscore, volume_zscore, taker_buy_ratio
+        )
+        
+        flush_pressure = pressure_scores["flush_pressure"]
+        
+        if flush_pressure < self.min_pressure_score:
+            return None
+        
+        confidence = min(0.9, flush_pressure / 5.0)
+        
+        return {
+            "signal_type": "buy",
+            "confidence": confidence,
+            "reason": f"Trade Pressure Flush 反弹: flush_pressure={flush_pressure:.2f}",
+            "metadata": {"cvd_zscore": cvd_zscore, "volume_zscore": volume_zscore,
+                        "flush_pressure": flush_pressure, "close": close}
+        }
+
+
+class TradePressureSqueezeStrategy(BaseStrategy):
+    """Trade Pressure 挤压策略（替代 short_squeeze）"""
+    
+    def __init__(self, params: Dict[str, Any] = None):
+        if params and isinstance(params, dict):
+            strategy_id = params.get("strategy_id", "trade_pressure_squeeze")
+            super().__init__(strategy_id)
+            self.cvd_threshold = params.get("cvd_threshold", 1.5)
+            self.volume_threshold = params.get("volume_threshold", 1.5)
+            self.min_pressure_score = params.get("min_pressure_score", 2.0)
+        else:
+            strategy_id = params or "trade_pressure_squeeze"
+            super().__init__(strategy_id)
+            self.cvd_threshold = 1.5
+            self.volume_threshold = 1.5
+            self.min_pressure_score = 2.0
+    
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not self._enabled:
+            return None
+        
+        cvd_zscore = features.get("cvd_zscore", 0)
+        volume_zscore = features.get("volume_zscore", 0)
+        taker_buy_ratio = features.get("taker_buy_ratio", 0.5)
+        close = features.get("close", 0)
+        
+        if cvd_zscore == 0 and volume_zscore == 0:
+            return None
+        
+        squeeze = TradePressureCalculator.detect_squeeze(
+            cvd_zscore, volume_zscore, taker_buy_ratio,
+            self.cvd_threshold, self.volume_threshold
+        )
+        
+        if not squeeze["is_squeeze"]:
+            return None
+        
+        pressure_scores = TradePressureCalculator.calculate_pressure_scores(
+            cvd_zscore, volume_zscore, taker_buy_ratio
+        )
+        
+        squeeze_pressure = pressure_scores["squeeze_pressure"]
+        
+        if squeeze_pressure < self.min_pressure_score:
+            return None
+        
+        confidence = min(0.9, squeeze_pressure / 5.0)
+        
+        return {
+            "signal_type": "sell",
+            "confidence": confidence,
+            "reason": f"Trade Pressure Squeeze 做空: squeeze_pressure={squeeze_pressure:.2f}",
+            "metadata": {"cvd_zscore": cvd_zscore, "volume_zscore": volume_zscore,
+                        "squeeze_pressure": squeeze_pressure, "close": close}
+        }
+
+
+class TradePressureAbsorptionStrategy(BaseStrategy):
+    """Trade Pressure 吸收策略"""
+    
+    def __init__(self, params: Dict[str, Any] = None):
+        if params and isinstance(params, dict):
+            strategy_id = params.get("strategy_id", "trade_pressure_absorption")
+            super().__init__(strategy_id)
+            self.cvd_threshold = params.get("cvd_threshold", 1.0)
+            self.volume_threshold = params.get("volume_threshold", 2.0)
+            self.price_range_threshold = params.get("price_range_threshold", 0.005)
+        else:
+            strategy_id = params or "trade_pressure_absorption"
+            super().__init__(strategy_id)
+            self.cvd_threshold = 1.0
+            self.volume_threshold = 2.0
+            self.price_range_threshold = 0.005
+    
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not self._enabled:
+            return None
+        
+        cvd_zscore = features.get("cvd_zscore", 0)
+        volume_ratio = features.get("volume_ratio", 1)
+        taker_buy_ratio = features.get("taker_buy_ratio", 0.5)
+        close = features.get("close", 0)
+        high = features.get("high", 0)
+        low = features.get("low", 0)
+        
+        if high == 0 or low == 0:
+            return None
+        
+        price_range = (high - low) / close
+        
+        if price_range > self.price_range_threshold:
+            return None
+        
+        absorption = abs(cvd_zscore) > self.cvd_threshold and volume_ratio > self.volume_threshold
+        
+        if not absorption:
+            return None
+        
+        if taker_buy_ratio > 0.55:
+            direction = "buy"
+            reason = "吸收后向上突破"
+        elif taker_buy_ratio < 0.45:
+            direction = "sell"
+            reason = "吸收后向下突破"
+        else:
+            return None
+        
+        confidence = min(0.85, volume_ratio / 4.0)
+        
+        return {
+            "signal_type": direction,
+            "confidence": confidence,
+            "reason": f"吸收策略: {reason}",
+            "metadata": {"cvd_zscore": cvd_zscore, "volume_ratio": volume_ratio,
+                        "price_range": price_range, "close": close}
+        }
+
+
+class TradePressureExhaustionStrategy(BaseStrategy):
+    """Trade Pressure 衰竭策略"""
+    
+    def __init__(self, params: Dict[str, Any] = None):
+        if params and isinstance(params, dict):
+            strategy_id = params.get("strategy_id", "trade_pressure_exhaustion")
+            super().__init__(strategy_id)
+            self.return_threshold = params.get("return_threshold", 0.003)
+            self.volume_threshold = params.get("volume_threshold", 2.5)
+            self.cvd_divergence_threshold = params.get("cvd_divergence_threshold", 1.0)
+        else:
+            strategy_id = params or "trade_pressure_exhaustion"
+            super().__init__(strategy_id)
+            self.return_threshold = 0.003
+            self.volume_threshold = 2.5
+            self.cvd_divergence_threshold = 1.0
+    
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not self._enabled:
+            return None
+        
+        price_return = features.get("return_1h", 0)
+        volume_ratio = features.get("volume_ratio", 1)
+        cvd_zscore = features.get("cvd_zscore", 0)
+        close = features.get("close", 0)
+        
+        if price_return == 0 or volume_ratio == 1:
+            return None
+        
+        extreme_move = abs(price_return) > self.return_threshold
+        volume_surge = volume_ratio > self.volume_threshold
+        
+        if not (extreme_move and volume_surge):
+            return None
+        
+        if price_return > 0 and cvd_zscore < -self.cvd_divergence_threshold:
+            return {
+                "signal_type": "sell",
+                "confidence": 0.75,
+                "reason": "上涨衰竭: 价格涨但 CVD 下降",
+                "metadata": {"return_1h": price_return, "volume_ratio": volume_ratio,
+                            "cvd_zscore": cvd_zscore, "close": close}
+            }
+        
+        elif price_return < 0 and cvd_zscore > self.cvd_divergence_threshold:
+            return {
+                "signal_type": "buy",
+                "confidence": 0.75,
+                "reason": "下跌衰竭: 价格跌但 CVD 上升",
+                "metadata": {"return_1h": price_return, "volume_ratio": volume_ratio,
+                            "cvd_zscore": cvd_zscore, "close": close}
+            }
+        
+        return None
+
+
+class CVDDivergenceEnhancedStrategy(BaseStrategy):
+    """CVD 背离增强策略"""
+    
+    def __init__(self, params: Dict[str, Any] = None):
+        if params and isinstance(params, dict):
+            strategy_id = params.get("strategy_id", "cvd_divergence_enhanced")
+            super().__init__(strategy_id)
+            self.momentum_threshold = params.get("momentum_threshold", 0.02)
+            self.cvd_threshold = params.get("cvd_threshold", 1.5)
+            self.volume_threshold = params.get("volume_threshold", 1.5)
+        else:
+            strategy_id = params or "cvd_divergence_enhanced"
+            super().__init__(strategy_id)
+            self.momentum_threshold = 0.02
+            self.cvd_threshold = 1.5
+            self.volume_threshold = 1.5
+    
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not self._enabled:
+            return None
+        
+        return_1h = features.get("return_1h", 0)
+        cvd_zscore = features.get("cvd_zscore", 0)
+        close = features.get("close", 0)
+        
+        if cvd_zscore == 0:
+            return None
+        
+        momentum_direction = 1 if return_1h > 0 else -1
+        cvd_direction = 1 if cvd_zscore > 0 else -1
+        
+        if momentum_direction != cvd_direction and momentum_direction != 0:
+            divergence_strength = abs(cvd_zscore) * abs(return_1h) / self.momentum_threshold
+            
+            if divergence_strength > 1.5:
+                if momentum_direction == 1 and cvd_direction == -1:
+                    return {
+                        "signal_type": "sell",
+                        "confidence": min(0.85, divergence_strength / 5.0),
+                        "reason": "CVD 顶背离: 价格涨但卖压累积",
+                        "metadata": {"return_1h": return_1h, "cvd_zscore": cvd_zscore,
+                                    "divergence_strength": divergence_strength, "close": close}
+                    }
+                elif momentum_direction == -1 and cvd_direction == 1:
+                    return {
+                        "signal_type": "buy",
+                        "confidence": min(0.85, divergence_strength / 5.0),
+                        "reason": "CVD 底背离: 价格跌但买压累积",
+                        "metadata": {"return_1h": return_1h, "cvd_zscore": cvd_zscore,
+                                    "divergence_strength": divergence_strength, "close": close}
+                    }
+        
+        return None

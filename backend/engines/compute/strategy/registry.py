@@ -22,7 +22,13 @@ from engines.compute.strategy.strategies import (
     ShortSqueezeStrategy, FundingExhaustionTrapStrategy,
     SMACrossoverStrategy, EMACrossoverStrategy,
     BollingerBandsStrategy, MomentumStrategy,
-    LeadLagStrategy, PremiumDivergenceStrategy
+    LeadLagStrategy, PremiumDivergenceStrategy,
+    TradePressureCalculator,
+    TradePressureBounceStrategy,
+    TradePressureSqueezeStrategy,
+    TradePressureAbsorptionStrategy,
+    TradePressureExhaustionStrategy,
+    CVDDivergenceEnhancedStrategy
 )
 from engines.compute.strategy.behavioral_strategies import (
     OpenInterestBehaviorStrategy, FundingExtremeReversalStrategy,
@@ -238,6 +244,13 @@ _STRATEGY_REGISTRY: Dict[str, Type[BaseStrategy]] = {
     "cvd_divergence": CVDDivergenceStrategy,
     "whale_trade": WhaleTradeStrategy,
     "funding_settlement": FundingSettlementStrategy,
+    
+    # Trade Pressure Framework（新）
+    "trade_pressure_bounce": TradePressureBounceStrategy,
+    "trade_pressure_squeeze": TradePressureSqueezeStrategy,
+    "trade_pressure_absorption": TradePressureAbsorptionStrategy,
+    "trade_pressure_exhaustion": TradePressureExhaustionStrategy,
+    "cvd_divergence_enhanced": CVDDivergenceEnhancedStrategy,
 }
 
 _STRATEGY_INFO: Dict[str, StrategyInfo] = {
@@ -554,6 +567,73 @@ _STRATEGY_INFO: Dict[str, StrategyInfo] = {
         direction="both",
         default_params={"minutes_before_settlement": 30, "minutes_after_settlement": 60},
         required_features=["close_prices", "timestamp", "funding_rate"]
+    ),
+    
+    # Trade Pressure Framework（新 - 第一梯队）
+    "trade_pressure_bounce": StrategyInfo(
+        strategy_id="trade_pressure_bounce",
+        name="Trade Pressure Bounce",
+        description="Trade Pressure 反弹策略（替代 long_liquidation_bounce）",
+        direction="long",
+        default_params={
+            "cvd_threshold": 1.5,
+            "volume_threshold": 1.5,
+            "min_pressure_score": 2.0
+        },
+        required_features=["cvd_zscore", "volume_zscore", "volume_ratio", "taker_buy_ratio", "return_1h"],
+        tier=1
+    ),
+    "trade_pressure_squeeze": StrategyInfo(
+        strategy_id="trade_pressure_squeeze",
+        name="Trade Pressure Squeeze",
+        description="Trade Pressure 挤压策略（替代 short_squeeze）",
+        direction="short",
+        default_params={
+            "cvd_threshold": 1.5,
+            "volume_threshold": 1.5,
+            "min_pressure_score": 2.0
+        },
+        required_features=["cvd_zscore", "volume_zscore", "volume_ratio", "taker_buy_ratio", "return_1h"],
+        tier=1
+    ),
+    "trade_pressure_absorption": StrategyInfo(
+        strategy_id="trade_pressure_absorption",
+        name="Trade Pressure Absorption",
+        description="Trade Pressure 吸收策略",
+        direction="both",
+        default_params={
+            "cvd_threshold": 1.0,
+            "volume_threshold": 2.0,
+            "price_range_threshold": 0.005
+        },
+        required_features=["cvd_zscore", "volume_ratio", "taker_buy_ratio", "close", "high", "low"],
+        tier=1
+    ),
+    "trade_pressure_exhaustion": StrategyInfo(
+        strategy_id="trade_pressure_exhaustion",
+        name="Trade Pressure Exhaustion",
+        description="Trade Pressure 衰竭策略",
+        direction="both",
+        default_params={
+            "return_threshold": 0.003,
+            "volume_threshold": 2.5,
+            "cvd_divergence_threshold": 1.0
+        },
+        required_features=["return_1h", "volume_ratio", "cvd_zscore"],
+        tier=1
+    ),
+    "cvd_divergence_enhanced": StrategyInfo(
+        strategy_id="cvd_divergence_enhanced",
+        name="CVD Divergence Enhanced",
+        description="CVD 背离增强策略（替代 cvd_divergence）",
+        direction="both",
+        default_params={
+            "momentum_threshold": 0.02,
+            "cvd_threshold": 1.5,
+            "volume_threshold": 1.5
+        },
+        required_features=["return_1h", "cvd_zscore", "volume_zscore", "taker_buy_ratio"],
+        tier=1
     ),
 }
 
