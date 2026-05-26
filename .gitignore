@@ -190,6 +190,9 @@ test.py
 backend/data/
 backend/data_lake/
 
+# Precomputed trade features (large files)
+backend/data_lake/crypto/binance/trade_features/
+
 # Temporary check scripts
 scripts/check_*.py
 
