@@ -55,6 +55,10 @@ from engines.compute.strategy.strategies import (
     LeadLagStrategy,
     PremiumDivergenceStrategy
 )
+
+# 导入新的使用 Trade-Derived Pressure 的 Short Squeeze 策略
+sys.path.insert(0, os.path.dirname(__file__))
+from short_squeeze_pressure_strategy import ShortSqueezePressureStrategy
 from engines.compute.strategy.behavioral_strategies import (
     OpenInterestBehaviorStrategy,
     FundingExtremeReversalStrategy,
@@ -81,7 +85,7 @@ STRATEGY_MAPPING = {
     "volume_climax_fade": VolumeClimaxFadeStrategy,
     "weak_bounce_short": WeakBounceShortStrategy,
     "oi_flush": OIFlushStrategy,
-    "short_squeeze": ShortSqueezeStrategy,
+    "short_squeeze_pressure": ShortSqueezePressureStrategy,  # 使用 CVD proxy 的策略，不依赖真实 OI
     "funding_exhaustion_trap": FundingExhaustionTrapStrategy,
     "dead_cat_echo": DeadCatEchoStrategy,
     "imbalance_pressure": ImbalancePressureStrategy,
@@ -158,10 +162,11 @@ PARAM_GRIDS = {
         "oi_flush_threshold": [-0.05, -0.10, -0.15],
         "funding_normalization_threshold": [0.3, 0.5, 0.7]
     },
-    "short_squeeze": {
-        "funding_extreme_threshold": [-1.5, -2.0, -2.5],
-        "oi_growth_threshold": [0.0, 0.02, 0.04],
-        "price_momentum_threshold": [0.003, 0.005, 0.008]
+    "short_squeeze_pressure": {
+        "price_momentum_threshold": [0.002, 0.003, 0.005],
+        "cvd_zscore_threshold": [1.5, 2.0, 2.5],
+        "taker_buy_ratio_threshold": [0.55, 0.6, 0.65],
+        "volume_zscore_threshold": [1.0, 1.5, 2.0]
     },
     "funding_exhaustion_trap": {
         "funding_extreme_threshold": [2.0, 2.5, 3.0]
@@ -324,6 +329,7 @@ class WalkForwardRunner:
     DATA_LAKE_KLINES_PATH = Path(backend_path) / "data_lake" / "crypto" / "binance" / "klines" / "symbol=BTCUSDT"
     DATA_LAKE_FUNDING_PATH = Path(backend_path) / "data_lake" / "crypto" / "binance" / "funding" / "symbol=BTCUSDT" / "data.parquet"
     DATA_LAKE_OI_PATH = Path(backend_path) / "data_lake" / "crypto" / "binance" / "oi" / "symbol=BTCUSDT" / "data.parquet"
+    DATA_LAKE_TRADE_FEATURES_PATH = Path(backend_path) / "data_lake" / "crypto" / "binance" / "trade_features" / "symbol=BTCUSDT"
 
     def __init__(self, enable_gpu: bool = True, resample: str = "1h"):
         self._results: List[WalkForwardResult] = []
@@ -332,10 +338,11 @@ class WalkForwardRunner:
         self._resample = resample
         self._funding_df: Optional[pd.DataFrame] = None
         self._oi_df: Optional[pd.DataFrame] = None
+        self._trade_features_df: Optional[pd.DataFrame] = None
         self._load_supplementary_data()
 
     def _load_supplementary_data(self):
-        """加载补充数据（funding和OI）"""
+        """加载补充数据（funding、OI 和 trade_features）"""
         try:
             if self.DATA_LAKE_FUNDING_PATH.exists():
                 self._funding_df = read_parquet_safe(self.DATA_LAKE_FUNDING_PATH)
@@ -345,8 +352,51 @@ class WalkForwardRunner:
                 self._oi_df = read_parquet_safe(self.DATA_LAKE_OI_PATH)
                 if self._oi_df is not None:
                     logger.info(f"Loaded OI data: {len(self._oi_df)} rows")
+            if self.DATA_LAKE_TRADE_FEATURES_PATH.exists():
+                self._load_trade_features()
         except Exception as e:
             logger.warning(f"Failed to load supplementary data: {e}")
+    
+    def _load_trade_features(self):
+        """加载 trade_features 数据"""
+        dfs = []
+        try:
+            for year_dir in sorted(self.DATA_LAKE_TRADE_FEATURES_PATH.iterdir()):
+                if year_dir.is_dir() and year_dir.name.startswith("year="):
+                    for month_dir in sorted(year_dir.iterdir()):
+                        if month_dir.is_dir() and month_dir.name.startswith("month="):
+                            parquet_path = month_dir / "data.parquet"
+                            if parquet_path.exists():
+                                df = read_parquet_safe(parquet_path)
+                                if df is not None and len(df) > 0:
+                                    dfs.append(df)
+            if dfs:
+                self._trade_features_df = pd.concat(dfs, ignore_index=True)
+                if "timestamp" in self._trade_features_df.columns:
+                    # 正确处理毫秒时间戳
+                    self._trade_features_df["timestamp"] = pd.to_datetime(
+                        self._trade_features_df["timestamp"], unit='ms'
+                    )
+                
+                # 对特征列进行 shift(1)，防止数据泄露
+                # 当前 K 线决策只用上一根已完成 K 线的特征
+                feature_cols = [
+                    "cvd_delta",
+                    "cvd_zscore",
+                    "taker_buy_ratio",
+                    "taker_buy_zscore",
+                    "volume_zscore",
+                    "buy_sell_imbalance",
+                    "cvd",
+                ]
+                for col in feature_cols:
+                    if col in self._trade_features_df.columns:
+                        self._trade_features_df[col] = self._trade_features_df[col].shift(1)
+                
+                logger.info(f"Loaded trade_features data: {len(self._trade_features_df)} rows (with shift to prevent leakage)")
+        except Exception as e:
+            logger.warning(f"Failed to load trade_features: {e}")
+            self._trade_features_df = None
 
     @staticmethod
     def _resample_bars(bars: List[Bar], freq: str) -> List[Bar]:
@@ -371,7 +421,7 @@ class WalkForwardRunner:
         return result
 
     def _get_strategy_data(self, timestamp: datetime, closes: List[float]) -> Dict:
-        """获取策略所需的补充数据（funding和OI），不覆盖已有的 OHLCV 数据"""
+        """获取策略所需的补充数据（funding、OI 和 trade_features），不覆盖已有的 OHLCV 数据"""
         data = {}
 
         try:
@@ -403,6 +453,18 @@ class WalkForwardRunner:
                         prev_oi = float(prev_oi) if prev_oi != "" else 0.0
                         if prev_oi > 0:
                             data["oi_delta"] = (sum_oi - prev_oi) / prev_oi
+
+            if self._trade_features_df is not None:
+                mask = self._trade_features_df["timestamp"] <= ts_naive
+                if mask.any():
+                    latest_features = self._trade_features_df.loc[mask].iloc[-1]
+                    # 从 trade_features 中提取所需指标
+                    data["cvd_zscore"] = float(latest_features.get("cvd_zscore", 0.0))
+                    data["taker_buy_ratio"] = float(latest_features.get("taker_buy_ratio", 0.5))
+                    data["volume_zscore"] = float(latest_features.get("volume_zscore", 0.0))
+                    data["buy_sell_imbalance"] = float(latest_features.get("buy_sell_imbalance", 0.0))
+                    data["cvd_delta"] = float(latest_features.get("cvd_delta", 0.0))
+                    data["taker_buy_zscore"] = float(latest_features.get("taker_buy_zscore", 0.0))
 
         except Exception as e:
             pass
@@ -507,7 +569,7 @@ class WalkForwardRunner:
                 result.metrics.total_trades,
                 result.metrics.total_return,
                 result.trades,
-                result.metrics.max_drawdown,
+                result.metrics.max_drawdown_pct,
                 result.metrics.win_rate,
                 result.metrics.profit_factor
             )
