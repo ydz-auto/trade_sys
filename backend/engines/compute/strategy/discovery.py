@@ -90,39 +90,38 @@ class AutoDiscoveredStrategy(BaseStrategy):
             logger.error(f"Error evaluating conditions: {e}")
             return False
 
-    def calculate(self, data: Dict) -> Optional[StrategySignal]:
-        """执行自动发现的策略"""
+    def generate_signal(self, features: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """生成信号（新接口）"""
         if not self._enabled:
             return None
 
-        if not self.evaluate_conditions(data, self.pattern.conditions):
+        conditions_met = True
+        for cond in self.pattern.conditions:
+            try:
+                if not eval(cond, {}, {"features": features, "np": np, "pd": pd}):
+                    conditions_met = False
+                    break
+            except Exception:
+                conditions_met = False
+                break
+
+        if not conditions_met:
             return None
 
-        current_price = data.get("close_prices", [0])[-1]
-        symbol = data.get("symbol", "BTCUSDT")
-
-        action = ActionType.LONG if self.pattern.direction == 1 else ActionType.SHORT
-
-        signal = StrategySignal(
-            strategy_id=self.strategy_id,
-            strategy_type=StrategyType.ML_BASED,
-            symbol=symbol,
-            action=action,
-            quantity=self.default_quantity,
-            price=current_price,
-            confidence=self.pattern.confidence,
-            reason=f"Auto-discovered: {self.pattern.name}, "
-                   f"Win rate: {self.pattern.win_rate*100:.1f}%, "
-                   f"Avg return: {self.pattern.avg_return*100:.2f}%",
-            metadata={
+        action = "buy" if self.pattern.direction == 1 else "sell"
+        return {
+            'signal_type': action,
+            'confidence': self.pattern.confidence,
+            'reason': f"Auto-discovered: {self.pattern.name}, "
+                      f"Win rate: {self.pattern.win_rate*100:.1f}%, "
+                      f"Avg return: {self.pattern.avg_return*100:.2f}%",
+            'metadata': {
                 "pattern_id": self.pattern.pattern_id,
                 "win_rate": self.pattern.win_rate,
                 "avg_return": self.pattern.avg_return,
                 "sample_size": self.pattern.sample_size,
             },
-        )
-
-        return signal
+        }
 
 
 class StrategyDiscoveryEngine:
