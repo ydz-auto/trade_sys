@@ -57,7 +57,6 @@ from engines.compute.strategy.registry import (
     get_strategy,
     list_strategies,
     get_strategy_info,
-    StrategyBridge
 )
 from runtimes.regime_runtime import get_regime_runtime
 
