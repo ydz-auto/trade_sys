@@ -164,9 +164,9 @@ PARAM_GRIDS = {
     },
     "short_squeeze": {
         "price_momentum_threshold": [0.002, 0.003, 0.005],
-        "cvd_zscore_threshold": [1.5, 2.0, 2.5],
-        "taker_buy_ratio_threshold": [0.55, 0.6, 0.65],
-        "volume_zscore_threshold": [1.0, 1.5, 2.0]
+        "cvd_zscore_threshold": [1.0, 1.5, 2.0, 2.5, 3.0],
+        "taker_buy_ratio_threshold": [0.55, 0.60, 0.65, 0.70],
+        "volume_zscore_threshold": [1.0, 1.5, 2.0, 2.5]
     },
     "funding_exhaustion_trap": {
         "funding_extreme_threshold": [2.0, 2.5, 3.0]
