@@ -371,15 +371,8 @@ class WalkForwardRunner:
         return result
 
     def _get_strategy_data(self, timestamp: datetime, closes: List[float]) -> Dict:
-        """获取策略所需的完整数据"""
-        data = {
-            "close_prices": closes,
-            "high_prices": [],
-            "low_prices": [],
-            "volumes": [],
-            "symbol": "BTCUSDT",
-            "timestamp": timestamp,
-        }
+        """获取策略所需的补充数据（funding和OI），不覆盖已有的 OHLCV 数据"""
+        data = {}
 
         try:
             ts_naive = timestamp.replace(tzinfo=None) if timestamp.tzinfo is not None else timestamp
@@ -477,10 +470,11 @@ class WalkForwardRunner:
         params: Dict[str, Any],
         bars: List[Bar],
         initial_capital: float = 10000.0,
-    ) -> Tuple[Optional[float], Optional[int], Optional[float], Optional[List[Trade]]]:
+    ) -> Tuple[Optional[float], Optional[int], Optional[float], Optional[List[Trade]], Optional[float], Optional[float], Optional[float]]:
+        """返回: (sharpe, total_trades, total_return, trades, max_drawdown, win_rate, profit_factor)"""
         strategy_class = STRATEGY_MAPPING.get(strategy_id)
         if not strategy_class:
-            return None, None, None, None
+            return None, None, None, None, None, None, None
 
         try:
             strategy = strategy_class(strategy_id=strategy_id, **params)
@@ -512,9 +506,12 @@ class WalkForwardRunner:
                 result.metrics.sharpe_ratio,
                 result.metrics.total_trades,
                 result.metrics.total_return,
-                result.trades
+                result.trades,
+                result.metrics.max_drawdown,
+                result.metrics.win_rate,
+                result.metrics.profit_factor
             )
-        return None, None, None, None
+        return None, None, None, None, None, None, None
 
     def optimize_params(
         self,
@@ -533,7 +530,7 @@ class WalkForwardRunner:
         best_return = 0.0
 
         for i, params in enumerate(param_combinations):
-            sharpe, trades, ret, _ = self.run_single_backtest(strategy_id, params, optimize_bars)
+            sharpe, trades, ret, _, _, _, _ = self.run_single_backtest(strategy_id, params, optimize_bars)
             if sharpe is not None and sharpe > best_sharpe:
                 best_sharpe = sharpe
                 best_params = params
@@ -573,11 +570,11 @@ class WalkForwardRunner:
             logger.error(f"Failed to find good params for {strategy_id}")
             return None
 
-        validation_sharpe, validation_trades, validation_return, _ = self.run_single_backtest(
+        validation_sharpe, validation_trades, validation_return, _, validation_max_dd, validation_win_rate, validation_pf = self.run_single_backtest(
             strategy_id, best_params, validation_bars
         )
 
-        test_sharpe, test_trades, test_return, test_trades_list = self.run_single_backtest(
+        test_sharpe, test_trades, test_return, test_trades_list, test_max_dd, test_win_rate, test_pf = self.run_single_backtest(
             strategy_id, best_params, test_bars
         )
 
@@ -606,9 +603,9 @@ class WalkForwardRunner:
             optimize_return=optimize_return,
             validation_return=validation_return,
             test_return=test_return,
-            max_drawdown=0.1,
-            win_rate=0.5,
-            profit_factor=1.0,
+            max_drawdown=test_max_dd if test_max_dd is not None else 0.0,
+            win_rate=test_win_rate if test_win_rate is not None else 0.0,
+            profit_factor=test_pf if test_pf is not None else 0.0,
             overfitting_score=overfitting_score,
             test_trades_list=test_trades_list if test_trades_list else []
         )
@@ -701,6 +698,9 @@ class WalkForwardRunner:
                 "optimize_return": r.optimize_return,
                 "validation_return": r.validation_return,
                 "test_return": r.test_return,
+                "max_drawdown": r.max_drawdown,
+                "win_rate": r.win_rate,
+                "profit_factor": r.profit_factor,
                 "overfitting_score": r.overfitting_score,
             })
             self.save_trades_to_csv(r, output_trades_dir)
