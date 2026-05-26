@@ -406,34 +406,7 @@ class TimeCausalSignalRuntime:
         
         # 2. 调用策略生成信号
         try:
-            signal = None
-            
-            # 支持两种策略接口
-            if hasattr(strategy, 'generate_signal'):
-                signal = strategy.generate_signal(features)
-            elif hasattr(strategy, 'calculate'):
-                # 旧策略接口兼容
-                result = strategy.calculate(features)
-                if result:
-                    try:
-                        from engines.compute.strategy.strategies import ActionType
-                        action_type = getattr(result, 'action', None)
-                        if action_type == ActionType.LONG:
-                            signal = {
-                                'signal_type': 'buy',
-                                'confidence': getattr(result, 'confidence', 0.5),
-                                'reason': getattr(result, 'reason', ''),
-                                'metadata': getattr(result, 'metadata', {})
-                            }
-                        elif action_type == ActionType.SHORT:
-                            signal = {
-                                'signal_type': 'sell',
-                                'confidence': getattr(result, 'confidence', 0.5),
-                                'reason': getattr(result, 'reason', ''),
-                                'metadata': getattr(result, 'metadata', {})
-                            }
-                    except ImportError:
-                        pass
+            signal = strategy.generate_signal(features)
             
             if signal:
                 signal['timestamp_ms'] = timestamp_ms

@@ -523,8 +523,21 @@ class MultiStrategyOrchestrator:
                 if not strategy or not strategy.is_enabled:
                     continue
 
-                signal = strategy.calculate(data)
-                if signal:
+                signal_dict = strategy.generate_signal(data)
+                if signal_dict:
+                    from engines.compute.strategy.strategies import StrategySignal, ActionType
+                    action_type = ActionType.LONG if signal_dict['signal_type'] == 'buy' else ActionType.SHORT
+                    signal = StrategySignal(
+                        strategy_id=strategy_id,
+                        strategy_type=StrategyType.TECHNICAL,
+                        symbol=sym,
+                        action=action_type,
+                        quantity=getattr(strategy, 'default_quantity', 0.01),
+                        price=data.get('close', 0),
+                        confidence=signal_dict.get('confidence', 0.5),
+                        reason=signal_dict.get('reason', ''),
+                        metadata=signal_dict.get('metadata', {})
+                    )
                     signal.symbol = sym
                     all_signals.append(signal)
 
