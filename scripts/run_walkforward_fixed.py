@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import pandas as pd
+import numpy as np
 
 backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backend'))
 sys.path.insert(0, backend_path)
@@ -264,18 +265,16 @@ class WalkForwardResult:
 
 class StrategyAdapter:
     """适配旧策略接口到回测引擎的SignalType接口"""
-    def __init__(self, strategy: BaseStrategy):
+    def __init__(self, strategy: BaseStrategy, data_getter=None):
         self.strategy = strategy
         self._closes = []
         self._highs = []
         self._lows = []
         self._volumes = []
-        self._position = None
-        self._entry_price = 0.0
+        self._data_getter = data_getter
 
     def _build_data_dict(self, bar: Bar) -> Dict:
-        """构建策略所需的数据字典"""
-        return {
+        basic_data = {
             "close_prices": self._closes.copy(),
             "high_prices": self._highs.copy(),
             "low_prices": self._lows.copy(),
@@ -283,6 +282,15 @@ class StrategyAdapter:
             "symbol": "BTCUSDT",
             "timestamp": bar.timestamp
         }
+
+        if self._data_getter is not None:
+            try:
+                supplementary_data = self._data_getter(bar.timestamp, self._closes.copy())
+                basic_data.update(supplementary_data)
+            except Exception as e:
+                pass
+
+        return basic_data
 
     def __call__(self, bar: Bar, position=None) -> SignalType:
         self._closes.append(bar.close)
@@ -313,20 +321,39 @@ class StrategyAdapter:
 # ============= Walk-Forward 运行器 =============
 
 class WalkForwardRunner:
-    DATA_LAKE_PATH = Path(backend_path) / "data_lake" / "crypto" / "binance" / "klines" / "symbol=BTCUSDT"
+    DATA_LAKE_KLINES_PATH = Path(backend_path) / "data_lake" / "crypto" / "binance" / "klines" / "symbol=BTCUSDT"
+    DATA_LAKE_FUNDING_PATH = Path(backend_path) / "data_lake" / "crypto" / "binance" / "funding" / "symbol=BTCUSDT" / "data.parquet"
+    DATA_LAKE_OI_PATH = Path(backend_path) / "data_lake" / "crypto" / "binance" / "oi" / "symbol=BTCUSDT" / "data.parquet"
 
     def __init__(self, enable_gpu: bool = True, resample: str = "1h"):
         self._results: List[WalkForwardResult] = []
         self._all_data: Dict[int, List[Bar]] = {}
         self._enable_gpu = enable_gpu
         self._resample = resample
+        self._funding_df: Optional[pd.DataFrame] = None
+        self._oi_df: Optional[pd.DataFrame] = None
+        self._load_supplementary_data()
+
+    def _load_supplementary_data(self):
+        """加载补充数据（funding和OI）"""
+        try:
+            if self.DATA_LAKE_FUNDING_PATH.exists():
+                self._funding_df = read_parquet_safe(self.DATA_LAKE_FUNDING_PATH)
+                if self._funding_df is not None:
+                    logger.info(f"Loaded funding data: {len(self._funding_df)} rows")
+            if self.DATA_LAKE_OI_PATH.exists():
+                self._oi_df = read_parquet_safe(self.DATA_LAKE_OI_PATH)
+                if self._oi_df is not None:
+                    logger.info(f"Loaded OI data: {len(self._oi_df)} rows")
+        except Exception as e:
+            logger.warning(f"Failed to load supplementary data: {e}")
 
     @staticmethod
     def _resample_bars(bars: List[Bar], freq: str) -> List[Bar]:
         if not bars or freq == "raw":
             return bars
         records = [{"timestamp": b.timestamp, "open": b.open, "high": b.high,
-                     "low": b.low, "close": b.close, "volume": b.volume} for b in bars]
+                    "low": b.low, "close": b.close, "volume": b.volume} for b in bars]
         df = pd.DataFrame(records).set_index("timestamp")
         ohlcv_agg = {"open": "first", "high": "max", "low": "min",
                       "close": "last", "volume": "sum"}
@@ -343,11 +370,57 @@ class WalkForwardRunner:
             ))
         return result
 
+    def _get_strategy_data(self, timestamp: datetime, closes: List[float]) -> Dict:
+        """获取策略所需的完整数据"""
+        data = {
+            "close_prices": closes,
+            "high_prices": [],
+            "low_prices": [],
+            "volumes": [],
+            "symbol": "BTCUSDT",
+            "timestamp": timestamp,
+        }
+
+        try:
+            ts_naive = timestamp.replace(tzinfo=None) if timestamp.tzinfo is not None else timestamp
+
+            if self._funding_df is not None:
+                mask = self._funding_df["timestamp"] <= ts_naive
+                if mask.any():
+                    latest_funding = self._funding_df.loc[mask].iloc[-1]
+                    data["funding_rate"] = float(latest_funding.get("fundingRate", 0.0))
+
+                    mask_30d = self._funding_df["timestamp"] <= ts_naive
+                    if mask_30d.sum() > 1:
+                        funding_history = self._funding_df.loc[mask_30d]["fundingRate"].values.astype(float)
+                        mean = np.mean(funding_history)
+                        std = np.std(funding_history)
+                        if std > 0:
+                            data["funding_zscore"] = (data.get("funding_rate", 0.0) - mean) / std
+
+            if self._oi_df is not None:
+                mask = self._oi_df["timestamp"] <= ts_naive
+                if mask.any():
+                    latest_oi = self._oi_df.loc[mask].iloc[-1]
+                    sum_oi = latest_oi.get("sumOpenInterest", 0.0)
+                    sum_oi = float(sum_oi) if sum_oi != "" else 0.0
+
+                    if mask.sum() > 24:
+                        prev_oi = self._oi_df.loc[mask].iloc[-25].get("sumOpenInterest", 0.0)
+                        prev_oi = float(prev_oi) if prev_oi != "" else 0.0
+                        if prev_oi > 0:
+                            data["oi_delta"] = (sum_oi - prev_oi) / prev_oi
+
+        except Exception as e:
+            pass
+
+        return data
+
     def load_year_data(self, year: int) -> List[Bar]:
         if year in self._all_data:
             return self._all_data[year]
 
-        year_path = self.DATA_LAKE_PATH / f"year={year}"
+        year_path = self.DATA_LAKE_KLINES_PATH / f"year={year}"
         if not year_path.exists():
             logger.warning(f"Year {year} data not found at {year_path}")
             return []
@@ -417,7 +490,7 @@ class WalkForwardRunner:
                 if hasattr(strategy, key):
                     setattr(strategy, key, value)
 
-        adapter = StrategyAdapter(strategy)
+        adapter = StrategyAdapter(strategy, self._get_strategy_data)
 
         config = BacktestConfig(
             initial_capital=initial_capital,
