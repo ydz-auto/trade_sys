@@ -614,37 +614,120 @@ class WalkForwardRunner:
         return result
 
     def save_trades_to_csv(self, result: WalkForwardResult, output_dir: str):
-        """保存交易明细到CSV"""
+        """保存交易明细到CSV（包含完整审计字段）"""
         csv_path = Path(output_dir) / f"trades_{result.strategy_id}.csv"
         csv_path.parent.mkdir(exist_ok=True)
 
         with open(csv_path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow([
-                "trade_index", "entry_time", "exit_time", "side", "entry_price",
-                "exit_price", "quantity", "pnl", "pnl_pct", "leverage",
-                "entry_fee", "exit_fee", "funding_fee", "liquidated"
+                "trade_index", "entry_time", "exit_time", "duration_hours",
+                "side", "entry_price", "exit_price", "quantity",
+                "margin_used", "notional_value", "leverage",
+                "pnl", "pnl_pct", "entry_fee", "exit_fee", "funding_fee", "total_fee",
+                "equity_before", "equity_after", "exit_reason", "liquidated"
             ])
 
+            equity_before = 10000.0
             for i, trade in enumerate(result.test_trades_list):
+                duration_hours = 0.0
+                if trade.exit_time and trade.entry_time:
+                    duration_hours = (trade.exit_time - trade.entry_time).total_seconds() / 3600
+                
+                margin_used = trade.pnl / trade.pnl_pct if trade.pnl_pct != 0 else 0.0
+                notional_value = margin_used * trade.leverage
+                
+                total_fee = trade.entry_fee + trade.exit_fee + abs(trade.funding_fee)
+                equity_after = equity_before + trade.pnl
+                
+                exit_reason = "liquidation" if trade.liquidated else "take_profit"
+                
                 writer.writerow([
                     i,
                     trade.entry_time,
                     trade.exit_time,
-                    trade.side,
-                    trade.entry_price,
-                    trade.exit_price,
-                    trade.quantity,
-                    trade.pnl,
-                    trade.pnl_pct,
+                    round(duration_hours, 2),
+                    "BUY" if trade.side == SignalType.BUY else "SELL",
+                    round(trade.entry_price, 2),
+                    round(trade.exit_price, 2),
+                    round(trade.quantity, 6),
+                    round(margin_used, 2),
+                    round(notional_value, 2),
                     trade.leverage,
-                    trade.entry_fee,
-                    trade.exit_fee,
-                    trade.funding_fee,
+                    round(trade.pnl, 2),
+                    round(trade.pnl_pct * 100, 2),
+                    round(trade.entry_fee, 4),
+                    round(trade.exit_fee, 4),
+                    round(trade.funding_fee, 4),
+                    round(total_fee, 4),
+                    round(equity_before, 2),
+                    round(equity_after, 2),
+                    exit_reason,
                     trade.liquidated
                 ])
+                
+                equity_before = equity_after
 
         logger.info(f"Trades saved to {csv_path}")
+
+    def calculate_trade_similarity(self, trades_a: List, trades_b: List) -> float:
+        """计算两个策略交易的相似度（0-1，1表示完全相同）"""
+        if not trades_a or not trades_b:
+            return 0.0
+        
+        trades_a_set = set()
+        for trade in trades_a:
+            key = (trade.entry_time, trade.entry_price, trade.side)
+            trades_a_set.add(key)
+        
+        matches = 0
+        for trade in trades_b:
+            key = (trade.entry_time, trade.entry_price, trade.side)
+            if key in trades_a_set:
+                matches += 1
+        
+        return matches / max(len(trades_a), len(trades_b))
+
+    def generate_trade_similarity_report(self) -> str:
+        """生成策略之间交易相似度报告"""
+        report = []
+        report.append("\n" + "="*80)
+        report.append("策略交易相似度矩阵")
+        report.append("="*80)
+        
+        strategies = [r.strategy_id for r in self._results]
+        n = len(strategies)
+        
+        header = ["策略"] + strategies
+        report.append(" | ".join(f"{h:20s}" for h in header))
+        report.append("-" * 80)
+        
+        for i, strategy_i in enumerate(strategies):
+            row = [strategy_i]
+            for j, strategy_j in enumerate(strategies):
+                if i == j:
+                    row.append("1.00")
+                else:
+                    trades_i = self._results[i].test_trades_list
+                    trades_j = self._results[j].test_trades_list
+                    similarity = self.calculate_trade_similarity(trades_i, trades_j)
+                    row.append(f"{similarity:.2f}")
+            report.append(" | ".join(f"{cell:20s}" for cell in row))
+        
+        report.append("\n" + "="*80)
+        report.append("相似度分析")
+        report.append("="*80)
+        
+        for i in range(n):
+            for j in range(i + 1, n):
+                trades_i = self._results[i].test_trades_list
+                trades_j = self._results[j].test_trades_list
+                similarity = self.calculate_trade_similarity(trades_i, trades_j)
+                
+                status = "❌ 高度相似" if similarity >= 0.8 else "⚠️ 部分相似" if similarity >= 0.5 else "✅ 差异明显"
+                report.append(f"{strategies[i]:<30s} vs {strategies[j]:<30s}: {similarity:.2%} {status}")
+        
+        return "\n".join(report)
 
     def generate_report(self) -> str:
         report = []
@@ -808,6 +891,9 @@ def main(strategies_to_run: List[str] = None):
     critical_strategies = ["long_liquidation_bounce", "short_squeeze", "volatility_expansion"]
     diff_report = runner.check_strategy_differences(critical_strategies)
     print(diff_report)
+
+    similarity_report = runner.generate_trade_similarity_report()
+    print(similarity_report)
 
     runner.save_results("walkforward_results_fixed.json", "trades")
 

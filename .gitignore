@@ -189,3 +189,14 @@ test.py
 # Data directories
 backend/data/
 backend/data_lake/
+
+# Temporary check scripts
+scripts/check_*.py
+
+# Backtest results and trading files
+scripts/*.json
+scripts/trades/
+scripts/walkforward_results_fixed.json
+trades/
+walkforward_results_fixed.json
+walk_forward_results.json
