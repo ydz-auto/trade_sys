@@ -337,7 +337,7 @@ _STRATEGY_INFO: Dict[str, StrategyInfo] = {
         description="OI清洗后趋势恢复",
         direction="both",
         default_params={"oi_drop_threshold": -0.10, "funding_reversal_threshold": 0.5},
-        required_features=["oi_delta", "oi_zscore", "funding_delta"],
+        required_features=["oi_delta", "funding_delta", "close", "close_prev", "liquidation_pressure", "return_1h"],
         tier=1,
         supported_symbols=["BTCUSDT", "ETHUSDT"]
     ),
@@ -527,7 +527,7 @@ _STRATEGY_INFO: Dict[str, StrategyInfo] = {
         description="爆仓连锁策略（第一梯队）",
         direction="both",
         default_params={"long_liq_spike_threshold": 1000000.0, "oi_drop_threshold": -0.05, "price_drop_threshold": -0.03},
-        required_features=["close_prices", "oi_history", "liquidation_long", "liquidation_short", "liquidation_spike", "liquidation_reversal_signal"],
+        required_features=["liquidation_long", "liquidation_short", "liquidation_reversal_signal", "oi_delta", "price_change"],
         tier=1,
         supported_symbols=["BTCUSDT", "ETHUSDT"]
     ),
@@ -537,7 +537,7 @@ _STRATEGY_INFO: Dict[str, StrategyInfo] = {
         description="CVD背离策略（第二梯队）",
         direction="both",
         default_params={"lookback_periods": 24, "divergence_threshold": 0.1},
-        required_features=["close_prices", "cvd_history"]
+        required_features=["close", "close_prices", "cvd", "cvd_history"]
     ),
     "whale_trade": StrategyInfo(
         strategy_id="whale_trade",
@@ -545,7 +545,7 @@ _STRATEGY_INFO: Dict[str, StrategyInfo] = {
         description="大单策略（第二梯队）",
         direction="both",
         default_params={"whale_threshold_btc": 100.0, "lookback_trades": 5, "oi_change_threshold": 0.01},
-        required_features=["close_prices", "oi_history", "whale_buy_count", "whale_sell_count", "whale_buy_volume", "whale_sell_volume", "aggressive_flow"]
+        required_features=["close", "oi_delta", "symbol", "whale_buy_count", "whale_sell_count", "whale_buy_volume", "whale_sell_volume", "aggressive_flow"]
     ),
     "funding_settlement": StrategyInfo(
         strategy_id="funding_settlement",
