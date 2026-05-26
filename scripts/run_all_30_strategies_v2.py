@@ -85,7 +85,7 @@ STRATEGY_MAPPING = {
     "volume_climax_fade": VolumeClimaxFadeStrategy,
     "weak_bounce_short": WeakBounceShortStrategy,
     "oi_flush": OIFlushStrategy,
-    "short_squeeze_pressure": ShortSqueezePressureStrategy,  # 使用 CVD proxy 的策略，不依赖真实 OI
+    "short_squeeze": ShortSqueezePressureStrategy,  # 使用 CVD proxy 的策略，不依赖真实 OI
     "funding_exhaustion_trap": FundingExhaustionTrapStrategy,
     "dead_cat_echo": DeadCatEchoStrategy,
     "imbalance_pressure": ImbalancePressureStrategy,
@@ -162,7 +162,7 @@ PARAM_GRIDS = {
         "oi_flush_threshold": [-0.05, -0.10, -0.15],
         "funding_normalization_threshold": [0.3, 0.5, 0.7]
     },
-    "short_squeeze_pressure": {
+    "short_squeeze": {
         "price_momentum_threshold": [0.002, 0.003, 0.005],
         "cvd_zscore_threshold": [1.5, 2.0, 2.5],
         "taker_buy_ratio_threshold": [0.55, 0.6, 0.65],
@@ -318,6 +318,8 @@ class StrategyAdapter:
                     return SignalType.BUY
                 elif signal.action == ActionType.SHORT:
                     return SignalType.SELL
+                elif signal.action == ActionType.CLOSE:
+                    return SignalType.SELL  # CLOSE 用于平多仓，返回 SELL 信号
         except Exception as e:
             pass
 
