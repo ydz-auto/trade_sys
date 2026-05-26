@@ -1,19 +1,24 @@
 """
 Parameter Optimizer - 参数优化器
 
-提供参数优化功能，支持多种执行器：
-- ProcessPoolExecutor: 多进程并行
-- Sequential: 串行执行
-- ThreadPoolExecutor: 多线程（未来扩展）
+提供参数优化功能，使用统一的 AccelerationService
+
+架构：
+    ParameterOptimizer
+        ↓
+    AccelerationService
+        ↓
+    CPUExecutor / GPUExecutor
+        ↓
+    backtest_worker.run_single_backtest_worker
 """
-from typing import Dict, List, Any, Optional, Callable
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
-from concurrent.futures import ProcessPoolExecutor, as_completed
-import multiprocessing as mp
 import logging
 from itertools import product
 
-from .parallel_backtest import run_backtest_in_subprocess, BacktestResult
+from .backtest_worker import run_single_backtest_worker, build_backtest_task
+from infrastructure.acceleration import AccelerationService, AccelerationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +44,7 @@ class OptimizationResult:
     best_sharpe: float
     best_trades: int
     best_return: float
-    all_results: List[BacktestResult] = field(default_factory=list)
+    all_results: List[Dict[str, Any]] = field(default_factory=list)
     elapsed_time: float = 0.0
     num_combinations: int = 0
     num_workers: int = 0
@@ -49,13 +54,13 @@ class ParameterOptimizer:
     """
     参数优化器
     
-    支持多进程并行优化参数组合
+    使用 AccelerationService 统一加速
     
     Example:
         optimizer = ParameterOptimizer(
-            executor="process",
-            max_workers=15,
-            enable_gpu=True
+            enable_multiprocess=True,
+            enable_gpu=True,
+            max_workers=15
         )
         
         result = optimizer.optimize(
@@ -66,17 +71,14 @@ class ParameterOptimizer:
                 "volume_ratio_threshold": [1.5, 2.0, 2.5]
             },
             bars_data=bars_data,
-            funding_data=funding_df.to_dict("records"),
-            oi_data=oi_df.to_dict("records")
+            funding_data=funding_data,
+            oi_data=oi_data
         )
-        
-        print(f"Best params: {result.best_params}")
-        print(f"Best Sharpe: {result.best_sharpe}")
     """
     
     def __init__(
         self,
-        executor: str = "process",
+        enable_multiprocess: bool = True,
         max_workers: Optional[int] = None,
         enable_gpu: bool = False,
         config: Optional[OptimizationConfig] = None
@@ -85,21 +87,26 @@ class ParameterOptimizer:
         初始化参数优化器
         
         Args:
-            executor: 执行器类型，"process" | "sequential"
-            max_workers: 最大工作进程数，None表示自动检测
+            enable_multiprocess: 是否启用多进程并行
+            max_workers: 最大工作进程数
             enable_gpu: 是否启用GPU加速
             config: 优化配置
         """
-        self.executor = executor
         self.enable_gpu = enable_gpu
         self.config = config or OptimizationConfig()
         
-        if max_workers is None:
-            self.max_workers = max(1, mp.cpu_count() - 1)
-        else:
-            self.max_workers = max_workers
+        self._acceleration_service = AccelerationService.create_for_optimization(
+            enable_multiprocess=enable_multiprocess,
+            enable_gpu=enable_gpu,
+            max_workers=max_workers
+        )
         
-        logger.info(f"ParameterOptimizer initialized: executor={executor}, max_workers={self.max_workers}, enable_gpu={enable_gpu}")
+        logger.info(
+            f"ParameterOptimizer initialized: "
+            f"multiprocess={enable_multiprocess}, "
+            f"max_workers={max_workers}, "
+            f"enable_gpu={enable_gpu}"
+        )
     
     def _generate_param_combinations(self, param_grid: Dict[str, List[Any]]) -> List[Dict[str, Any]]:
         """生成参数组合"""
@@ -108,15 +115,19 @@ class ParameterOptimizer:
         combinations = product(*values)
         return [dict(zip(keys, combo)) for combo in combinations]
     
-    def _prepare_args_list(
+    def _build_tasks_list(
         self,
         strategy_id: str,
         param_combinations: List[Dict[str, Any]],
         bars_data: List[Dict],
         funding_data: Optional[List],
         oi_data: Optional[List]
-    ) -> List[tuple]:
-        """准备子进程参数列表"""
+    ) -> List[Dict[str, Any]]:
+        """
+        构建回测任务列表
+        
+        为了兼容子进程 pickle，返回任务字典列表，而非 tuple
+        """
         config_dict = {
             "initial_capital": self.config.initial_capital,
             "commission": self.config.commission,
@@ -129,7 +140,15 @@ class ParameterOptimizer:
         }
         
         return [
-            (strategy_id, params, bars_data, config_dict, self.enable_gpu, funding_data, oi_data)
+            build_backtest_task(
+                strategy_id=strategy_id,
+                params=params,
+                bars_data=bars_data,
+                config_dict=config_dict,
+                enable_gpu=self.enable_gpu,
+                funding_data=funding_data,
+                oi_data=oi_data
+            )
             for params in param_combinations
         ]
     
@@ -164,71 +183,74 @@ class ParameterOptimizer:
         
         logger.info(f"Optimizing {strategy_id} with {num_combinations} param combinations")
         
-        all_results: List[BacktestResult] = []
+        all_results: List[Dict[str, Any]] = []
         best_sharpe = -float('inf')
         best_params = None
         best_trades = 0
         best_return = 0.0
         
-        args_list = self._prepare_args_list(
+        tasks = self._build_tasks_list(
             strategy_id, param_combinations, bars_data, funding_data, oi_data
         )
         
-        if self.executor == "process" and num_combinations > 1:
-            max_workers = min(self.max_workers, num_combinations)
-            logger.info(f"Using multiprocess parallel optimization: {num_combinations} combos, max_workers={max_workers}")
+        # 使用 AccelerationService 并行执行
+        if num_combinations > 1:
+            logger.info(f"Using AccelerationService: {num_combinations} combos")
             
-            with ProcessPoolExecutor(max_workers=max_workers) as executor:
-                futures = {
-                    executor.submit(run_backtest_in_subprocess, args): params
-                    for args, params in zip(args_list, param_combinations)
-                }
-                
-                completed = 0
-                for future in as_completed(futures):
-                    params = futures[future]
-                    try:
-                        result = future.result()
-                        completed += 1
-                        
-                        all_results.append(result)
-                        
-                        if result.sharpe is not None and result.sharpe > best_sharpe:
-                            best_sharpe = result.sharpe
-                            best_params = result.params
-                            best_trades = result.total_trades
-                            best_return = result.total_return
-                        
-                        if completed % 10 == 0 or completed == num_combinations:
-                            logger.info(f"  Progress: {completed}/{num_combinations} (best_sharpe={best_sharpe:.4f})")
+            results = self._acceleration_service.parallel_map(
+                func=run_single_backtest_worker,
+                tasks=tasks,
+                executor="process",
+                progress_callback=lambda done, total: logger.info(
+                    f"  Progress: {done}/{total}"
+                )
+            )
+            
+            # 处理结果
+            completed = 0
+            for result in results:
+                if result is not None:
+                    all_results.append(result)
                     
-                    except Exception as e:
-                        logger.warning(f"Backtest failed for params {params}: {e}")
+                    sharpe = result.get("sharpe", -float('inf'))
+                    if sharpe is not None and sharpe > best_sharpe:
+                        best_sharpe = sharpe
+                        best_params = result.get("params")
+                        best_trades = result.get("trades", 0)
+                        best_return = result.get("total_return", 0.0)
+                
+                completed += 1
+                if completed % 10 == 0:
+                    logger.info(f"  Progress: {completed}/{num_combinations} (best_sharpe={best_sharpe:.4f})")
         
+        # 串行模式
         else:
             logger.info(f"Using sequential optimization: {num_combinations} combos")
             
-            for i, args in enumerate(args_list):
-                try:
-                    result = run_backtest_in_subprocess(args)
-                    
+            for i, task in enumerate(tasks):
+                result = run_single_backtest_worker(task)
+                
+                if result.get("error"):
+                    logger.warning(f"Backtest failed for params {task.get('params')}: {result.get('error')}")
+                else:
                     all_results.append(result)
                     
-                    if result.sharpe is not None and result.sharpe > best_sharpe:
-                        best_sharpe = result.sharpe
-                        best_params = result.params
-                        best_trades = result.total_trades
-                        best_return = result.total_return
-                    
-                    if (i + 1) % 10 == 0:
-                        logger.info(f"  Progress: {i + 1}/{num_combinations} (best_sharpe={best_sharpe:.4f})")
+                    sharpe = result.get("sharpe", -float('inf'))
+                    if sharpe is not None and sharpe > best_sharpe:
+                        best_sharpe = sharpe
+                        best_params = result.get("params")
+                        best_trades = result.get("trades", 0)
+                        best_return = result.get("total_return", 0.0)
                 
-                except Exception as e:
-                    logger.warning(f"Backtest failed for params {param_combinations[i]}: {e}")
+                if (i + 1) % 10 == 0:
+                    logger.info(f"  Progress: {i + 1}/{num_combinations} (best_sharpe={best_sharpe:.4f})")
         
         elapsed_time = time.time() - start_time
         
-        logger.info(f"Optimization complete: best_params={best_params}, sharpe={best_sharpe:.4f}, elapsed={elapsed_time:.2f}s")
+        logger.info(
+            f"Optimization complete: best_params={best_params}, "
+            f"sharpe={best_sharpe:.4f}, elapsed={elapsed_time:.2f}s"
+        )
         
         return OptimizationResult(
             best_params=best_params or {},
@@ -238,7 +260,7 @@ class ParameterOptimizer:
             all_results=all_results,
             elapsed_time=elapsed_time,
             num_combinations=num_combinations,
-            num_workers=min(self.max_workers, num_combinations) if self.executor == "process" else 1
+            num_workers=self._acceleration_service._cpu_executor.max_workers if hasattr(self._acceleration_service, '_cpu_executor') else 1
         )
 
 
@@ -301,16 +323,16 @@ class WalkForwardOptimizer:
         
         decay_ratio = 0.0
         if train_result.best_sharpe > 0:
-            decay_ratio = (train_result.best_sharpe - test_result.sharpe) / train_result.best_sharpe
+            decay_ratio = (train_result.best_sharpe - test_result.get("sharpe", 0.0)) / train_result.best_sharpe
         
         return {
             "best_params": best_params,
             "train_sharpe": train_result.best_sharpe,
-            "validation_sharpe": validation_result.sharpe,
-            "test_sharpe": test_result.sharpe,
+            "validation_sharpe": validation_result.get("sharpe", -float('inf')),
+            "test_sharpe": test_result.get("sharpe", -float('inf')),
             "train_trades": train_result.best_trades,
-            "validation_trades": validation_result.total_trades,
-            "test_trades": test_result.total_trades,
+            "validation_trades": validation_result.get("trades", 0),
+            "test_trades": test_result.get("trades", 0),
             "decay_ratio": decay_ratio,
             "train_elapsed": train_result.elapsed_time
         }
@@ -322,11 +344,13 @@ class WalkForwardOptimizer:
         bars_data: List[Dict],
         funding_data: Optional[List],
         oi_data: Optional[List]
-    ) -> BacktestResult:
+    ) -> Dict[str, Any]:
         """运行单次回测"""
-        args = (
-            strategy_id, params, bars_data,
-            {
+        task = build_backtest_task(
+            strategy_id=strategy_id,
+            params=params,
+            bars_data=bars_data,
+            config_dict={
                 "initial_capital": self.optimizer.config.initial_capital,
                 "commission": self.optimizer.config.commission,
                 "slippage": self.optimizer.config.slippage,
@@ -336,9 +360,9 @@ class WalkForwardOptimizer:
                 "leverage": self.optimizer.config.leverage,
                 "use_realistic_fees": self.optimizer.config.use_realistic_fees,
             },
-            self.optimizer.enable_gpu,
-            funding_data,
-            oi_data
+            enable_gpu=self.optimizer.enable_gpu,
+            funding_data=funding_data,
+            oi_data=oi_data
         )
         
-        return run_backtest_in_subprocess(args)
+        return run_single_backtest_worker(task)

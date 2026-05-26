@@ -6,9 +6,9 @@ Backtest Worker - 回测工作函数
 要求：
 1. 顶层函数，不依赖外部全局变量
 2. 入参只使用 dict / list / str / int / float 等可 pickle 对象
-3. 函数内部重新 import 所有需要的模块
+3. 函数内部重新 import 需要的策略、BacktestEngine
 4. 返回 dict，不返回复杂对象
-5. DataFrame 传路径 + 时间范围，让子进程自己读
+5. 使用统一的 StrategyRegistry，不硬编码策略映射
 
 位置：backend/engines/optimization/backtest_worker.py
 """
@@ -61,73 +61,9 @@ def run_single_backtest_worker(task: Dict[str, Any]) -> Dict[str, Any]:
         oi_data = task.get("oi_data")
         
         from runtimes.replay_runtime.backtest_engine import BacktestEngine, BacktestConfig, SignalType, Bar
-        from engines.compute.strategy.strategies import (
-            RSIStrategy, MACDStrategy, SMACrossoverStrategy, EMACrossoverStrategy,
-            BollingerBandsStrategy, MomentumStrategy, PanicReversalStrategy,
-            LongLiquidationBounceStrategy, VolumeClimaxFadeStrategy,
-            WeakBounceShortStrategy, OIFlushStrategy, ShortSqueezeStrategy,
-            FundingExhaustionTrapStrategy, DeadCatEchoStrategy,
-            ImbalancePressureStrategy, SweepDetectionStrategy,
-            LiquidityVacuumStrategy, AggressiveFlowStrategy, BreakoutStrategy,
-            TrendFollowingStrategy, VolatilityExpansionStrategy,
-            BBCompressionBreakoutStrategy, MomentumIgnitionStrategy,
-            LeadLagStrategy, PremiumDivergenceStrategy
-        )
-        from engines.compute.strategy.behavioral_strategies import (
-            OpenInterestBehaviorStrategy, FundingExtremeReversalStrategy,
-            LiquidationCascadeStrategy, CVDDivergenceStrategy,
-            WhaleTradeStrategy, FundingSettlementStrategy
-        )
+        from engines.compute.strategy.registry import get_strategy
         
-        STRATEGY_MAP = {
-            "rsi_oversold": RSIStrategy,
-            "rsi_overbought": RSIStrategy,
-            "macd_cross": MACDStrategy,
-            "sma_cross": SMACrossoverStrategy,
-            "ema_cross": EMACrossoverStrategy,
-            "bollinger_bands": BollingerBandsStrategy,
-            "momentum": MomentumStrategy,
-            "panic_reversal": PanicReversalStrategy,
-            "long_liquidation_bounce": LongLiquidationBounceStrategy,
-            "volume_climax_fade": VolumeClimaxFadeStrategy,
-            "weak_bounce_short": WeakBounceShortStrategy,
-            "oi_flush": OIFlushStrategy,
-            "short_squeeze": ShortSqueezeStrategy,
-            "funding_exhaustion_trap": FundingExhaustionTrapStrategy,
-            "dead_cat_echo": DeadCatEchoStrategy,
-            "imbalance_pressure": ImbalancePressureStrategy,
-            "sweep_detection": SweepDetectionStrategy,
-            "liquidity_vacuum": LiquidityVacuumStrategy,
-            "aggressive_flow": AggressiveFlowStrategy,
-            "breakout": BreakoutStrategy,
-            "trend_following": TrendFollowingStrategy,
-            "volatility_expansion": VolatilityExpansionStrategy,
-            "bb_compression_breakout": BBCompressionBreakoutStrategy,
-            "momentum_ignition": MomentumIgnitionStrategy,
-            "lead_lag": LeadLagStrategy,
-            "premium_divergence": PremiumDivergenceStrategy,
-            "oi_behavior": OpenInterestBehaviorStrategy,
-            "funding_extreme_reversal": FundingExtremeReversalStrategy,
-            "liquidation_cascade": LiquidationCascadeStrategy,
-            "cvd_divergence": CVDDivergenceStrategy,
-            "whale_trade": WhaleTradeStrategy,
-            "funding_settlement": FundingSettlementStrategy
-        }
-        
-        strategy_cls = STRATEGY_MAP.get(strategy_id)
-        if not strategy_cls:
-            return {
-                "params": params,
-                "sharpe": -float('inf'),
-                "trades": 0,
-                "total_return": 0.0,
-                "max_drawdown": 0.0,
-                "win_rate": 0.0,
-                "profit_factor": 0.0,
-                "error": f"Unknown strategy: {strategy_id}"
-            }
-        
-        strategy = strategy_cls(strategy_id=strategy_id, **params)
+        strategy = get_strategy(strategy_id, params)
         
         class StrategyAdapter:
             def __init__(self, strat, fund_df, oi_df):
