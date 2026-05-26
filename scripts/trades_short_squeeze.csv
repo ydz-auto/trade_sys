@@ -1,1 +1,3 @@
-trade_index,entry_time,exit_time,side,entry_price,exit_price,quantity,pnl,pnl_pct
+version https://git-lfs.github.com/spec/v1
+oid sha256:2575ba8f3bb2f53227cb295826014275ef69fd546f16ba5a620d8b7069634e35
+size 83

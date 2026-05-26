@@ -1,2 +1,3 @@
-trade_index,entry_time,exit_time,side,entry_price,exit_price,quantity,pnl,pnl_pct
-0,2024-01-01 11:21:00+00:00,2024-01-01 16:39:00+00:00,buy,42716.84775,42788.7949,0.11710836036584651,5.915939262076632,0.005915939262076632
+version https://git-lfs.github.com/spec/v1
+oid sha256:b699db0a5abebbebb1dd75d2a8b00bdee3f1a8d7570e18cdb92e9d54e54215ad
+size 224
