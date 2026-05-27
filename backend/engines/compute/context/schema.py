@@ -329,6 +329,92 @@ class MarketContext:
         # 综合计算
         final = base_confidence * risk_multiplier * trend_filter * confirmation * execution_quality
         return max(0.0, min(1.0, final))
+    
+    def to_feature_dict(self) -> Dict[str, Any]:
+        """
+        将 MarketContext 转换为特征字典
+        
+        返回:
+            Dict[str, Any]: 特征键值对
+        """
+        features = {}
+        
+        # 基础信息
+        features["timestamp"] = self.timestamp
+        features["symbol"] = self.symbol
+        
+        # 衍生品数据
+        if self.derivatives.oi:
+            features["oi_value"] = self.derivatives.oi.value
+            features["oi_delta"] = self.derivatives.oi.delta
+            features["oi_zscore"] = self.derivatives.oi.zscore
+        
+        if self.derivatives.funding:
+            features["funding_rate"] = self.derivatives.funding.rate
+            features["funding_zscore"] = self.derivatives.funding.zscore
+            features["funding_bias"] = self.derivatives.funding.bias.value if self.derivatives.funding.bias else None
+        
+        if self.derivatives.liquidation:
+            features["liq_long"] = self.derivatives.liquidation.long
+            features["liq_short"] = self.derivatives.liquidation.short
+            features["liq_total"] = self.derivatives.liquidation.total
+            features["liq_long_zscore"] = self.derivatives.liquidation.long_zscore
+            features["liq_short_zscore"] = self.derivatives.liquidation.short_zscore
+            features["liq_reversal_signal"] = self.derivatives.liquidation.reversal_signal
+        
+        # 各时间周期特征
+        for tf_name in STANDARD_TIMEFRAMES:
+            tf_ctx = self.tf.get(tf_name)
+            if tf_ctx:
+                prefix = f"{tf_name}_"
+                
+                if tf_ctx.price:
+                    features[f"{prefix}open"] = tf_ctx.price.open
+                    features[f"{prefix}high"] = tf_ctx.price.high
+                    features[f"{prefix}low"] = tf_ctx.price.low
+                    features[f"{prefix}close"] = tf_ctx.price.close
+                    features[f"{prefix}change_percent"] = tf_ctx.price.change_percent
+                
+                if tf_ctx.trend:
+                    features[f"{prefix}trend_state"] = tf_ctx.trend.state.value if tf_ctx.trend.state else None
+                    features[f"{prefix}trend_slope"] = tf_ctx.trend.slope
+                    features[f"{prefix}trend_strength"] = tf_ctx.trend.strength
+                
+                if tf_ctx.volatility:
+                    features[f"{prefix}volatility_state"] = tf_ctx.volatility.state.value if tf_ctx.volatility.state else None
+                    features[f"{prefix}volatility_atr_pct"] = tf_ctx.volatility.atr_pct
+                
+                if tf_ctx.volume:
+                    features[f"{prefix}volume_state"] = tf_ctx.volume.state.value if tf_ctx.volume.state else None
+                    features[f"{prefix}volume_zscore"] = tf_ctx.volume.volume_zscore
+                
+                if tf_ctx.flow:
+                    features[f"{prefix}flow_pressure"] = tf_ctx.flow.pressure.value if tf_ctx.flow.pressure else None
+                    features[f"{prefix}flow_score"] = tf_ctx.flow.score
+                    features[f"{prefix}cvd"] = tf_ctx.flow.cvd
+                    features[f"{prefix}cvd_slope"] = tf_ctx.flow.cvd_slope
+                    features[f"{prefix}aggressive_ratio"] = tf_ctx.flow.aggressive_ratio
+                
+                if tf_ctx.liquidity:
+                    features[f"{prefix}liquidity_state"] = tf_ctx.liquidity.state.value if tf_ctx.liquidity.state else None
+                    features[f"{prefix}liquidity_spread"] = tf_ctx.liquidity.spread
+        
+        # 风险上下文
+        features["risk_multiplier"] = self.risk.multiplier
+        
+        return features
+    
+    def to_feature_frame(self) -> "pd.DataFrame":
+        """
+        将单个 MarketContext 转换为 pandas DataFrame 行
+        
+        返回:
+            pd.DataFrame: 单行 DataFrame
+        """
+        import pandas as pd
+        
+        features = self.to_feature_dict()
+        return pd.DataFrame([features])
 
 
 # ============== 导出接口 ==============

@@ -9,13 +9,17 @@ MarketContext Builder - 从 raw features 构建结构化上下文
 5. 返回完整的 MarketContext
 
 数据流：
-raw data → features_by_tf → MarketContextBuilder → MarketContext
+raw data -> features_by_tf -> MarketContextBuilder -> MarketContext
 
 防泄漏规则：
 - 所有 feature 输出必须包含 _meta
 - as_of 必须 <= ctx_timestamp
 - close_only 模式下 bar 必须已关闭
 - 禁止使用未来信息字段名
+
+特征获取规则：
+- 必需特征使用 require_feature()，缺失时报错
+- 可选特征使用 features.get()
 """
 
 from typing import Dict, Any, Optional
@@ -48,6 +52,32 @@ from .schema import (
 from .leakage_guard import ContextLeakageGuard, LeakageGuardMode, create_guard
 
 
+class MissingFeatureError(Exception):
+    """必需特征缺失错误"""
+    pass
+
+
+def require_feature(features: Dict[str, Any], name: str, context_hint: str = "") -> Any:
+    """
+    要求特征必须存在
+    
+    Args:
+        features: 特征字典
+        name: 特征名称
+        context_hint: 上下文提示信息（用于错误消息）
+        
+    Returns:
+        特征值
+        
+    Raises:
+        MissingFeatureError: 特征不存在
+    """
+    if name not in features:
+        hint = f" (context: {context_hint})" if context_hint else ""
+        raise MissingFeatureError(f"Required feature '{name}' missing{hint}")
+    return features[name]
+
+
 class MarketContextBuilder:
     """
     将 raw features 转换为结构化的 MarketContext
@@ -56,6 +86,7 @@ class MarketContextBuilder:
     1. 所有 feature 必须包含 _meta
     2. build() 第一行执行 leakage_guard.validate()
     3. 禁止跳过验证
+    4. 必需特征使用 require_feature()
     """
     
     def __init__(
@@ -82,12 +113,13 @@ class MarketContextBuilder:
         Args:
             features_by_tf: 按时间周期分组的特征，如 {"1m": {"close": 42000, ...}, ...}
             timestamp: 毫秒时间戳
-        
+            
         Returns:
             完整的 MarketContext
-        
+            
         Raises:
             FutureLeakageError: 如果检测到未来信息泄漏
+            MissingFeatureError: 如果必需特征缺失
         """
         # Step 1: 防泄漏验证（第一行，禁止跳过！）
         self.leakage_guard.validate(features_by_tf, timestamp)
@@ -120,22 +152,23 @@ class MarketContextBuilder:
         """构建单个时间周期的上下文"""
         return TimeframeContext(
             timeframe=timeframe,
-            price=self._build_price_state(features),
-            trend=self._build_trend_state(features),
-            momentum=self._build_momentum_state(features),
-            volatility=self._build_volatility_state(features),
-            volume=self._build_volume_state(features),
-            flow=self._build_flow_state(features),
-            liquidity=self._build_liquidity_state(features),
+            price=self._build_price_state(features, timeframe),
+            trend=self._build_trend_state(features, timeframe),
+            momentum=self._build_momentum_state(features, timeframe),
+            volatility=self._build_volatility_state(features, timeframe),
+            volume=self._build_volume_state(features, timeframe),
+            flow=self._build_flow_state(features, timeframe),
+            liquidity=self._build_liquidity_state(features, timeframe),
         )
     
-    def _build_price_state(self, features: Dict[str, Any]) -> PriceState:
+    def _build_price_state(self, features: Dict[str, Any], timeframe: str) -> PriceState:
         """构建价格状态"""
+        ctx = f"tf.{timeframe}.price"
         return PriceState(
-            open=features.get("open", 0.0),
-            high=features.get("high", 0.0),
-            low=features.get("low", 0.0),
-            close=features.get("close", 0.0),
+            open=require_feature(features, "open", ctx),
+            high=require_feature(features, "high", ctx),
+            low=require_feature(features, "low", ctx),
+            close=require_feature(features, "close", ctx),
             return_1h=features.get("return_1h", 0.0),
             return_24h=features.get("return_24h", 0.0),
             change=features.get("change", 0.0),
@@ -147,11 +180,12 @@ class MarketContextBuilder:
             resistance=features.get("resistance"),
         )
     
-    def _build_trend_state(self, features: Dict[str, Any]) -> TrendStateData:
+    def _build_trend_state(self, features: Dict[str, Any], timeframe: str) -> TrendStateData:
         """构建趋势状态"""
-        ema_20 = features.get("ema_20", 0.0)
-        ema_50 = features.get("ema_50", 0.0)
-        close = features.get("close", 0.0)
+        ctx = f"tf.{timeframe}.trend"
+        ema_20 = require_feature(features, "ema_20", ctx)
+        ema_50 = require_feature(features, "ema_50", ctx)
+        close = require_feature(features, "close", ctx)
         
         if ema_20 > ema_50:
             if close > ema_20 * 1.005:
@@ -175,17 +209,18 @@ class MarketContextBuilder:
             strength=features.get("strength", 0.0),
         )
     
-    def _build_momentum_state(self, features: Dict[str, Any]) -> MomentumState:
+    def _build_momentum_state(self, features: Dict[str, Any], timeframe: str) -> MomentumState:
         """构建动量状态"""
-        rsi = features.get("rsi", 50.0)
-        macd = features.get("macd", 0.0)
-        macd_signal = features.get("macd_signal", 0.0)
+        ctx = f"tf.{timeframe}.momentum"
+        rsi_14 = require_feature(features, "rsi_14", ctx)
+        macd = require_feature(features, "macd", ctx)
+        macd_signal = require_feature(features, "macd_signal", ctx)
         
         score = 0.0
-        if rsi > 50:
-            score = (rsi - 50) / 50
+        if rsi_14 > 50:
+            score = (rsi_14 - 50) / 50
         else:
-            score = (rsi - 50) / 50
+            score = (rsi_14 - 50) / 50
         
         if macd > macd_signal:
             score += 0.3
@@ -204,12 +239,12 @@ class MarketContextBuilder:
         return MomentumState(
             direction=direction,
             score=score,
-            rsi=rsi,
+            rsi=rsi_14,
             macd=macd,
             macd_signal=macd_signal,
         )
     
-    def _build_volatility_state(self, features: Dict[str, Any]) -> VolatilityStateData:
+    def _build_volatility_state(self, features: Dict[str, Any], timeframe: str) -> VolatilityStateData:
         """构建波动率状态"""
         atr_pct = features.get("atr_pct", 0.0)
         realized_vol_zscore = features.get("realized_vol_zscore", 0.0)
@@ -233,8 +268,11 @@ class MarketContextBuilder:
             realized_vol_zscore=realized_vol_zscore,
         )
     
-    def _build_volume_state(self, features: Dict[str, Any]) -> VolumeStateData:
+    def _build_volume_state(self, features: Dict[str, Any], timeframe: str) -> VolumeStateData:
         """构建成交量状态"""
+        ctx = f"tf.{timeframe}.volume"
+        volume = require_feature(features, "volume", ctx)
+        
         volume_zscore = features.get("volume_zscore", 0.0)
         
         if volume_zscore > 2.0:
@@ -246,21 +284,23 @@ class MarketContextBuilder:
         
         return VolumeStateData(
             state=state,
-            volume=features.get("volume", 0.0),
+            volume=volume,
             volume_ma=features.get("volume_ma", 0.0),
             volume_zscore=volume_zscore,
             volume_ratio=features.get("volume_ratio", 1.0),
         )
     
-    def _build_flow_state(self, features: Dict[str, Any]) -> FlowState:
+    def _build_flow_state(self, features: Dict[str, Any], timeframe: str) -> FlowState:
         """构建资金流状态"""
-        aggressive_buy = features.get("aggressive_buy", 0.0)
-        aggressive_sell = features.get("aggressive_sell", 0.0)
+        ctx = f"tf.{timeframe}.flow"
+        aggressive_buy_volume = require_feature(features, "aggressive_buy_volume", ctx)
+        aggressive_sell_volume = require_feature(features, "aggressive_sell_volume", ctx)
+        
         cvd_slope = features.get("cvd_slope", 0.0)
         
-        total = aggressive_buy + aggressive_sell
+        total = aggressive_buy_volume + aggressive_sell_volume
         if total > 0:
-            score = (aggressive_buy - aggressive_sell) / total
+            score = (aggressive_buy_volume - aggressive_sell_volume) / total
         else:
             score = 0.0
         
@@ -280,8 +320,8 @@ class MarketContextBuilder:
             cvd=features.get("cvd", 0.0),
             cvd_slope=cvd_slope,
             cumulative_delta=features.get("cumulative_delta", 0.0),
-            aggressive_buy=aggressive_buy,
-            aggressive_sell=aggressive_sell,
+            aggressive_buy=aggressive_buy_volume,
+            aggressive_sell=aggressive_sell_volume,
             aggressive_ratio=features.get("aggressive_ratio", 1.0),
             whale_buy_count=features.get("whale_buy_count", 0),
             whale_sell_count=features.get("whale_sell_count", 0),
@@ -290,9 +330,11 @@ class MarketContextBuilder:
             imbalance_5=features.get("imbalance_5", 0.0),
         )
     
-    def _build_liquidity_state(self, features: Dict[str, Any]) -> LiquidityStateData:
+    def _build_liquidity_state(self, features: Dict[str, Any], timeframe: str) -> LiquidityStateData:
         """构建流动性状态"""
-        spread_bps = features.get("spread_bps", 0.0)
+        ctx = f"tf.{timeframe}.liquidity"
+        spread_bps = require_feature(features, "spread_bps", ctx)
+        
         vacuum_score = features.get("vacuum_score", 0.0)
         is_vacuum = features.get("is_vacuum", False)
         
@@ -327,6 +369,9 @@ class MarketContextBuilder:
         for tf_features in features_by_tf.values():
             all_features.update(tf_features)
         
+        ctx = "derivatives.oi"
+        oi = require_feature(all_features, "oi", ctx)
+        
         oi_zscore = all_features.get("oi_zscore", 0.0)
         oi_trend = "neutral"
         if oi_zscore > 1.0:
@@ -337,12 +382,15 @@ class MarketContextBuilder:
             oi_trend = "spike"
         
         oi_data = OIData(
-            value=all_features.get("oi", 0.0),
+            value=oi,
             delta=all_features.get("oi_delta", 0.0),
             zscore=oi_zscore,
             history=tuple(all_features.get("oi_history", [])),
             trend=oi_trend,
         )
+        
+        ctx = "derivatives.funding"
+        funding_rate = require_feature(all_features, "funding_rate", ctx)
         
         funding_zscore = all_features.get("funding_zscore", 0.0)
         if funding_zscore > 2.0:
@@ -357,7 +405,7 @@ class MarketContextBuilder:
             funding_bias = FundingBias.NEUTRAL
         
         funding_data = FundingData(
-            rate=all_features.get("funding_rate", 0.0),
+            rate=funding_rate,
             zscore=funding_zscore,
             bias=funding_bias,
             history=tuple(all_features.get("funding_history", [])),
@@ -458,4 +506,6 @@ class MarketContextBuilder:
 
 __all__ = [
     "MarketContextBuilder",
+    "MissingFeatureError",
+    "require_feature",
 ]
