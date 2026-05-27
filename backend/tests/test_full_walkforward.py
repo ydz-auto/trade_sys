@@ -12,7 +12,7 @@ print(f"Backend path: {backend_path}")
 
 from infrastructure.logging import get_logger
 from infrastructure.acceleration import DeviceManager, AccelerationService
-from runtimes.replay_runtime.backtest_engine import Bar
+from runtime.replay_runtime.backtest_engine import Bar
 from infrastructure.storage.parquet_reader import read_parquet_safe
 import pandas as pd
 

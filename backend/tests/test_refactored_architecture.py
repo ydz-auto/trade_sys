@@ -134,7 +134,7 @@ def _load_test_bars():
         return bars
 
     from infrastructure.storage.parquet_reader import read_parquet_safe
-    from runtimes.replay_runtime.backtest_engine import Bar
+    from runtime.replay_runtime.backtest_engine import Bar
 
     for month_dir in sorted(data_path.iterdir())[:3]:
         if month_dir.is_dir() and month_dir.name.startswith("month="):

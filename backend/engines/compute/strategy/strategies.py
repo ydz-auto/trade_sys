@@ -592,7 +592,7 @@ def create_default_strategies(symbols: List[str] = None, attach_regime: bool = T
     
     if attach_regime:
         try:
-            from runtimes.regime_runtime import get_regime_runtime
+            from runtime.regime_runtime import get_regime_runtime
             regime_runtime = get_regime_runtime()
             orchestrator.attach_regime_runtime(regime_runtime)
         except ImportError as e:

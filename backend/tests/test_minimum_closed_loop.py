@@ -69,16 +69,16 @@ async def test_minimum_closed_loop():
     clear_all_stores()
     
     # 2. 初始化 ReplayRuntime 并注入所有子 Runtime
-    from runtimes.replay_runtime.runtime import (
+    from runtime.replay_runtime.runtime import (
         get_replay_runtime, 
         ReplayConfig, 
         ReplayEvent,
         EventType,
         SessionStatus
     )
-    from runtimes.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
-    from runtimes.signal_runtime import get_signal_runtime, SignalConfig
-    from runtimes.execution_runtime.runtime import get_execution_runtime, ExecutionConfig
+    from runtime.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
+    from runtime.signal_runtime import get_signal_runtime, SignalConfig
+    from runtime.execution_runtime.runtime import get_execution_runtime, ExecutionConfig
     
     # 创建配置
     symbol = "BTCUSDT"
@@ -113,7 +113,7 @@ async def test_minimum_closed_loop():
     
     # 注入 ExecutionRuntime (Mock 模式)
     # 重置 ExecutionRuntime 实例
-    import runtimes.execution_runtime.runtime as exec_module
+    import runtime.execution_runtime.runtime as exec_module
     exec_module._execution_runtime = None
     execution_runtime = get_execution_runtime()
     await execution_runtime.initialize()

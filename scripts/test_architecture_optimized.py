@@ -12,7 +12,7 @@ backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ba
 sys.path.insert(0, backend_path)
 
 from infrastructure.logging import get_logger
-from runtimes.replay_runtime.backtest_engine import Bar
+from runtime.replay_runtime.backtest_engine import Bar
 from scripts.run_walkforward_fixed import WalkForwardRunner
 
 logger = get_logger("test_walkforward")

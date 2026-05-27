@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 async def get_portfolio_state() -> Dict[str, Any]:
-    from runtimes.portfolio_runtime import get_portfolio_runtime
+    from runtime.portfolio_runtime import get_portfolio_runtime
     runtime = get_portfolio_runtime()
     if runtime and hasattr(runtime, 'get_state'):
         return runtime.get_state()
@@ -34,7 +34,7 @@ async def get_accounts() -> Dict[str, Any]:
 
 
 async def get_exposure() -> Dict[str, Any]:
-    from runtimes.portfolio_runtime import get_portfolio_runtime
+    from runtime.portfolio_runtime import get_portfolio_runtime
     runtime = get_portfolio_runtime()
     if runtime and hasattr(runtime, 'get_exposure_summary'):
         return await runtime.get_exposure_summary()
@@ -42,7 +42,7 @@ async def get_exposure() -> Dict[str, Any]:
 
 
 async def get_exposure_warnings() -> List[Dict[str, Any]]:
-    from runtimes.portfolio_runtime import get_portfolio_runtime
+    from runtime.portfolio_runtime import get_portfolio_runtime
     runtime = get_portfolio_runtime()
     if runtime and hasattr(runtime, 'get_exposure_warnings'):
         return await runtime.get_exposure_warnings()
@@ -50,7 +50,7 @@ async def get_exposure_warnings() -> List[Dict[str, Any]]:
 
 
 async def get_portfolio_metrics() -> Dict[str, Any]:
-    from runtimes.portfolio_runtime import get_portfolio_runtime
+    from runtime.portfolio_runtime import get_portfolio_runtime
     runtime = get_portfolio_runtime()
     if runtime and hasattr(runtime, 'get_portfolio_metrics'):
         metrics = await runtime.get_portfolio_metrics()
@@ -60,7 +60,7 @@ async def get_portfolio_metrics() -> Dict[str, Any]:
 
 
 async def get_risk_budget(daily_pnl: float = 0.0) -> Dict[str, float]:
-    from runtimes.portfolio_runtime import get_portfolio_runtime
+    from runtime.portfolio_runtime import get_portfolio_runtime
     runtime = get_portfolio_runtime()
     if runtime and hasattr(runtime, 'get_risk_budget'):
         return await runtime.get_risk_budget(daily_pnl=daily_pnl)

@@ -14,7 +14,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, script_dir)
 
 from infrastructure.logging import get_logger
-from runtimes.replay_runtime.backtest_engine import BacktestEngine, BacktestConfig, Bar, SignalType
+from runtime.replay_runtime.backtest_engine import BacktestEngine, BacktestConfig, Bar, SignalType
 from infrastructure.storage.parquet_reader import read_parquet_safe
 from run_all_30_strategies_v2 import StrategyAdapter
 from short_squeeze_pressure_strategy import ShortSqueezePressureStrategy

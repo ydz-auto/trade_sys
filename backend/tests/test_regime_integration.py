@@ -22,7 +22,7 @@ def test_regime_strategy_switching():
     print(f"✅ 1. 创建 MultiStrategyOrchestrator，共 {len(orchestrator._strategies)} 个策略")
     
     # 2. 获取 Regime Runtime
-    from runtimes.regime_runtime import get_regime_runtime, MarketRegime, RegimeState
+    from runtime.regime_runtime import get_regime_runtime, MarketRegime, RegimeState
     from datetime import datetime
     regime_runtime = get_regime_runtime()
     print(f"✅ 2. 获取 Regime Runtime")

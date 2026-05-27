@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 async def get_execution_state() -> Dict[str, Any]:
-    from runtimes.execution_runtime.runtime import get_execution_runtime
+    from runtime.execution_runtime.runtime import get_execution_runtime
     runtime = get_execution_runtime()
     if runtime and hasattr(runtime, 'get_state'):
         return runtime.get_state()

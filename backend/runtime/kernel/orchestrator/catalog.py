@@ -28,7 +28,7 @@ class RuntimeSpec:
 
 
 def _feature_runtime() -> object:
-    from runtimes.feature_runtime import FeatureConfig, FeatureMode, FeatureRuntime
+    from runtime.feature_runtime import FeatureConfig, FeatureMode, FeatureRuntime
 
     mode_name = os.environ.get("FEATURE_MODE") or os.environ.get("TRADING_MODE", "paper")
     try:
@@ -39,55 +39,55 @@ def _feature_runtime() -> object:
 
 
 def _signal_runtime() -> object:
-    from runtimes.signal_runtime.runtime import SignalConfig, get_signal_runtime
+    from runtime.signal_runtime.runtime import SignalConfig, get_signal_runtime
 
     return get_signal_runtime(SignalConfig(mode=os.environ.get("TRADING_MODE", "paper")))
 
 
 def _ingestion_runtime() -> object:
-    from runtimes.ingestion_runtime.runtime import IngestionConfig, IngestionRuntime
+    from runtime.ingestion_runtime.runtime import IngestionConfig, IngestionRuntime
 
     return IngestionRuntime(IngestionConfig())
 
 
 def _execution_runtime() -> object:
-    from runtimes.execution_runtime.runtime import ExecutionConfig, ExecutionRuntime
+    from runtime.execution_runtime.runtime import ExecutionConfig, ExecutionRuntime
 
     return ExecutionRuntime(ExecutionConfig())
 
 
 def _portfolio_runtime() -> object:
-    from runtimes.portfolio_runtime import PortfolioRuntime, PortfolioRuntimeConfig
+    from runtime.portfolio_runtime import PortfolioRuntime, PortfolioRuntimeConfig
 
     return PortfolioRuntime(PortfolioRuntimeConfig())
 
 
 def _projection_runtime() -> object:
-    from runtimes.projection_runtime.runtime import ProjectionConfig, ProjectionRuntime
+    from runtime.projection_runtime.runtime import ProjectionConfig, ProjectionRuntime
 
     return ProjectionRuntime(ProjectionConfig())
 
 
 def _regime_runtime() -> object:
-    from runtimes.regime_runtime import RegimeRuntime, RegimeRuntimeConfig
+    from runtime.regime_runtime import RegimeRuntime, RegimeRuntimeConfig
 
     return RegimeRuntime(RegimeRuntimeConfig())
 
 
 def _correlation_runtime() -> object:
-    from runtimes.correlation_runtime.runtime import CorrelationConfig, CorrelationRuntime
+    from runtime.correlation_runtime.runtime import CorrelationConfig, CorrelationRuntime
 
     return CorrelationRuntime(CorrelationConfig())
 
 
 def _narrative_runtime() -> object:
-    from runtimes.narrative_runtime.runtime import NarrativeConfig, NarrativeRuntime
+    from runtime.narrative_runtime.runtime import NarrativeConfig, NarrativeRuntime
 
     return NarrativeRuntime(NarrativeConfig())
 
 
 def _replay_runtime() -> object:
-    from runtimes.replay_runtime.runtime import TimeCausalReplayRuntime
+    from runtime.replay_runtime.runtime import TimeCausalReplayRuntime
 
     return TimeCausalReplayRuntime()
 

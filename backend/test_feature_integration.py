@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 # 添加项目路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
-from runtimes.feature_runtime import FeatureRuntime, FeatureConfig
+from runtime.feature_runtime import FeatureRuntime, FeatureConfig
 
 
 def print_separator(title: str):

@@ -20,7 +20,7 @@ from infrastructure.logging import get_logger
 from infrastructure.storage.parquet_reader import read_parquet_safe
 from engines.compute.strategy.registry import get_strategy, get_strategy_info
 from engines.compute.strategy.strategies import ShortSqueezeStrategy
-from runtimes.replay_runtime.backtest_engine import BacktestEngine, BacktestConfig, Bar
+from runtime.replay_runtime.backtest_engine import BacktestEngine, BacktestConfig, Bar
 
 logger = get_logger("strategy_diagnosis")
 

@@ -14,7 +14,7 @@ async def test_simple_warmup():
     print("Simple Warmup Test")
     print("=" * 80)
     
-    from runtimes.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
+    from runtime.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
     
     # 初始化
     feature_config = FeatureConfig(symbol="BTCUSDT", mode=FeatureMode.REPLAY)

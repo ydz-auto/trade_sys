@@ -19,14 +19,14 @@ async def test_minimal_pipeline():
     print("=" * 70)
 
     # ── 1. 构建 FeatureRuntime (replay 模式) ──
-    from runtimes.feature_runtime import FeatureRuntime, FeatureConfig, FeatureMode
+    from runtime.feature_runtime import FeatureRuntime, FeatureConfig, FeatureMode
     feature_config = FeatureConfig(symbol="BTCUSDT", mode=FeatureMode.REPLAY)
     feature_rt = FeatureRuntime(feature_config)
     await feature_rt.initialize(symbol="BTCUSDT", mode="replay")
     print("[1/6] FeatureRuntime 初始化完成")
 
     # ── 2. 构建 SignalRuntime ──
-    from runtimes.signal_runtime import TimeCausalSignalRuntime, SignalConfig
+    from runtime.signal_runtime import TimeCausalSignalRuntime, SignalConfig
     signal_config = SignalConfig(symbols=["BTCUSDT"], mode="replay")
     signal_rt = TimeCausalSignalRuntime(signal_config)
     await signal_rt.initialize(symbol="BTCUSDT", mode="replay")
@@ -60,7 +60,7 @@ async def test_minimal_pipeline():
     print("[3/6] 策略注册完成: simple_ma")
 
     # ── 4. 构建 ExecutionRuntime (mock 模式) ──
-    from runtimes.execution_runtime.runtime import ExecutionRuntime, ExecutionConfig
+    from runtime.execution_runtime.runtime import ExecutionRuntime, ExecutionConfig
     exec_rt = ExecutionRuntime()
     exec_rt.config.enable_mock = True
     print("[4/6] ExecutionRuntime (mock) 就绪")

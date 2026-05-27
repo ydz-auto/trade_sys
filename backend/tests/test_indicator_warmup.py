@@ -20,13 +20,13 @@ async def test_indicator_warmup():
     clear_all_stores()
     
     # 强制重置FeatureRuntime的_instance（hack for test
-    from runtimes.feature_runtime import FeatureRuntime
+    from runtime.feature_runtime import FeatureRuntime
     FeatureRuntime._instance = None
     
     from engines.compute.feature.unified_calculator import _calculator_instance
     globals()['_calculator_instance'] = None
     
-    from runtimes.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
+    from runtime.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
     
     # 初始化 - 直接使用 FeatureRuntime，不通过 ReplayRuntime
     feature_config = FeatureConfig(symbol="BTCUSDT", mode=FeatureMode.REPLAY, use_gpu=False)

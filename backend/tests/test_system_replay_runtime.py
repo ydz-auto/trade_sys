@@ -20,13 +20,13 @@ async def test_replay_backtest():
     print("=" * 80)
     
     # 1. 初始化 ReplayRuntime
-    from runtimes.replay_runtime.runtime import get_replay_runtime, ReplayConfig
+    from runtime.replay_runtime.runtime import get_replay_runtime, ReplayConfig
     runtime = get_replay_runtime(ReplayConfig(warmup_periods=0))
     
     # 2. 连接其他 Runtime
-    from runtimes.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
-    from runtimes.signal_runtime import get_signal_runtime
-    from runtimes.execution_runtime import get_execution_runtime
+    from runtime.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
+    from runtime.signal_runtime import get_signal_runtime
+    from runtime.execution_runtime import get_execution_runtime
     
     feature_config = FeatureConfig(symbol="BTCUSDT", mode=FeatureMode.REPLAY)
     runtime.attach_feature_runtime(get_feature_runtime(feature_config))
@@ -47,7 +47,7 @@ async def test_replay_backtest():
     synthetic_klines = _generate_synthetic_klines(start_ms, end_ms)
     
     # 5. 创建异步事件迭代器
-    from runtimes.replay_runtime.runtime import EventType, ReplayEvent
+    from runtime.replay_runtime.runtime import EventType, ReplayEvent
     
     async def kline_generator():
         for kline in synthetic_klines:

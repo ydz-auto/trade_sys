@@ -140,7 +140,7 @@ def test_feature_runtime_no_lookahead():
     print("Test 2: FeatureRuntime No Lookahead (Full Pipeline)")
     print("=" * 80)
     
-    from runtimes.feature_runtime import FeatureRuntime, FeatureConfig, FeatureMode, clear_feature_runtime_cache
+    from runtime.feature_runtime import FeatureRuntime, FeatureConfig, FeatureMode, clear_feature_runtime_cache
     from infrastructure.utilities.runtime_clock import set_clock_mode, ClockMode
     
     clear_feature_runtime_cache()

@@ -13,7 +13,7 @@ sys.path.insert(0, backend_path)
 
 from infrastructure.storage.parquet_reader import read_parquet_safe
 from engines.compute.strategy.registry import get_strategy, get_strategy_info
-from runtimes.replay_runtime.backtest_engine import Bar
+from runtime.replay_runtime.backtest_engine import Bar
 import numpy as np
 from datetime import datetime
 

@@ -201,7 +201,7 @@ def main():
 
 def run_simple_real_backtest(df, initial_capital, leverage, stop_loss_pct):
     """使用真实系统回测引擎！"""
-    from runtimes.replay_runtime.backtest_engine import (
+    from runtime.replay_runtime.backtest_engine import (
         BacktestEngine,
         BacktestConfig,
         SignalType,

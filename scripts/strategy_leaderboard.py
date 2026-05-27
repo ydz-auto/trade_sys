@@ -20,7 +20,7 @@ sys.path.insert(0, backend_path)
 from infrastructure.logging import get_logger
 from infrastructure.storage.parquet_reader import read_parquet_safe
 from engines.compute.strategy.registry import get_strategy_info, _STRATEGY_REGISTRY
-from runtimes.replay_runtime.backtest_engine import BacktestEngine, BacktestConfig, SignalType, Bar
+from runtime.replay_runtime.backtest_engine import BacktestEngine, BacktestConfig, SignalType, Bar
 
 logger = get_logger("strategy_leaderboard")
 

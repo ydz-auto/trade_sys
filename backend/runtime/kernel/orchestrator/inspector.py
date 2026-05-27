@@ -16,7 +16,7 @@ from .registry import RuntimeState, get_runtime_registry
 from .lifecycle import get_runtime_lifecycle
 from .timeline import get_runtime_timeline
 from runtime.kernel.state import get_runtime_state_store
-from runtimes.trading_mode_manager import get_trading_mode_manager
+from runtime.trading_mode_manager import get_trading_mode_manager
 from infrastructure.logging import get_logger
 from infrastructure.utilities.runtime_clock import now_ms
 

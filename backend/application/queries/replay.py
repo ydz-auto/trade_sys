@@ -4,7 +4,7 @@ _BACKTEST_KEY_PREFIX = "backtest:"
 
 
 async def get_replay_state() -> Dict[str, Any]:
-    from runtimes.replay_runtime.runtime import get_replay_runtime
+    from runtime.replay_runtime.runtime import get_replay_runtime
     runtime = get_replay_runtime()
     if runtime and hasattr(runtime, 'get_state'):
         return runtime.get_state()
@@ -12,7 +12,7 @@ async def get_replay_state() -> Dict[str, Any]:
 
 
 async def get_replay_sessions() -> list:
-    from runtimes.replay_runtime.runtime import get_replay_runtime
+    from runtime.replay_runtime.runtime import get_replay_runtime
     runtime = get_replay_runtime()
     if runtime and hasattr(runtime, 'get_sessions'):
         return runtime.get_sessions()

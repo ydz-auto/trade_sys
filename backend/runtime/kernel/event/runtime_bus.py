@@ -73,7 +73,7 @@ class RuntimeBus:
 
         self._initialized = True
 
-        from runtimes.trading_mode_manager import get_trading_mode_manager
+        from runtime.trading_mode_manager import get_trading_mode_manager
         self._mode_manager = get_trading_mode_manager()
         self._isolation = get_runtime_isolation()
 

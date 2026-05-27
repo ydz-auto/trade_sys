@@ -11,7 +11,7 @@ from pathlib import Path
 backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backend'))
 sys.path.insert(0, backend_path)
 
-from runtimes.replay_runtime.backtest_engine import BacktestEngine, BacktestConfig, Bar
+from runtime.replay_runtime.backtest_engine import BacktestEngine, BacktestConfig, Bar
 from datetime import datetime
 import pandas as pd
 
@@ -76,7 +76,7 @@ class BaseStrategyImpl:
 
 class GenericTrendStrategy(BaseStrategyImpl):
     def calculate(self, bar: Bar):
-        from runtimes.replay_runtime.backtest_engine import SignalType
+        from runtime.replay_runtime.backtest_engine import SignalType
         lookback = self.params.get("lookback", 24)
         threshold = self.params.get("threshold", 0.01)
         
@@ -106,7 +106,7 @@ class GenericTrendStrategy(BaseStrategyImpl):
 
 class MomentumStrategy(BaseStrategyImpl):
     def calculate(self, bar: Bar):
-        from runtimes.replay_runtime.backtest_engine import SignalType
+        from runtime.replay_runtime.backtest_engine import SignalType
         period = self.params.get("period", 10)
         threshold = self.params.get("threshold", 0.02)
         
@@ -196,7 +196,7 @@ def load_year_data(year: int) -> list[Bar]:
 
 
 def audit_strategy(strategy_id: str, params: dict, bars: list):
-    from runtimes.replay_runtime.backtest_engine import SignalType
+    from runtime.replay_runtime.backtest_engine import SignalType
     
     print(f"\n{'='*80}")
     print(f"审计策略: {strategy_id}")

@@ -181,7 +181,7 @@ class WSGateway:
         if channels is None:
             # ARCHITECTURE NOTE: infrastructure → runtime 反向依赖
             # TODO: 应改为依赖注入，由调用方传入 ProjectionChannels
-            from runtimes.projection_runtime.state_keys import ProjectionChannels
+            from runtime.projection_runtime.state_keys import ProjectionChannels
             channels = ProjectionChannels
 
         welcome = {
@@ -339,7 +339,7 @@ class WSGateway:
         try:
             keys = self._projection_keys
             if keys is None:
-                from runtimes.projection_runtime.state_keys import ProjectionKeys
+                from runtime.projection_runtime.state_keys import ProjectionKeys
                 keys = ProjectionKeys
             
             state = {}
@@ -368,7 +368,7 @@ class WSGateway:
     async def run_redis_subscriber(self) -> None:
         channels = self._projection_channels
         if channels is None:
-            from runtimes.projection_runtime.state_keys import ProjectionChannels
+            from runtime.projection_runtime.state_keys import ProjectionChannels
             channels = ProjectionChannels
 
         if not self.redis:

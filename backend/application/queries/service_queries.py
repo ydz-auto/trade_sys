@@ -44,12 +44,12 @@ async def get_aggregation_status() -> Dict[str, Any]:
 
 
 async def get_aggregation_feature_status(symbol: str, interval: Optional[str] = None) -> List[Dict[str, Any]]:
-    from runtimes.replay_runtime.historical.historical_feature_extractor import get_feature_status as get_aggregation_feature_status
+    from runtime.replay_runtime.historical.historical_feature_extractor import get_feature_status as get_aggregation_feature_status
     return await get_aggregation_feature_status(symbol, interval)
 
 
 async def extract_historical_features(symbol: str, years: List[int], intervals: List[str]) -> List[Dict[str, Any]]:
-    from runtimes.replay_runtime.historical.historical_feature_extractor import extract_historical_features
+    from runtime.replay_runtime.historical.historical_feature_extractor import extract_historical_features
     return await extract_historical_features(symbol, years, intervals)
 
 
@@ -59,12 +59,12 @@ async def get_correlation_service() -> Any:
 
 
 async def get_projection_keys() -> Any:
-    from runtimes.projection_runtime.state_keys import ProjectionKeys
+    from runtime.projection_runtime.state_keys import ProjectionKeys
     return ProjectionKeys
 
 
 async def get_projection_channels() -> Any:
-    from runtimes.projection_runtime.state_keys import ProjectionChannels
+    from runtime.projection_runtime.state_keys import ProjectionChannels
     return ProjectionChannels
 
 

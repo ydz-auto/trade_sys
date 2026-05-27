@@ -41,7 +41,7 @@ from infrastructure.acceleration import (
     DeviceManager
 )
 from engines.optimization import ParameterOptimizer, OptimizationConfig
-from runtimes.replay_runtime.backtest_engine import (
+from runtime.replay_runtime.backtest_engine import (
     BacktestEngine,
     BacktestConfig,
     SignalType,
@@ -211,7 +211,7 @@ def run_single_backtest_module(
         if backend_path not in sys.path:
             sys.path.insert(0, backend_path)
         
-        from runtimes.replay_runtime.backtest_engine import BacktestEngine, BacktestConfig, SignalType, Bar
+        from runtime.replay_runtime.backtest_engine import BacktestEngine, BacktestConfig, SignalType, Bar
         from engines.compute.strategy.strategies import (
             RSIStrategy, MACDStrategy, SMACrossoverStrategy, EMACrossoverStrategy,
             BollingerBandsStrategy, MomentumStrategy, PanicReversalStrategy,

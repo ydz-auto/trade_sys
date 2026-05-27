@@ -7,7 +7,7 @@ _replay_sessions: Dict[str, Dict[str, Any]] = {}
 
 
 async def start_backtest(config: Dict[str, Any]) -> Dict[str, Any]:
-    from runtimes.replay_runtime.runtime import get_replay_runtime
+    from runtime.replay_runtime.runtime import get_replay_runtime
     runtime = get_replay_runtime()
     if runtime and hasattr(runtime, 'start_session'):
         return await runtime.start_session(config)
@@ -15,7 +15,7 @@ async def start_backtest(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def stop_backtest(session_id: str) -> Dict[str, Any]:
-    from runtimes.replay_runtime.runtime import get_replay_runtime
+    from runtime.replay_runtime.runtime import get_replay_runtime
     runtime = get_replay_runtime()
     if runtime and hasattr(runtime, 'stop_session'):
         return await runtime.stop_session(session_id)
@@ -77,7 +77,7 @@ async def create_replay(
     event_types: List[str],
     speed: float,
 ) -> Dict[str, Any]:
-    from runtimes.replay_runtime.runtime import get_replay_runtime
+    from runtime.replay_runtime.runtime import get_replay_runtime
 
     replay_id = f"replay_{uuid.uuid4().hex[:8]}"
     now = datetime.now().isoformat()
@@ -122,7 +122,7 @@ async def create_replay(
 
 
 async def cancel_replay(replay_id: str) -> bool:
-    from runtimes.replay_runtime.runtime import get_replay_runtime
+    from runtime.replay_runtime.runtime import get_replay_runtime
 
     session = _replay_sessions.get(replay_id)
     if not session:
@@ -138,7 +138,7 @@ async def cancel_replay(replay_id: str) -> bool:
 
 
 async def delete_replay(replay_id: str) -> bool:
-    from runtimes.replay_runtime.runtime import get_replay_runtime
+    from runtime.replay_runtime.runtime import get_replay_runtime
 
     session = _replay_sessions.get(replay_id)
     if not session:

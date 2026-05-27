@@ -205,7 +205,7 @@ async def get_projection_reader() -> ProjectionReader:
 
 
 async def get_projection_state() -> Dict[str, Any]:
-    from runtimes.projection_runtime.runtime import get_projection_runtime
+    from runtime.projection_runtime.runtime import get_projection_runtime
     runtime = get_projection_runtime()
     if runtime and hasattr(runtime, 'get_state'):
         return runtime.get_state()

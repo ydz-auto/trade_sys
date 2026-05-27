@@ -7,7 +7,7 @@ def get_trading_modes() -> Dict[str, Any]:
 
 
 def get_trading_mode_manager() -> Any:
-    from runtimes.trading_mode_manager import get_trading_mode_manager
+    from runtime.trading_mode_manager import get_trading_mode_manager
     return get_trading_mode_manager()
 
 

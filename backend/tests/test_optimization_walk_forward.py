@@ -224,7 +224,7 @@ class WalkForwardOptimizer:
         3. 返回最佳参数和优化集表现
         4. 并行执行多个参数组合（利用 M4 多核）
         """
-        from runtimes.replay_runtime.runtime import get_replay_runtime, ReplayConfig, EventType, ReplayEvent
+        from runtime.replay_runtime.runtime import get_replay_runtime, ReplayConfig, EventType, ReplayEvent
         
         best_params = None
         best_score = -float('inf')
@@ -289,7 +289,7 @@ class WalkForwardOptimizer:
         3. 使用 ReplayRuntime 进行回测
         4. 记录测试集表现（用于最终评估）
         """
-        from runtimes.replay_runtime.runtime import get_replay_runtime, ReplayConfig
+        from runtime.replay_runtime.runtime import get_replay_runtime, ReplayConfig
         
         logger.info(
             f"Window {window.window_index}: Validating params on TEST set "
@@ -329,7 +329,7 @@ class WalkForwardOptimizer:
         
         返回 Sharpe Ratio
         """
-        from runtimes.replay_runtime.runtime import (
+        from runtime.replay_runtime.runtime import (
             get_replay_runtime,
             ReplayConfig,
             EventType,

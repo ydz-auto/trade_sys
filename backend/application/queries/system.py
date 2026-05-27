@@ -46,7 +46,7 @@ def get_trading_mode_enum() -> Any:
 
 def get_trading_mode_status() -> Dict[str, Any]:
     from domain.trading_mode import TradingMode
-    from runtimes.trading_mode_manager import get_trading_mode_manager
+    from runtime.trading_mode_manager import get_trading_mode_manager
     manager = get_trading_mode_manager()
     status = manager.get_status()
     config = manager.config
@@ -68,7 +68,7 @@ def get_trading_mode_status() -> Dict[str, Any]:
 
 
 def get_all_modes() -> Dict[str, Any]:
-    from runtimes.trading_mode_manager import get_trading_mode_manager
+    from runtime.trading_mode_manager import get_trading_mode_manager
     manager = get_trading_mode_manager()
     modes = manager.get_all_modes_info()
     return {"modes": modes, "current_mode": manager.mode.value}
@@ -76,7 +76,7 @@ def get_all_modes() -> Dict[str, Any]:
 
 def get_trading_mode_portfolio(mode: str = None) -> Dict[str, Any]:
     from domain.trading_mode import TradingMode
-    from runtimes.trading_mode_manager import get_trading_mode_manager
+    from runtime.trading_mode_manager import get_trading_mode_manager
     manager = get_trading_mode_manager()
     target_mode = None
     if mode:
@@ -86,13 +86,13 @@ def get_trading_mode_portfolio(mode: str = None) -> Dict[str, Any]:
 
 
 def get_trading_mode_stats() -> Dict[str, Any]:
-    from runtimes.trading_mode_manager import get_trading_mode_manager
+    from runtime.trading_mode_manager import get_trading_mode_manager
     manager = get_trading_mode_manager()
     return manager.get_stats()
 
 
 def get_trading_mode_safety() -> Dict[str, Any]:
-    from runtimes.trading_mode_manager import get_trading_mode_manager
+    from runtime.trading_mode_manager import get_trading_mode_manager
     manager = get_trading_mode_manager()
     is_safe, message = manager.is_safe_to_trade()
     return {"is_safe": is_safe, "message": message, "mode": manager.mode.value, "state": manager.state.value}
@@ -100,7 +100,7 @@ def get_trading_mode_safety() -> Dict[str, Any]:
 
 async def preview_mode_transition(target_mode: str) -> Dict[str, Any]:
     from domain.trading_mode import TradingMode
-    from runtimes.trading_mode_manager import get_trading_mode_manager
+    from runtime.trading_mode_manager import get_trading_mode_manager
     manager = get_trading_mode_manager()
     tm = TradingMode(target_mode.lower())
     can_transition, message = await manager.can_transition_to(tm)

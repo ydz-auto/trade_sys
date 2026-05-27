@@ -9,6 +9,26 @@ class EventType(str, Enum):
     MARKET_STRUCTURE_OPEN_INTEREST_SPIKE = "open_interest_spike"
     MARKET_STRUCTURE_ORDERBOOK_IMBALANCE = "orderbook_imbalance"
     MARKET_STRUCTURE_VOLATILITY_EXPANSION = "volatility_expansion"
+    
+    # Trade Pressure 系列事件 - 微观结构事件
+    TRADE_PRESSURE_FLUSH = "trade_pressure_flush"
+    TRADE_PRESSURE_EXHAUSTION = "trade_pressure_exhaustion"
+    TRADE_PRESSURE_ABSORPTION = "trade_pressure_absorption"
+    TRADE_PRESSURE_DIVERGENCE = "trade_pressure_divergence"
+    TRADE_PRESSURE_SQUEEZE = "trade_pressure_squeeze"
+    TRADE_PRESSURE_BUILDUP = "trade_pressure_buildup"
+    
+    # 流动性事件
+    LIQUIDITY_VACUUM = "liquidity_vacuum"
+    LIQUIDITY_FLOOD = "liquidity_flood"
+    LIQUIDITY_SPREAD_WIDEN = "liquidity_spread_widen"
+    LIQUIDITY_WALL_FORM = "liquidity_wall_form"
+    LIQUIDITY_WALL_REMOVE = "liquidity_wall_remove"
+    
+    # 订单簿事件
+    ORDERBOOK_SWEEP = "orderbook_sweep"
+    ORDERBOOK_SPOOF = "orderbook_spoof"
+    ORDERBOOK_QUEUE_SHIFT = "orderbook_queue_shift"
 
     FLOW_ETF_INFLOW = "etf_inflow"
     FLOW_ETF_OUTFLOW = "etf_outflow"
@@ -54,6 +74,12 @@ class EventType(str, Enum):
     def category(self) -> EventCategory:
         name = self.name
         if name.startswith("MARKET_STRUCTURE"):
+            return EventCategory.MARKET_STRUCTURE
+        elif name.startswith("TRADE_PRESSURE"):
+            return EventCategory.MARKET_STRUCTURE
+        elif name.startswith("LIQUIDITY"):
+            return EventCategory.MARKET_STRUCTURE
+        elif name.startswith("ORDERBOOK"):
             return EventCategory.MARKET_STRUCTURE
         elif name.startswith("FLOW"):
             return EventCategory.FLOW

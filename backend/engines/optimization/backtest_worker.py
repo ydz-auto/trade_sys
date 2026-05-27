@@ -60,7 +60,7 @@ def run_single_backtest_worker(task: Dict[str, Any]) -> Dict[str, Any]:
         funding_data = task.get("funding_data")
         oi_data = task.get("oi_data")
         
-        from runtimes.replay_runtime.backtest_engine import BacktestEngine, BacktestConfig, SignalType, Bar
+        from runtime.replay_runtime.backtest_engine import BacktestEngine, BacktestConfig, SignalType, Bar
         from engines.compute.strategy.registry import get_strategy
         
         strategy = get_strategy(strategy_id, params)

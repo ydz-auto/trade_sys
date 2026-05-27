@@ -14,7 +14,7 @@ import asyncio
 import os
 
 from domain.trading_mode import TradingMode
-from runtimes.trading_mode_manager import get_trading_mode_manager
+from runtime.trading_mode_manager import get_trading_mode_manager
 from .registry import RuntimeRegistry, RuntimeType, RuntimeState, RuntimeInfo, get_runtime_registry
 from .lifecycle import RuntimeLifecycle, get_runtime_lifecycle
 from .catalog import get_mode_runtime_types, iter_runtime_specs

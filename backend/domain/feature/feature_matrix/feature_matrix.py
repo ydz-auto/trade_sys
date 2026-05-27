@@ -14,7 +14,7 @@ import pandas as pd
 import logging
 from domain.feature.materializer.matrix_builder import UnifiedFeatureMatrix
 from engines.compute.feature.historical_materializer import HistoricalFeatureMaterializer
-from runtimes.feature_runtime.realtime_materializer import RealtimeFeatureMaterializer
+from runtime.feature_runtime.realtime_materializer import RealtimeFeatureMaterializer
 from domain.feature.materializer.schema_registry import get_schema_registry
 
 logger = logging.getLogger(__name__)

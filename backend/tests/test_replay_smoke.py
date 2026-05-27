@@ -15,10 +15,10 @@ async def test_replay_smoke():
     print("Replay Smoke Test - 回测冒烟测试")
     print("=" * 80)
     
-    from runtimes.replay_runtime.runtime import get_replay_runtime, ReplayConfig, EventType, ReplayEvent
-    from runtimes.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
-    from runtimes.signal_runtime import get_signal_runtime
-    from runtimes.execution_runtime import get_execution_runtime
+    from runtime.replay_runtime.runtime import get_replay_runtime, ReplayConfig, EventType, ReplayEvent
+    from runtime.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
+    from runtime.signal_runtime import get_signal_runtime
+    from runtime.execution_runtime import get_execution_runtime
     
     # 初始化
     runtime = get_replay_runtime(ReplayConfig(warmup_periods=0))

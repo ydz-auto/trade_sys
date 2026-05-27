@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Any
 from pathlib import Path
 
 from infrastructure.logging import get_logger
-from runtimes.replay_runtime.runtime import get_replay_runtime
+from runtime.replay_runtime.runtime import get_replay_runtime
 from runtime.kernel.context.session import SessionState
 
 logger = get_logger("optimization_backtest_adapter")
@@ -149,9 +149,9 @@ class OptimizationBacktestAdapter:
         self._replay_runtime = get_replay_runtime()
         
         try:
-            from runtimes.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
-            from runtimes.signal_runtime import get_signal_runtime
-            from runtimes.execution_runtime import get_execution_runtime
+            from runtime.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
+            from runtime.signal_runtime import get_signal_runtime
+            from runtime.execution_runtime import get_execution_runtime
             
             feature_config = FeatureConfig(mode=FeatureMode.REPLAY)
             self._replay_runtime.attach_feature_runtime(get_feature_runtime(feature_config))

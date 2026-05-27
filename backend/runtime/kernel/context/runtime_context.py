@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 import asyncio
 
 from domain.trading_mode import TradingMode
-from runtimes.trading_mode_manager import get_trading_mode_manager
+from runtime.trading_mode_manager import get_trading_mode_manager
 from runtime.kernel.namespace import get_runtime_isolation
 from infrastructure.logging import get_logger
 from infrastructure.utilities.runtime_clock import now_ms

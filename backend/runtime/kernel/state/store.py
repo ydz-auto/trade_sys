@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 import json
 
 from domain.trading_mode import TradingMode
-from runtimes.trading_mode_manager import get_trading_mode_manager
+from runtime.trading_mode_manager import get_trading_mode_manager
 from infrastructure.logging import get_logger
 from infrastructure.utilities.runtime_clock import get_clock, now_ms
 from infrastructure.storage.immutable_snapshot import get_immutable_snapshot_store

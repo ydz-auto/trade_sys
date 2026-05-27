@@ -15,8 +15,8 @@ async def test_no_lookahead():
     print("Replay No Lookahead Test - 验证无未来数据泄露")
     print("=" * 80)
     
-    from runtimes.replay_runtime.runtime import get_replay_runtime, ReplayConfig, EventType, ReplayEvent
-    from runtimes.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
+    from runtime.replay_runtime.runtime import get_replay_runtime, ReplayConfig, EventType, ReplayEvent
+    from runtime.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
     
     # 初始化
     feature_config = FeatureConfig(symbol="BTCUSDT", mode=FeatureMode.REPLAY)

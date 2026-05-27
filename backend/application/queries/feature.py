@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 async def get_feature_state() -> Dict[str, Any]:
-    from runtimes.feature_runtime import get_feature_runtime
+    from runtime.feature_runtime import get_feature_runtime
     runtime = get_feature_runtime()
     if runtime and hasattr(runtime, 'get_state'):
         return runtime.get_state()
@@ -18,7 +18,7 @@ async def get_feature_state() -> Dict[str, Any]:
 
 
 async def get_feature_matrix_state() -> Dict[str, Any]:
-    from runtimes.feature_runtime.feature_matrix_runtime import get_feature_matrix_runtime
+    from runtime.feature_runtime.feature_matrix_runtime import get_feature_matrix_runtime
     runtime = get_feature_matrix_runtime()
     if runtime and hasattr(runtime, 'get_state'):
         return runtime.get_state()

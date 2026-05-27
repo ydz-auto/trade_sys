@@ -13,7 +13,7 @@ backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ba
 sys.path.insert(0, backend_path)
 
 from infrastructure.logging import get_logger
-from runtimes.replay_runtime.backtest_engine import BacktestEngine, BacktestConfig, Bar, SignalType
+from runtime.replay_runtime.backtest_engine import BacktestEngine, BacktestConfig, Bar, SignalType
 from infrastructure.storage.parquet_reader import read_parquet_safe
 
 # 导入新策略
