@@ -7,52 +7,54 @@ DomainKernel - 唯一的业务真相（三范式共享）
 3. MarketContext 是唯一真相源（Single Source of Truth）
 4. 策略只能消费 MarketContext，不能自己解释市场
 5. 禁止策略分叉
-6. 禁止绕过 MarketContextAuthority 直接访问状态
+6. 禁止绕过 MarketContextBuilder 直接访问状态
 
 数据流架构（按照用户定义）：
-    raw event / kline / orderbook / trades / funding / oi / liquidation
+    raw data
          ↓
-    FeatureRuntime 生成标准 features
+    features_by_tf
          ↓
-    ContextAuthority 生成 MarketContext
+    MarketContextBuilder
          ↓
-    Strategy 只读 MarketContext
+    MarketContext
+         ↓
+    StrategyV2
          ↓
     Signal
          ↓
     Risk / Execution
 
-过渡期可以保留：
-    StrategyInput(
-        market_context=ctx,
-        raw_features=features,  # 只允许 legacy adapter 用
-    )
-但新策略禁止直接 features.get(...)
+周期设计（严格执行）：
+    4h: 大方向/风险状态（决定风险乘数）
+    1h: 环境过滤（决定是否允许做多/做空）
+    15m: 主交易周期（生成 candidate signal）
+    5m: 触发确认（增强/降低置信度）
+    1m: 执行/微结构（入场时机、滑点、流动性）
 """
 
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from datetime import datetime
 
-from domain.market_state import (
+from engines.compute.context import (
     MarketContext,
-    MarketContextAuthority,
+    MarketContextBuilder,
     STANDARD_TIMEFRAMES,
+)
+from engines.compute.strategy_v2 import (
+    StrategyV2,
+    Signal,
+    StrategyMeta,
+    StrategyRegistry,
 )
 from domain.event.base_event import BaseEvent
 from domain.event.event_type import EventType
-from engines.compute.strategy.v2_base import StateAwareStrategy
-from engines.compute.strategy.v2_core_strategies import create_v2_configs
 from runtime.kernel.authority.clock_authority import (
     ClockAuthority,
     ClockMode,
 )
 from runtime.kernel.event.runtime_bus import RuntimeBus
-from runtime.kernel.unified.runtime_contract import (
-    RuntimeContractConfig,
-    RuntimeMode,
-)
 from infrastructure.logging import get_logger
 
 logger = get_logger("domain.kernel")
@@ -69,23 +71,11 @@ class KernelMode(Enum):
 class DomainKernelConfig:
     """Domain Kernel 配置"""
     symbol: str
-    enabled_strategies: List[str] = field(default_factory=list)
+    enabled_strategy_ids: List[str] = field(default_factory=list)
     
     # 验证配置
     validation_enabled: bool = True
     journaling_enabled: bool = True
-
-
-@dataclass
-class StrategyInput:
-    """
-    策略输入（过渡期结构）
-    
-    新策略应该只使用 market_context
-    raw_features 只允许 legacy adapter 使用
-    """
-    market_context: MarketContext
-    raw_features: Optional[Dict[str, Any]] = None  # legacy 兼容
 
 
 class DomainKernel:
@@ -93,7 +83,7 @@ class DomainKernel:
     Domain Kernel - 唯一的业务真相
     
     核心职责（强制约束）：
-    1. 管理 MarketContextAuthority（唯一真相源）
+    1. 管理 MarketContextBuilder（唯一真相源）
     2. 管理策略实例（三范式共享）
     3. 处理事件 -> 更新 MarketContext -> 信号生成
     4. 策略只能消费 MarketContext，不能自己解释市场
@@ -112,14 +102,14 @@ class DomainKernel:
         self._mode = KernelMode.IDLE
         
         # ============== 核心组件 ==============
-        # MarketContextAuthority（唯一真相源，强制依赖）
-        self._context_authority: MarketContextAuthority = MarketContextAuthority(config.symbol)
+        # MarketContextBuilder（唯一真相源，强制依赖）
+        self._context_builder: MarketContextBuilder = MarketContextBuilder(config.symbol)
         
         # 策略实例
-        self._strategies: Dict[str, StateAwareStrategy] = {}
+        self._strategies: Dict[str, StrategyV2] = {}
         
-        # 事件处理
-        self._event_handlers: Dict[EventType, List[Callable]] = {}
+        # 上下文历史（用于验证/回放）
+        self._context_history: List[MarketContext] = []
         
         logger.info(f"DomainKernel initialized for: {config.symbol}")
     
@@ -128,65 +118,37 @@ class DomainKernel:
         logger.info("Initializing DomainKernel...")
         self._mode = KernelMode.PROCESSING
         
-        # 初始化策略（三范式共享同一套策略）
-        await self._initialize_strategies()
-        
-        # 注册事件处理器
-        self._register_event_handlers()
+        # 加载并初始化策略
+        self._initialize_strategies()
         
         self._mode = KernelMode.IDLE
         logger.info("DomainKernel initialized successfully")
         return True
     
-    async def _initialize_strategies(self) -> None:
+    def _initialize_strategies(self) -> None:
         """初始化策略（三范式共享同一套策略）"""
-        strategy_configs = create_v2_configs()
-        
-        # 策略导入延迟到此处，避免循环依赖
-        from engines.compute.strategy.v2_core_strategies import (
-            OpenInterestBehaviorV2,
-            TradePressureExhaustionV2,
-            FundingExtremeReversalV2,
-            LiquidationCascadeV2,
-            MomentumIgnitionV2,
-        )
-        
-        strategy_classes = {
-            "open_interest_behavior_v2": OpenInterestBehaviorV2,
-            "trade_pressure_exhaustion_v2": TradePressureExhaustionV2,
-            "funding_extreme_reversal_v2": FundingExtremeReversalV2,
-            "liquidation_cascade_v2": LiquidationCascadeV2,
-            "momentum_ignition_v2": MomentumIgnitionV2,
-        }
+        # 动态加载策略（自动触发注册）
+        StrategyRegistry.load_strategies()
         
         # 初始化配置的策略
-        for strategy_id in self.config.enabled_strategies:
-            if strategy_id in strategy_classes and strategy_id in strategy_configs:
-                config = strategy_configs[strategy_id]
-                strategy_class = strategy_classes[strategy_id]
-                self._strategies[strategy_id] = strategy_class(config)
+        for strategy_id in self.config.enabled_strategy_ids:
+            strategy_instance = StrategyRegistry.create_instance(
+                strategy_id,
+                self.config.symbol
+            )
+            if strategy_instance:
+                self._strategies[strategy_id] = strategy_instance
                 logger.info(f"Strategy initialized: {strategy_id}")
+            else:
+                logger.warning(f"Strategy not found: {strategy_id}")
     
-    def _register_event_handlers(self) -> None:
-        """注册事件处理器"""
-        structure_events = [
-            EventType.TRADE_PRESSURE_FLUSH,
-            EventType.TRADE_PRESSURE_EXHAUSTION,
-            EventType.TRADE_PRESSURE_SQUEEZE,
-            EventType.MARKET_STRUCTURE_LIQUIDATION,
-            EventType.LIQUIDITY_VACUUM,
-        ]
-        
-        for event_type in structure_events:
-            self._event_handlers[event_type] = [self._handle_market_structure_event]
-    
-    async def handle_event(self, event: BaseEvent, features: Dict[str, Any]) -> None:
+    async def handle_event(self, event: BaseEvent, features_by_tf: Dict[str, Dict[str, Any]]) -> None:
         """
         处理事件（唯一入口）
         
         强制流程（按照用户定义）：
         1. 获取时间（从 ClockAuthority）
-        2. 更新 MarketContext（通过 ContextAuthority，唯一入口）
+        2. 更新 MarketContext（通过 MarketContextBuilder，唯一入口）
         3. 运行策略（策略只能消费 MarketContext）
         4. 发布信号
         
@@ -199,24 +161,20 @@ class DomainKernel:
             current_time_ms = self._clock.now_ms()
             current_time = datetime.fromtimestamp(current_time_ms / 1000)
             
-            # Step 2: 更新 MarketContext（通过 ContextAuthority，唯一真相源）
+            # Step 2: 构建 MarketContext（唯一真相源）
             # ❌ 禁止绕过这个！
-            market_context = self._context_authority.update(
-                features=features,
-                timestamp=current_time,
+            market_context = self._context_builder.build(
+                features_by_tf=features_by_tf,
+                timestamp=current_time_ms
             )
             
-            # Step 3: 构建策略输入
-            strategy_input = StrategyInput(
-                market_context=market_context,
-                raw_features=features,  # 过渡期保留，只允许 legacy adapter 使用
-            )
+            # 记录上下文历史（用于验证/回放）
+            self._context_history.append(market_context)
+            if len(self._context_history) > 1000:
+                self._context_history.pop(0)
             
-            # Step 4: 运行策略（策略只能消费 MarketContext）
-            await self._run_strategies(strategy_input, event)
-            
-            # Step 5: 调用事件处理器
-            await self._dispatch_event(event, features)
+            # Step 3: 运行策略（策略只能消费 MarketContext）
+            await self._run_strategies(market_context, event)
             
         except Exception as e:
             logger.error(f"Error handling event: {e}", exc_info=True)
@@ -226,46 +184,35 @@ class DomainKernel:
     
     async def _run_strategies(
         self,
-        strategy_input: StrategyInput,
+        market_context: MarketContext,
         event: BaseEvent,
     ) -> None:
         """
         运行策略（策略只能消费 MarketContext）
         
         强制约束：
-        - 策略输入只能是 StrategyInput（包含 MarketContext）
-        - 新策略禁止直接访问 raw_features
+        - 策略只能接收 MarketContext
+        - 策略禁止直接访问 raw features
         - 策略只能消费 MarketContext，不能自己解释市场
         """
         for strategy_id, strategy in self._strategies.items():
             try:
-                # 策略只能消费 MarketContext，不能自己解释市场
-                signal = strategy.generate_signal(
-                    market_context=strategy_input.market_context,
-                    event=event,
-                    features=strategy_input.raw_features,  # 过渡期允许，但新策略不应使用
-                )
+                # 验证上下文是否满足策略要求
+                is_valid, errors = strategy.validate_requirements(market_context)
+                if not is_valid:
+                    logger.warning(f"Strategy {strategy_id} context validation failed: {errors}")
+                    continue
                 
-                if signal:
-                    # 发布信号
+                # 策略只能消费 MarketContext，不能自己解释市场
+                signal = strategy.generate_signal(market_context)
+                
+                # 发布信号（如果有）
+                if not signal.is_none:
                     await self._bus.publish_signal(signal)
                     logger.info(f"Signal generated from {strategy_id}: {signal}")
-            
+                
             except Exception as e:
                 logger.error(f"Error running strategy {strategy_id}: {e}", exc_info=True)
-    
-    async def _dispatch_event(self, event: BaseEvent, features: Dict[str, Any]) -> None:
-        """分发事件到注册的处理器"""
-        if event.event_type in self._event_handlers:
-            for handler in self._event_handlers[event.event_type]:
-                try:
-                    await handler(event, features)
-                except Exception as e:
-                    logger.error(f"Error in event handler: {e}", exc_info=True)
-    
-    async def _handle_market_structure_event(self, event: BaseEvent, features: Dict[str, Any]) -> None:
-        """处理市场结构事件"""
-        logger.debug(f"Handling market structure event: {event.event_type}")
     
     # ============== 公共接口（只读访问）==============
     
@@ -273,13 +220,13 @@ class DomainKernel:
         """
         获取当前市场上下文（唯一方式）
         
-        ❌ 禁止直接访问 _context_authority
+        ❌ 禁止直接访问 _context_builder 内部
         """
-        return self._context_authority.get_current_context()
+        return self._context_history[-1] if self._context_history else None
     
     def get_context_history(self, limit: int = 100) -> List[MarketContext]:
         """获取上下文历史（用于验证/回放）"""
-        return self._context_authority.get_context_history(limit)
+        return self._context_history[-limit:] if self._context_history else []
     
     @property
     def mode(self) -> KernelMode:
@@ -292,7 +239,6 @@ class DomainKernel:
 __all__ = [
     "KernelMode",
     "DomainKernelConfig",
-    "StrategyInput",
     "DomainKernel",
     "STANDARD_TIMEFRAMES",
 ]
