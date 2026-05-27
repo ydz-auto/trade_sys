@@ -165,6 +165,7 @@ class EventStudy:
         signal_type: str,
         confidence: float,
         reason: str,
+        current_price: float,
         future_prices: np.ndarray
     ):
         """
@@ -175,6 +176,7 @@ class EventStudy:
             signal_type: 信号类型 (long/short)
             confidence: 置信度
             reason: 信号原因
+            current_price: 事件发生时的当前价格（基准）
             future_prices: 事件后的未来价格序列
         """
         if signal_type not in ("long", "short"):
@@ -184,13 +186,13 @@ class EventStudy:
         returns = np.zeros(len(self.windows))
         for i, window in enumerate(self.windows):
             if window <= len(future_prices):
-                returns[i] = (future_prices[window - 1] - future_prices[0]) / future_prices[0]
+                returns[i] = (future_prices[window - 1] - current_price) / current_price
             else:
                 returns[i] = np.nan
         
         # 计算 MFE 和 MAE
-        if len(future_prices) > 1:
-            price_change = (future_prices - future_prices[0]) / future_prices[0]
+        if len(future_prices) > 0:
+            price_change = (future_prices - current_price) / current_price
             
             if signal_type == "long":
                 mfe = np.max(price_change)
@@ -386,12 +388,14 @@ def run_event_study(
         if signal.type in (SignalType.LONG, SignalType.SHORT):
             # 获取未来价格（从下一个 bar 开始）
             if i + 1 < len(prices):
+                current_price = prices[i]
                 future_prices = prices[i + 1:]
                 study.add_event(
                     timestamp=timestamps[i],
                     signal_type="long" if signal.type == SignalType.LONG else "short",
                     confidence=signal.confidence,
                     reason=signal.reason,
+                    current_price=current_price,
                     future_prices=future_prices
                 )
     

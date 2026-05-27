@@ -257,7 +257,7 @@ class WalkForwardAnalyzer:
         for i, ctx in enumerate(contexts):
             signal = strategy.generate_signal(ctx)
             
-            if signal.type in ("long", "short"):
+            if signal.type in (SignalType.LONG, SignalType.SHORT):
                 signals.append(signal)
                 
                 # 计算该信号的收益（持有到下一个 bar）
@@ -494,17 +494,17 @@ def _evaluate_window_task(args):
     for i, ctx in enumerate(contexts):
         signal = strategy.generate_signal(ctx)
         
-        if signal.type in ("long", "short"):
+        if signal.type in (SignalType.LONG, SignalType.SHORT):
             signals.append(signal)
             
             if i + 1 < len(prices):
                 price_change = (prices[i + 1] - prices[i]) / prices[i]
-                if signal.type == "short":
+                if signal.type == SignalType.SHORT:
                     price_change = -price_change
                 returns.append(price_change)
     
-    long_signals = sum(1 for s in signals if s.type == "long")
-    short_signals = sum(1 for s in signals if s.type == "short")
+    long_signals = sum(1 for s in signals if s.type == SignalType.LONG)
+    short_signals = sum(1 for s in signals if s.type == SignalType.SHORT)
     
     if returns:
         total_return = np.sum(returns)
