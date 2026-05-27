@@ -22,6 +22,8 @@ from scipy import stats
 
 from engines.compute.strategy_v2 import StrategyV2, Signal
 
+from research.common.backtest_engine import run_single_bar_backtest
+
 
 @dataclass
 class RegimeResult:
@@ -247,81 +249,41 @@ class RegimeTester:
         regime: str,
         samples: List[Tuple[Any, int, float]]
     ) -> RegimeResult:
-        """
-        在单个状态上测试策略
-        
-        Args:
-            strategy: 策略实例
-            regime: 状态类型
-            samples: 该状态下的样本列表
-        
-        Returns:
-            RegimeResult: 状态测试结果
-        """
-        signals = []
-        returns = []
-        
-        for i, (ctx, timestamp, price) in enumerate(samples):
-            signal = strategy.generate_signal(ctx)
-            
-            if signal.type in ("long", "short"):
-                signals.append(signal)
-                
-                # 计算收益
-                if i + 1 < len(samples):
-                    next_price = samples[i + 1][2]
-                    price_change = (next_price - price) / price
-                    if signal.type == "short":
-                        price_change = -price_change
-                    returns.append(price_change)
-        
-        # 基础统计
+        market_contexts = [ctx for ctx, _, _ in samples]
+        timestamps = [ts for _, ts, _ in samples]
+        prices = np.array([price for _, _, price in samples])
+
+        signal_results, metrics = run_single_bar_backtest(
+            strategy, market_contexts, timestamps, prices,
+            maker_fee=0.0002, taker_fee=0.0005
+        )
+
         sample_count = len(samples)
-        long_signals = sum(1 for s in signals if s.type == "long")
-        short_signals = sum(1 for s in signals if s.type == "short")
-        signal_rate = len(signals) / sample_count if sample_count > 0 else 0
-        
-        # 收益统计
-        if returns:
-            hit_rate = sum(1 for r in returns if r > 0) / len(returns)
-            avg_return = np.mean(returns)
-            median_return = np.median(returns)
+        signal_rate = metrics.total_trades / sample_count if sample_count > 0 else 0
+
+        if signal_results:
+            returns = [r.pnl_pct for r in signal_results]
             std_return = np.std(returns)
-            
-            # 最大回撤（简化版）
-            cumulative = np.cumsum(returns)
-            max_drawdown = np.min(cumulative - np.maximum.accumulate(cumulative))
-            
-            # Sharpe
-            sharpe_ratio = avg_return / std_return if std_return > 0 else 0
-            
-            # 盈利因子
-            wins = [r for r in returns if r > 0]
-            losses = [r for r in returns if r < 0]
-            profit_factor = np.sum(wins) / abs(np.sum(losses)) if losses else float('inf')
-            
-            # 统计检验
             t_stat, p_value = stats.ttest_1samp(returns, 0)
         else:
-            hit_rate = avg_return = median_return = std_return = 0.0
-            max_drawdown = sharpe_ratio = profit_factor = 0.0
+            std_return = 0.0
             t_stat = p_value = 0.0
-        
+
         return RegimeResult(
             regime_type=regime,
             description=self._get_regime_description(regime),
             sample_count=sample_count,
-            signals=len(signals),
-            long_signals=long_signals,
-            short_signals=short_signals,
+            signals=metrics.total_trades,
+            long_signals=metrics.long_trades,
+            short_signals=metrics.short_trades,
             signal_rate=signal_rate,
-            hit_rate=hit_rate,
-            avg_return=avg_return,
-            median_return=median_return,
+            hit_rate=metrics.win_rate,
+            avg_return=metrics.avg_trade_return,
+            median_return=metrics.median_trade_return,
             std_return=std_return,
-            max_drawdown=max_drawdown,
-            sharpe_ratio=sharpe_ratio,
-            profit_factor=profit_factor,
+            max_drawdown=metrics.max_drawdown,
+            sharpe_ratio=metrics.sharpe_ratio,
+            profit_factor=metrics.profit_factor,
             t_stat=t_stat,
             p_value=p_value
         )

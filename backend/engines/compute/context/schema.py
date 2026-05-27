@@ -273,6 +273,9 @@ class MarketContext:
     derivatives: DerivativesContext = field(default_factory=DerivativesContext)
     cross_market: CrossMarketData = field(default_factory=CrossMarketData)
     risk: RiskContext = field(default_factory=RiskContext)
+
+    # Alpha Research: 原始特征（仅 Alpha Factory pipeline 使用）
+    raw_features: Optional[Dict[str, float]] = None
     
     # ============== 快捷方法 ==============
     

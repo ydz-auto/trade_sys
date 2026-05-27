@@ -35,7 +35,8 @@ from research.common.backtest_engine import (
 )
 from research.common.loaders import get_strategy_class, load_from_parquet
 from research.common.types import StrategyName
-from research.simple_backtest import SimpleBacktester, generate_test_contexts
+from research.simple_backtest import SimpleBacktester
+from research.common.mock import generate_test_contexts
 from research.walk_forward_simple import (
     WalkForwardAnalyzer,
     run_walk_forward,
@@ -156,12 +157,12 @@ def test_holding_period_consistency(
         maker_fee=MAKER_FEE, taker_fee=TAKER_FEE,
         slippage_bps=SLIPPAGE_BPS, max_holding_bars=holding_bars
     )
-    bt_result = backtester.backtest(strategy, market_contexts, timestamps, prices)
+    bt_trades, bt_metrics = backtester.backtest(strategy, market_contexts, timestamps, prices)
 
-    trades_diff = abs(engine_metrics.total_trades - bt_result.total_trades)
-    avg_ret_diff = abs(engine_metrics.avg_trade_return - bt_result.avg_trade_return)
-    win_rate_diff = abs(engine_metrics.win_rate - bt_result.win_rate)
-    pf_diff = abs(engine_metrics.profit_factor - bt_result.profit_factor)
+    trades_diff = abs(engine_metrics.total_trades - bt_metrics.total_trades)
+    avg_ret_diff = abs(engine_metrics.avg_trade_return - bt_metrics.avg_trade_return)
+    win_rate_diff = abs(engine_metrics.win_rate - bt_metrics.win_rate)
+    pf_diff = abs(engine_metrics.profit_factor - bt_metrics.profit_factor)
 
     passed = (
         trades_diff == 0
@@ -180,11 +181,11 @@ def test_holding_period_consistency(
             "sharpe": engine_metrics.sharpe_ratio,
         },
         "backtester": {
-            "trades": bt_result.total_trades,
-            "avg_return": bt_result.avg_trade_return,
-            "win_rate": bt_result.win_rate,
-            "profit_factor": bt_result.profit_factor,
-            "sharpe": bt_result.sharpe_ratio,
+            "trades": bt_metrics.total_trades,
+            "avg_return": bt_metrics.avg_trade_return,
+            "win_rate": bt_metrics.win_rate,
+            "profit_factor": bt_metrics.profit_factor,
+            "sharpe": bt_metrics.sharpe_ratio,
         },
         "diff": {
             "trades": trades_diff,
@@ -297,20 +298,18 @@ def test_walkforward_vs_simplebacktest(
         maker_fee=MAKER_FEE, taker_fee=TAKER_FEE,
         slippage_bps=SLIPPAGE_BPS, max_holding_bars=holding_bars
     )
-    bt_result = backtester.backtest(strategy, market_contexts, timestamps, prices)
+    bt_trades, bt_metrics = backtester.backtest(strategy, market_contexts, timestamps, prices)
 
-    # 比较 per-trade 指标
-    avg_ret_diff = abs(wf_window.avg_return - bt_result.avg_trade_return)
-    win_rate_diff = abs(wf_window.win_rate - bt_result.win_rate)
-    total_ret_diff = abs(wf_window.total_return - bt_result.total_pnl_pct)
+    avg_ret_diff = abs(wf_window.avg_return - bt_metrics.avg_trade_return)
+    win_rate_diff = abs(wf_window.win_rate - bt_metrics.win_rate)
+    total_ret_diff = abs(wf_window.total_return - bt_metrics.total_pnl_pct)
 
-    # total_return 差异来自窗口边界，允许相对 10% 或绝对 0.2
     passed = (
         avg_ret_diff < 0.01
         and win_rate_diff < 0.02
         and (total_ret_diff < 0.2
-             or (abs(bt_result.total_pnl_pct) > 0
-                 and total_ret_diff / abs(bt_result.total_pnl_pct) < 0.10))
+             or (abs(bt_metrics.total_pnl_pct) > 0
+                 and total_ret_diff / abs(bt_metrics.total_pnl_pct) < 0.10))
     )
 
     return {
@@ -322,10 +321,10 @@ def test_walkforward_vs_simplebacktest(
             "win_rate": wf_window.win_rate,
         },
         "simple_backtest": {
-            "trades": bt_result.total_trades,
-            "avg_return": bt_result.avg_trade_return,
-            "total_return": bt_result.total_pnl_pct,
-            "win_rate": bt_result.win_rate,
+            "trades": bt_metrics.total_trades,
+            "avg_return": bt_metrics.avg_trade_return,
+            "total_return": bt_metrics.total_pnl_pct,
+            "win_rate": bt_metrics.win_rate,
         },
         "diff": {
             "avg_return": avg_ret_diff,

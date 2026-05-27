@@ -9,13 +9,13 @@ Feature Schema - 特征定义结构 (Domain 层)
 所有层必须引用这里的定义，不得自行创建类似结构。
 """
 
-from typing import List
+from typing import List, Optional
 from dataclasses import dataclass
 from enum import Enum
 
 
 class FeatureCategory(str, Enum):
-    """特征分类"""
+    """特征分类（数据源视角）"""
     RAW = "raw"
     TECHNICAL = "technical"
     DERIVATIVES = "derivatives"
@@ -25,6 +25,33 @@ class FeatureCategory(str, Enum):
     MICROSTRUCTURE = "microstructure"
     CROSS_MARKET = "cross_market"
     COMPOSITE = "composite"
+
+
+class AlphaFamily(str, Enum):
+    """Alpha Family（alpha 研究视角的分类）
+
+    Taxonomy:
+    - PRICE_ACTION:  价格收益、回撤、结构
+    - VOLATILITY:    波动率相关
+    - FUNDING:       资金费率情绪
+    - VOLUME:        成交量参与度
+    - OPEN_INTEREST: 持仓量 / 杠杆结构
+    - ORDER_FLOW:    主动买卖流 / taker flow
+    - LIQUIDITY:     盘口深度 / 价差 / 流动性
+    - CROSS_SECTIONAL: 跨币种截面 alpha
+    - REGIME:        市场状态 / regime
+    - EVENT_DRIVEN:  事件驱动（爆仓、funding spike 等）
+    """
+    PRICE_ACTION = "price_action"
+    VOLATILITY = "volatility"
+    FUNDING = "funding"
+    VOLUME = "volume"
+    OPEN_INTEREST = "open_interest"
+    ORDER_FLOW = "order_flow"
+    LIQUIDITY = "liquidity"
+    CROSS_SECTIONAL = "cross_sectional"
+    REGIME = "regime"
+    EVENT_DRIVEN = "event_driven"
 
 
 class FeatureValueType(str, Enum):
@@ -53,6 +80,7 @@ class FeatureDef:
     default_timeframes: List[str]
     required_sources: List[str]
     description: str
+    alpha_family: Optional[AlphaFamily] = None
     
     def __post_init__(self):
         """验证字段完整性"""

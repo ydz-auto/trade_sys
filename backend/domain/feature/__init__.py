@@ -14,6 +14,7 @@ from .schema import (
     FeatureDef,
     FeatureCategory,
     FeatureValueType,
+    AlphaFamily,
 )
 
 from .registry import (
@@ -21,7 +22,10 @@ from .registry import (
     get_feature_def,
     is_feature_registered,
     list_features_by_category,
+    list_features_by_alpha_family,
     list_all_feature_names,
+    get_alpha_family_coverage,
+    get_taxonomy_summary,
 )
 
 from .aliases import (
@@ -42,12 +46,16 @@ __all__ = [
     "FeatureDef",
     "FeatureCategory",
     "FeatureValueType",
+    "AlphaFamily",
     # Registry
     "FEATURE_REGISTRY",
     "get_feature_def",
     "is_feature_registered",
     "list_features_by_category",
+    "list_features_by_alpha_family",
     "list_all_feature_names",
+    "get_alpha_family_coverage",
+    "get_taxonomy_summary",
     # Aliases
     "FEATURE_ALIASES",
     "normalize_feature_name",

@@ -5,22 +5,41 @@ Feature Registry - 唯一特征注册表 (Domain 层)
 - 这是所有特征定义的唯一真相源
 - 任何地方引用特征名时必须从这里获取
 - 特征名只能从 FEATURE_REGISTRY.keys() 中选择
+- 每个特征同时拥有 FeatureCategory（数据源视角）和 AlphaFamily（alpha 研究视角）
 
 添加新特征流程：
-1. 在 FEATURE_REGISTRY 中添加 FeatureDef
+1. 在 FEATURE_REGISTRY 中添加 FeatureDef（含 alpha_family）
 2. 如果有旧别名，更新 FEATURE_ALIASES（在 aliases.py）
 3. 更新 CONTEXT_FEATURE_MAP（在 compute/context/feature_map.py）
+
+Feature Taxonomy (Alpha Family):
+┌──────────────────┬─────────────────────────────────────────────┐
+│ AlphaFamily      │ 描述                                        │
+├──────────────────┼─────────────────────────────────────────────┤
+│ PRICE_ACTION     │ 价格收益、回撤、结构                         │
+│ VOLATILITY       │ 波动率相关                                   │
+│ FUNDING          │ 资金费率情绪                                 │
+│ VOLUME           │ 成交量参与度                                 │
+│ OPEN_INTEREST    │ 持仓量 / 杠杆结构                            │
+│ ORDER_FLOW       │ 主动买卖流 / taker flow                      │
+│ LIQUIDITY        │ 盘口深度 / 价差 / 流动性                     │
+│ CROSS_SECTIONAL  │ 跨币种截面 alpha                             │
+│ REGIME           │ 市场状态 / regime                            │
+│ EVENT_DRIVEN     │ 事件驱动（爆仓、funding spike 等）            │
+└──────────────────┴─────────────────────────────────────────────┘
 """
 
-from typing import Dict, Optional
-from .schema import FeatureDef, FeatureCategory, FeatureValueType
+from typing import Dict, List, Optional
+from .schema import FeatureDef, FeatureCategory, FeatureValueType, AlphaFamily
 
 
-# ========== 唯一真相源：特征注册表 ==========
 FEATURE_REGISTRY: Dict[str, FeatureDef] = {}
 
 
-# ========== 原始 K 线特征 ==========
+# =====================================================================
+# PRICE_ACTION Family
+# =====================================================================
+
 _raw_kline_features = [
     FeatureDef(
         name="open",
@@ -29,6 +48,7 @@ _raw_kline_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="K线开盘价",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="high",
@@ -37,6 +57,7 @@ _raw_kline_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="K线最高价",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="low",
@@ -45,6 +66,7 @@ _raw_kline_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="K线最低价",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="close",
@@ -53,6 +75,7 @@ _raw_kline_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="K线收盘价",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="volume",
@@ -61,13 +84,11 @@ _raw_kline_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="K线成交量",
+        alpha_family=AlphaFamily.VOLUME,
     ),
 ]
 
-
-# ========== 技术指标特征 ==========
-_technical_features = [
-    # RSI 系列
+_price_action_features = [
     FeatureDef(
         name="rsi_14",
         category=FeatureCategory.TECHNICAL,
@@ -75,6 +96,7 @@ _technical_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="14周期 RSI 相对强弱指标",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="rsi_7",
@@ -83,6 +105,7 @@ _technical_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="7周期 RSI 相对强弱指标",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="rsi_21",
@@ -91,9 +114,8 @@ _technical_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="21周期 RSI 相对强弱指标",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
-    
-    # EMA 系列
     FeatureDef(
         name="ema_10",
         category=FeatureCategory.TECHNICAL,
@@ -101,6 +123,7 @@ _technical_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="10周期指数移动平均线",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="ema_20",
@@ -109,6 +132,7 @@ _technical_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="20周期指数移动平均线",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="ema_50",
@@ -117,9 +141,8 @@ _technical_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="50周期指数移动平均线",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
-    
-    # SMA 系列
     FeatureDef(
         name="sma_10",
         category=FeatureCategory.TECHNICAL,
@@ -127,6 +150,7 @@ _technical_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="10周期简单移动平均线",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="sma_20",
@@ -135,6 +159,7 @@ _technical_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="20周期简单移动平均线",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="sma_50",
@@ -143,6 +168,7 @@ _technical_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="50周期简单移动平均线",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="sma_100",
@@ -151,9 +177,8 @@ _technical_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="100周期简单移动平均线",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
-    
-    # MACD 系列
     FeatureDef(
         name="macd",
         category=FeatureCategory.TECHNICAL,
@@ -161,6 +186,7 @@ _technical_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="MACD 主指标线 (DIF)",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="macd_signal",
@@ -169,6 +195,7 @@ _technical_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="MACD 信号线 (DEA)",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="macd_hist",
@@ -177,103 +204,8 @@ _technical_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="MACD 柱状图 (Histogram)",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
-    
-    # 布林带系列
-    FeatureDef(
-        name="bb_upper",
-        category=FeatureCategory.TECHNICAL,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["kline"],
-        description="布林带上轨",
-    ),
-    FeatureDef(
-        name="bb_middle",
-        category=FeatureCategory.TECHNICAL,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["kline"],
-        description="布林带中轨",
-    ),
-    FeatureDef(
-        name="bb_lower",
-        category=FeatureCategory.TECHNICAL,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["kline"],
-        description="布林带下轨",
-    ),
-    FeatureDef(
-        name="bb_width",
-        category=FeatureCategory.TECHNICAL,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["kline"],
-        description="布林带宽度 (绝对)",
-    ),
-    FeatureDef(
-        name="bb_width_pct",
-        category=FeatureCategory.TECHNICAL,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["kline"],
-        description="布林带宽度 (百分比)",
-    ),
-    
-    # ATR 系列
-    FeatureDef(
-        name="atr_14",
-        category=FeatureCategory.TECHNICAL,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["kline"],
-        description="14周期平均真实波幅",
-    ),
-    FeatureDef(
-        name="atr",
-        category=FeatureCategory.TECHNICAL,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["kline"],
-        description="平均真实波幅 (ATR_14 别名)",
-    ),
-    FeatureDef(
-        name="atr_pct",
-        category=FeatureCategory.TECHNICAL,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["kline"],
-        description="ATR 百分比 (相对于价格)",
-    ),
-    
-    # 成交量衍生
-    FeatureDef(
-        name="volume_ma",
-        category=FeatureCategory.TECHNICAL,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["kline"],
-        description="成交量移动平均",
-    ),
-    FeatureDef(
-        name="volume_zscore",
-        category=FeatureCategory.TECHNICAL,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["kline"],
-        description="成交量 Z-Score",
-    ),
-    FeatureDef(
-        name="volume_ratio",
-        category=FeatureCategory.TECHNICAL,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["kline"],
-        description="成交量比率 (当前/MA)",
-    ),
-    
-    # 其他技术指标
     FeatureDef(
         name="momentum_10",
         category=FeatureCategory.TECHNICAL,
@@ -281,6 +213,7 @@ _technical_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="10周期动量指标",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="slope",
@@ -289,469 +222,8 @@ _technical_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="价格趋势斜率",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
-    FeatureDef(
-        name="realized_vol",
-        category=FeatureCategory.TECHNICAL,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["kline"],
-        description="已实现波动率",
-    ),
-    FeatureDef(
-        name="realized_vol_zscore",
-        category=FeatureCategory.TECHNICAL,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["kline"],
-        description="已实现波动率 Z-Score",
-    ),
-]
-
-
-# ========== 衍生品特征 ==========
-_derivatives_features = [
-    # 持仓量
-    FeatureDef(
-        name="oi",
-        category=FeatureCategory.DERIVATIVES,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["open_interest"],
-        description="持仓量 (Open Interest)",
-    ),
-    FeatureDef(
-        name="oi_delta",
-        category=FeatureCategory.DERIVATIVES,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["open_interest"],
-        description="持仓量变化量",
-    ),
-    FeatureDef(
-        name="oi_zscore",
-        category=FeatureCategory.DERIVATIVES,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["open_interest"],
-        description="持仓量 Z-Score",
-    ),
-    FeatureDef(
-        name="oi_history",
-        category=FeatureCategory.DERIVATIVES,
-        value_type=FeatureValueType.LIST,
-        default_timeframes=[],
-        required_sources=["open_interest"],
-        description="持仓量历史序列",
-    ),
-    
-    # 资金费率
-    FeatureDef(
-        name="funding_rate",
-        category=FeatureCategory.DERIVATIVES,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["funding"],
-        description="资金费率",
-    ),
-    FeatureDef(
-        name="funding_zscore",
-        category=FeatureCategory.DERIVATIVES,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["funding"],
-        description="资金费率 Z-Score",
-    ),
-    FeatureDef(
-        name="funding_history",
-        category=FeatureCategory.DERIVATIVES,
-        value_type=FeatureValueType.LIST,
-        default_timeframes=[],
-        required_sources=["funding"],
-        description="资金费率历史序列",
-    ),
-    
-    # 其他衍生品
-    FeatureDef(
-        name="funding_mark_price",
-        category=FeatureCategory.DERIVATIVES,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["funding"],
-        description="标记价格",
-    ),
-    FeatureDef(
-        name="funding_index_price",
-        category=FeatureCategory.DERIVATIVES,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["funding"],
-        description="指数价格",
-    ),
-    FeatureDef(
-        name="mark_price",
-        category=FeatureCategory.DERIVATIVES,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["funding"],
-        description="标记价格 (别名)",
-    ),
-    FeatureDef(
-        name="index_price",
-        category=FeatureCategory.DERIVATIVES,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["funding"],
-        description="指数价格 (别名)",
-    ),
-]
-
-
-# ========== 强平特征 ==========
-_liquidation_features = [
-    FeatureDef(
-        name="liquidation_long",
-        category=FeatureCategory.LIQUIDATION,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["liquidation"],
-        description="多头强平量",
-    ),
-    FeatureDef(
-        name="liquidation_short",
-        category=FeatureCategory.LIQUIDATION,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["liquidation"],
-        description="空头强平量",
-    ),
-    FeatureDef(
-        name="liquidation_total",
-        category=FeatureCategory.LIQUIDATION,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["liquidation"],
-        description="总强平量",
-    ),
-    FeatureDef(
-        name="liquidation_long_zscore",
-        category=FeatureCategory.LIQUIDATION,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["liquidation"],
-        description="多头强平量 Z-Score",
-    ),
-    FeatureDef(
-        name="liquidation_short_zscore",
-        category=FeatureCategory.LIQUIDATION,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["liquidation"],
-        description="空头强平量 Z-Score",
-    ),
-    FeatureDef(
-        name="liquidation_reversal_signal",
-        category=FeatureCategory.LIQUIDATION,
-        value_type=FeatureValueType.BOOL,
-        default_timeframes=[],
-        required_sources=["liquidation"],
-        description="强平反转信号",
-    ),
-    FeatureDef(
-        name="liquidation_side",
-        category=FeatureCategory.LIQUIDATION,
-        value_type=FeatureValueType.STRING,
-        default_timeframes=[],
-        required_sources=["liquidation"],
-        description="强平方向",
-    ),
-    FeatureDef(
-        name="liquidation_price",
-        category=FeatureCategory.LIQUIDATION,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["liquidation"],
-        description="强平价格",
-    ),
-    FeatureDef(
-        name="liquidation_quantity",
-        category=FeatureCategory.LIQUIDATION,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["liquidation"],
-        description="强平数量",
-    ),
-    FeatureDef(
-        name="liquidation_value_usd",
-        category=FeatureCategory.LIQUIDATION,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["liquidation"],
-        description="强平价值 (USD)",
-    ),
-]
-
-
-# ========== 订单簿特征 ==========
-_orderbook_features = [
-    FeatureDef(
-        name="spread",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="买卖价差 (绝对)",
-    ),
-    FeatureDef(
-        name="spread_bps",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="买卖价差 (基点)",
-    ),
-    FeatureDef(
-        name="depth_ratio",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="买卖深度比率",
-    ),
-    FeatureDef(
-        name="top5_bid_depth",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="Top5 买方深度",
-    ),
-    FeatureDef(
-        name="top5_ask_depth",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="Top5 卖方深度",
-    ),
-    FeatureDef(
-        name="microprice",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="微观价格 (深度加权中间价)",
-    ),
-    FeatureDef(
-        name="imbalance_5",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="Top5 订单不平衡度",
-    ),
-    FeatureDef(
-        name="imbalance_20",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="Top20 订单不平衡度",
-    ),
-    FeatureDef(
-        name="is_vacuum",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.BOOL,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="是否流动性真空",
-    ),
-    FeatureDef(
-        name="vacuum_score",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="流动性真空评分",
-    ),
-    FeatureDef(
-        name="cancel_rate",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="撤单率",
-    ),
-    FeatureDef(
-        name="liquidity_vacuum",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.BOOL,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="流动性真空 (is_vacuum 别名)",
-    ),
-    FeatureDef(
-        name="bid_price_0",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="买一价",
-    ),
-    FeatureDef(
-        name="bid_volume_0",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="买一量",
-    ),
-    FeatureDef(
-        name="ask_price_0",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="卖一价",
-    ),
-    FeatureDef(
-        name="ask_volume_0",
-        category=FeatureCategory.ORDERBOOK,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["orderbook"],
-        description="卖一量",
-    ),
-]
-
-
-# ========== 资金流特征 ==========
-_flow_features = [
-    FeatureDef(
-        name="cvd",
-        category=FeatureCategory.FLOW,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["trade"],
-        description="成交量 delta (Cumulative Volume Delta)",
-    ),
-    FeatureDef(
-        name="cvd_slope",
-        category=FeatureCategory.FLOW,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["trade"],
-        description="CVD 斜率",
-    ),
-    FeatureDef(
-        name="cumulative_delta",
-        category=FeatureCategory.FLOW,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["trade"],
-        description="累计 delta",
-    ),
-    FeatureDef(
-        name="aggressive_buy_volume",
-        category=FeatureCategory.FLOW,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["trade"],
-        description="主动买入成交量",
-    ),
-    FeatureDef(
-        name="aggressive_sell_volume",
-        category=FeatureCategory.FLOW,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["trade"],
-        description="主动卖出成交量",
-    ),
-    FeatureDef(
-        name="aggressive_buy",
-        category=FeatureCategory.FLOW,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["trade"],
-        description="主动买入 (aggressive_buy_volume 别名)",
-    ),
-    FeatureDef(
-        name="aggressive_sell",
-        category=FeatureCategory.FLOW,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["trade"],
-        description="主动卖出 (aggressive_sell_volume 别名)",
-    ),
-    FeatureDef(
-        name="aggressive_ratio",
-        category=FeatureCategory.FLOW,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["trade"],
-        description="主动买卖比率",
-    ),
-    FeatureDef(
-        name="whale_buy_count",
-        category=FeatureCategory.FLOW,
-        value_type=FeatureValueType.INT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["trade"],
-        description="大户买入次数",
-    ),
-    FeatureDef(
-        name="whale_sell_count",
-        category=FeatureCategory.FLOW,
-        value_type=FeatureValueType.INT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["trade"],
-        description="大户卖出次数",
-    ),
-    FeatureDef(
-        name="whale_buy_volume",
-        category=FeatureCategory.FLOW,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["trade"],
-        description="大户买入成交量",
-    ),
-    FeatureDef(
-        name="whale_sell_volume",
-        category=FeatureCategory.FLOW,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["trade"],
-        description="大户卖出成交量",
-    ),
-    FeatureDef(
-        name="trade_delta",
-        category=FeatureCategory.FLOW,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["trade"],
-        description="交易 delta (CVD 别名)",
-    ),
-    FeatureDef(
-        name="trade_price",
-        category=FeatureCategory.FLOW,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["trade"],
-        description="最新成交价",
-    ),
-    FeatureDef(
-        name="trade_volume",
-        category=FeatureCategory.FLOW,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
-        required_sources=["trade"],
-        description="最新成交量",
-    ),
-]
-
-
-# ========== 价格衍生特征 ==========
-_price_derived_features = [
     FeatureDef(
         name="return_1h",
         category=FeatureCategory.TECHNICAL,
@@ -759,6 +231,7 @@ _price_derived_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="1小时收益率",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="return_24h",
@@ -767,6 +240,7 @@ _price_derived_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="24小时收益率",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="change",
@@ -775,6 +249,7 @@ _price_derived_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="价格变化量",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="change_percent",
@@ -783,6 +258,7 @@ _price_derived_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="价格变化百分比",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="closes",
@@ -791,6 +267,7 @@ _price_derived_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="收盘价历史序列",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="highs",
@@ -799,6 +276,7 @@ _price_derived_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="最高价历史序列",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="lows",
@@ -807,6 +285,7 @@ _price_derived_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="最低价历史序列",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="support",
@@ -815,6 +294,7 @@ _price_derived_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="支撑位",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="resistance",
@@ -823,6 +303,7 @@ _price_derived_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="阻力位",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="structure",
@@ -831,6 +312,7 @@ _price_derived_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="价格结构",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="strength",
@@ -839,6 +321,7 @@ _price_derived_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="趋势强度",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
     FeatureDef(
         name="momentum_score",
@@ -847,12 +330,874 @@ _price_derived_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="动量评分",
+        alpha_family=AlphaFamily.PRICE_ACTION,
+    ),
+    FeatureDef(
+        name="drawdown_from_high",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="从高点回撤幅度",
+        alpha_family=AlphaFamily.PRICE_ACTION,
     ),
 ]
 
 
-# ========== 跨市场特征 ==========
-_cross_market_features = [
+# =====================================================================
+# VOLATILITY Family
+# =====================================================================
+
+_volatility_features = [
+    FeatureDef(
+        name="bb_upper",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="布林带上轨",
+        alpha_family=AlphaFamily.VOLATILITY,
+    ),
+    FeatureDef(
+        name="bb_middle",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="布林带中轨",
+        alpha_family=AlphaFamily.VOLATILITY,
+    ),
+    FeatureDef(
+        name="bb_lower",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="布林带下轨",
+        alpha_family=AlphaFamily.VOLATILITY,
+    ),
+    FeatureDef(
+        name="bb_width",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="布林带宽度 (绝对)",
+        alpha_family=AlphaFamily.VOLATILITY,
+    ),
+    FeatureDef(
+        name="bb_width_pct",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="布林带宽度 (百分比)",
+        alpha_family=AlphaFamily.VOLATILITY,
+    ),
+    FeatureDef(
+        name="atr_14",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="14周期平均真实波幅",
+        alpha_family=AlphaFamily.VOLATILITY,
+    ),
+    FeatureDef(
+        name="atr",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="平均真实波幅 (ATR_14 别名)",
+        alpha_family=AlphaFamily.VOLATILITY,
+    ),
+    FeatureDef(
+        name="atr_pct",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="ATR 百分比 (相对于价格)",
+        alpha_family=AlphaFamily.VOLATILITY,
+    ),
+    FeatureDef(
+        name="realized_vol",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="已实现波动率",
+        alpha_family=AlphaFamily.VOLATILITY,
+    ),
+    FeatureDef(
+        name="realized_vol_zscore",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="已实现波动率 Z-Score",
+        alpha_family=AlphaFamily.VOLATILITY,
+    ),
+    FeatureDef(
+        name="volatility_zscore",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="波动率 Z-Score (realized_vol_zscore 别名)",
+        alpha_family=AlphaFamily.VOLATILITY,
+    ),
+]
+
+
+# =====================================================================
+# VOLUME Family
+# =====================================================================
+
+_volume_features = [
+    FeatureDef(
+        name="volume_ma",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="成交量移动平均",
+        alpha_family=AlphaFamily.VOLUME,
+    ),
+    FeatureDef(
+        name="volume_zscore",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="成交量 Z-Score",
+        alpha_family=AlphaFamily.VOLUME,
+    ),
+    FeatureDef(
+        name="volume_ratio",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="成交量比率 (当前/MA)",
+        alpha_family=AlphaFamily.VOLUME,
+    ),
+]
+
+
+# =====================================================================
+# FUNDING Family
+# =====================================================================
+
+_funding_features = [
+    FeatureDef(
+        name="funding_rate",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["funding"],
+        description="资金费率",
+        alpha_family=AlphaFamily.FUNDING,
+    ),
+    FeatureDef(
+        name="funding_zscore",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["funding"],
+        description="资金费率 Z-Score",
+        alpha_family=AlphaFamily.FUNDING,
+    ),
+    FeatureDef(
+        name="funding_history",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.LIST,
+        default_timeframes=[],
+        required_sources=["funding"],
+        description="资金费率历史序列",
+        alpha_family=AlphaFamily.FUNDING,
+    ),
+    FeatureDef(
+        name="funding_mark_price",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["funding"],
+        description="标记价格",
+        alpha_family=AlphaFamily.FUNDING,
+    ),
+    FeatureDef(
+        name="funding_index_price",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["funding"],
+        description="指数价格",
+        alpha_family=AlphaFamily.FUNDING,
+    ),
+    FeatureDef(
+        name="mark_price",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["funding"],
+        description="标记价格 (别名)",
+        alpha_family=AlphaFamily.FUNDING,
+    ),
+    FeatureDef(
+        name="index_price",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["funding"],
+        description="指数价格 (别名)",
+        alpha_family=AlphaFamily.FUNDING,
+    ),
+    FeatureDef(
+        name="funding_extreme_reversal",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["funding", "open_interest"],
+        description="资金费率极端反转信号",
+        alpha_family=AlphaFamily.FUNDING,
+    ),
+]
+
+
+# =====================================================================
+# OPEN_INTEREST Family
+# =====================================================================
+
+_open_interest_features = [
+    FeatureDef(
+        name="oi",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["open_interest"],
+        description="持仓量 (Open Interest)",
+        alpha_family=AlphaFamily.OPEN_INTEREST,
+    ),
+    FeatureDef(
+        name="oi_delta",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["open_interest"],
+        description="持仓量变化量",
+        alpha_family=AlphaFamily.OPEN_INTEREST,
+    ),
+    FeatureDef(
+        name="oi_zscore",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["open_interest"],
+        description="持仓量 Z-Score",
+        alpha_family=AlphaFamily.OPEN_INTEREST,
+    ),
+    FeatureDef(
+        name="oi_history",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.LIST,
+        default_timeframes=[],
+        required_sources=["open_interest"],
+        description="持仓量历史序列",
+        alpha_family=AlphaFamily.OPEN_INTEREST,
+    ),
+    FeatureDef(
+        name="oi_change",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["open_interest"],
+        description="持仓量变化率",
+        alpha_family=AlphaFamily.OPEN_INTEREST,
+    ),
+    FeatureDef(
+        name="oi_funding_divergence",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["open_interest", "funding"],
+        description="OI增长与Funding极端的背离",
+        alpha_family=AlphaFamily.OPEN_INTEREST,
+    ),
+    FeatureDef(
+        name="oi_squeeze_probability",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["open_interest", "funding"],
+        description="杠杆挤压概率 (高OI+极端Funding)",
+        alpha_family=AlphaFamily.OPEN_INTEREST,
+    ),
+    FeatureDef(
+        name="oi_liq_pressure",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["open_interest", "funding"],
+        description="潜在踩踏压力 (OI×Funding)",
+        alpha_family=AlphaFamily.OPEN_INTEREST,
+    ),
+    FeatureDef(
+        name="leverage_crowdedness",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["open_interest", "funding"],
+        description="杠杆拥挤度",
+        alpha_family=AlphaFamily.OPEN_INTEREST,
+    ),
+    FeatureDef(
+        name="price_oi_divergence",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["open_interest", "kline"],
+        description="价格与OI背离 (squeeze signal)",
+        alpha_family=AlphaFamily.OPEN_INTEREST,
+    ),
+]
+
+
+# =====================================================================
+# ORDER_FLOW Family
+# =====================================================================
+
+_order_flow_features = [
+    FeatureDef(
+        name="cvd",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="成交量 delta (Cumulative Volume Delta)",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="cvd_slope",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="CVD 斜率",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="cvd_delta",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="CVD 变化量",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="cvd_zscore",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="CVD Z-Score",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="cumulative_delta",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="累计 delta",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="aggressive_buy_volume",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="主动买入成交量",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="aggressive_sell_volume",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="主动卖出成交量",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="aggressive_buy",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="主动买入 (aggressive_buy_volume 别名)",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="aggressive_sell",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="主动卖出 (aggressive_sell_volume 别名)",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="aggressive_ratio",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="主动买卖比率",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="taker_buy_ratio",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="Taker 买入占比",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="buy_sell_ratio",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="买卖量比率",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="trade_imbalance",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="买卖失衡度",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="trade_delta",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="交易 delta (CVD 别名)",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="trade_velocity",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="成交速度 (笔/秒)",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="large_trade_ratio",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="大单成交占比",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="large_trade_volume",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="大单成交量",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="whale_buy_count",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.INT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="大户买入次数",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="whale_sell_count",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.INT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="大户卖出次数",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="whale_buy_volume",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="大户买入成交量",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="whale_sell_volume",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="大户卖出成交量",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="sweep_buy_score",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="买入扫单评分",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="sweep_sell_score",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="卖出扫单评分",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="trade_pressure_score",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="交易压力综合评分",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="long_pressure_score",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="多头压力评分",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="short_pressure_score",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="空头压力评分",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="squeeze_pressure_score",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="挤压压力评分 (替代OI条件)",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="flush_pressure_score",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="冲刷压力评分 (长期squeeze释放)",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="trade_price",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="最新成交价",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+    FeatureDef(
+        name="trade_volume",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="最新成交量",
+        alpha_family=AlphaFamily.ORDER_FLOW,
+    ),
+]
+
+
+# =====================================================================
+# LIQUIDITY Family (Orderbook + Microstructure)
+# =====================================================================
+
+_liquidity_features = [
+    FeatureDef(
+        name="spread",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="买卖价差 (绝对)",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="spread_bps",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="买卖价差 (基点)",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="spread_estimate",
+        category=FeatureCategory.MICROSTRUCTURE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="价差估计 (由Trade合成)",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="spread_pct_estimate",
+        category=FeatureCategory.MICROSTRUCTURE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="价差百分比估计 (由Trade合成)",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="depth_ratio",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="买卖深度比率",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="top5_bid_depth",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="Top5 买方深度",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="top5_ask_depth",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="Top5 卖方深度",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="microprice",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="微观价格 (深度加权中间价)",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="microprice_estimate",
+        category=FeatureCategory.MICROSTRUCTURE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="微价格估计 (由Trade合成)",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="imbalance_5",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="Top5 订单不平衡度",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="imbalance_20",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="Top20 订单不平衡度",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="imbalance_1",
+        category=FeatureCategory.MICROSTRUCTURE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="1档不平衡度 (由Trade合成)",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="imbalance_10",
+        category=FeatureCategory.MICROSTRUCTURE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="10档不平衡度 (由Trade合成)",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="imbalance_slope",
+        category=FeatureCategory.MICROSTRUCTURE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="不平衡度变化斜率",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="depth_pressure",
+        category=FeatureCategory.MICROSTRUCTURE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="深度压力 (imbalance × volume)",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="depth_change",
+        category=FeatureCategory.MICROSTRUCTURE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="深度比率变化率",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="is_vacuum",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.BOOL,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="是否流动性真空",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="vacuum_score",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="流动性真空评分",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="liquidity_vacuum",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.BOOL,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="流动性真空 (is_vacuum 别名)",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="liquidity_shift",
+        category=FeatureCategory.MICROSTRUCTURE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="流动性转移 (delta/total_volume)",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="cancel_rate",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="撤单率",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="spoof_probability",
+        category=FeatureCategory.MICROSTRUCTURE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="假挂单概率",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="wall_detection",
+        category=FeatureCategory.MICROSTRUCTURE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="大单墙检测",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="bid_price_0",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="买一价",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="bid_volume_0",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="买一量",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="ask_price_0",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="卖一价",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+    FeatureDef(
+        name="ask_volume_0",
+        category=FeatureCategory.ORDERBOOK,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["orderbook"],
+        description="卖一量",
+        alpha_family=AlphaFamily.LIQUIDITY,
+    ),
+]
+
+
+# =====================================================================
+# CROSS_SECTIONAL Family
+# =====================================================================
+
+_cross_sectional_features = [
     FeatureDef(
         name="binance_return",
         category=FeatureCategory.CROSS_MARKET,
@@ -860,6 +1205,7 @@ _cross_market_features = [
         default_timeframes=[],
         required_sources=["cross_market"],
         description="币安收益率",
+        alpha_family=AlphaFamily.CROSS_SECTIONAL,
     ),
     FeatureDef(
         name="okx_return",
@@ -868,6 +1214,7 @@ _cross_market_features = [
         default_timeframes=[],
         required_sources=["cross_market"],
         description="OKX 收益率",
+        alpha_family=AlphaFamily.CROSS_SECTIONAL,
     ),
     FeatureDef(
         name="bybit_return",
@@ -876,6 +1223,7 @@ _cross_market_features = [
         default_timeframes=[],
         required_sources=["cross_market"],
         description="Bybit 收益率",
+        alpha_family=AlphaFamily.CROSS_SECTIONAL,
     ),
     FeatureDef(
         name="basis",
@@ -884,6 +1232,7 @@ _cross_market_features = [
         default_timeframes=[],
         required_sources=["cross_market"],
         description="基差",
+        alpha_family=AlphaFamily.CROSS_SECTIONAL,
     ),
     FeatureDef(
         name="premium",
@@ -892,6 +1241,7 @@ _cross_market_features = [
         default_timeframes=[],
         required_sources=["cross_market"],
         description="溢价",
+        alpha_family=AlphaFamily.CROSS_SECTIONAL,
     ),
     FeatureDef(
         name="lead_exchange",
@@ -900,6 +1250,7 @@ _cross_market_features = [
         default_timeframes=[],
         required_sources=["cross_market"],
         description="领先交易所",
+        alpha_family=AlphaFamily.CROSS_SECTIONAL,
     ),
     FeatureDef(
         name="lag_exchange",
@@ -908,6 +1259,7 @@ _cross_market_features = [
         default_timeframes=[],
         required_sources=["cross_market"],
         description="落后交易所",
+        alpha_family=AlphaFamily.CROSS_SECTIONAL,
     ),
     FeatureDef(
         name="lead_lag_score",
@@ -916,12 +1268,61 @@ _cross_market_features = [
         default_timeframes=[],
         required_sources=["cross_market"],
         description="领先落后评分",
+        alpha_family=AlphaFamily.CROSS_SECTIONAL,
+    ),
+    FeatureDef(
+        name="relative_strength",
+        category=FeatureCategory.CROSS_MARKET,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1h", "4h", "1d"],
+        required_sources=["cross_market"],
+        description="相对强弱 (vs BTC)",
+        alpha_family=AlphaFamily.CROSS_SECTIONAL,
+    ),
+    FeatureDef(
+        name="btc_beta",
+        category=FeatureCategory.CROSS_MARKET,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1h", "4h", "1d"],
+        required_sources=["cross_market"],
+        description="BTC Beta 系数",
+        alpha_family=AlphaFamily.CROSS_SECTIONAL,
+    ),
+    FeatureDef(
+        name="btc_beta_residual",
+        category=FeatureCategory.CROSS_MARKET,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1h", "4h", "1d"],
+        required_sources=["cross_market"],
+        description="BTC Beta 残差 (beta-neutral alpha)",
+        alpha_family=AlphaFamily.CROSS_SECTIONAL,
+    ),
+    FeatureDef(
+        name="volume_rank_cross_section",
+        category=FeatureCategory.CROSS_MARKET,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1h", "4h", "1d"],
+        required_sources=["cross_market"],
+        description="跨币种成交量排名",
+        alpha_family=AlphaFamily.CROSS_SECTIONAL,
+    ),
+    FeatureDef(
+        name="sector_rotation",
+        category=FeatureCategory.CROSS_MARKET,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["4h", "1d"],
+        required_sources=["cross_market"],
+        description="板块轮动信号",
+        alpha_family=AlphaFamily.CROSS_SECTIONAL,
     ),
 ]
 
 
-# ========== 风险特征 ==========
-_risk_features = [
+# =====================================================================
+# REGIME Family
+# =====================================================================
+
+_regime_features = [
     FeatureDef(
         name="high_volatility",
         category=FeatureCategory.COMPOSITE,
@@ -929,6 +1330,7 @@ _risk_features = [
         default_timeframes=[],
         required_sources=["composite"],
         description="高波动率标记",
+        alpha_family=AlphaFamily.REGIME,
     ),
     FeatureDef(
         name="low_liquidity",
@@ -937,6 +1339,276 @@ _risk_features = [
         default_timeframes=[],
         required_sources=["composite"],
         description="低流动性标记",
+        alpha_family=AlphaFamily.REGIME,
+    ),
+    FeatureDef(
+        name="regime_change",
+        category=FeatureCategory.COMPOSITE,
+        value_type=FeatureValueType.BOOL,
+        default_timeframes=[],
+        required_sources=["composite"],
+        description="regime 切换标记",
+        alpha_family=AlphaFamily.REGIME,
+    ),
+    FeatureDef(
+        name="extreme_move",
+        category=FeatureCategory.COMPOSITE,
+        value_type=FeatureValueType.BOOL,
+        default_timeframes=[],
+        required_sources=["composite"],
+        description="极端行情标记",
+        alpha_family=AlphaFamily.REGIME,
+    ),
+    FeatureDef(
+        name="risk_multiplier",
+        category=FeatureCategory.COMPOSITE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["composite"],
+        description="风险乘数",
+        alpha_family=AlphaFamily.REGIME,
+    ),
+    FeatureDef(
+        name="volatility_regime",
+        category=FeatureCategory.COMPOSITE,
+        value_type=FeatureValueType.STRING,
+        default_timeframes=[],
+        required_sources=["composite"],
+        description="波动率 regime (low/normal/high/extreme)",
+        alpha_family=AlphaFamily.REGIME,
+    ),
+    FeatureDef(
+        name="trend_regime",
+        category=FeatureCategory.COMPOSITE,
+        value_type=FeatureValueType.STRING,
+        default_timeframes=[],
+        required_sources=["composite"],
+        description="趋势 regime (trend/chop/neutral)",
+        alpha_family=AlphaFamily.REGIME,
+    ),
+    FeatureDef(
+        name="liquidity_regime",
+        category=FeatureCategory.COMPOSITE,
+        value_type=FeatureValueType.STRING,
+        default_timeframes=[],
+        required_sources=["composite"],
+        description="流动性 regime (illiquid/normal/abundant)",
+        alpha_family=AlphaFamily.REGIME,
+    ),
+    FeatureDef(
+        name="risk_on_off",
+        category=FeatureCategory.COMPOSITE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["composite"],
+        description="风险偏好状态 (-1~1, risk-off ~ risk-on)",
+        alpha_family=AlphaFamily.REGIME,
+    ),
+    FeatureDef(
+        name="primary_regime",
+        category=FeatureCategory.COMPOSITE,
+        value_type=FeatureValueType.STRING,
+        default_timeframes=[],
+        required_sources=["composite"],
+        description="主 regime (trend/chop/panic/squeeze/illiquid/high_leverage/neutral)",
+        alpha_family=AlphaFamily.REGIME,
+    ),
+    FeatureDef(
+        name="regime_risk_level",
+        category=FeatureCategory.COMPOSITE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["composite"],
+        description="regime 风险等级 (0~1)",
+        alpha_family=AlphaFamily.REGIME,
+    ),
+    FeatureDef(
+        name="position_sizing_multiplier",
+        category=FeatureCategory.COMPOSITE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["composite"],
+        description="仓位大小乘数 (由regime决定)",
+        alpha_family=AlphaFamily.REGIME,
+    ),
+]
+
+
+# =====================================================================
+# EVENT_DRIVEN Family
+# =====================================================================
+
+_event_driven_features = [
+    FeatureDef(
+        name="liquidation_long",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="多头强平量",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="liquidation_short",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="空头强平量",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="liquidation_total",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="总强平量",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="liquidation_long_zscore",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="多头强平量 Z-Score",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="liquidation_short_zscore",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="空头强平量 Z-Score",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="liquidation_reversal_signal",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.BOOL,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="强平反转信号",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="liquidation_side",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.STRING,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="强平方向",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="liquidation_price",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="强平价格",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="liquidation_quantity",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="强平数量",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="liquidation_value_usd",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="强平价值 (USD)",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="liquidation_spike",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="爆仓尖峰 (Z-Score)",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="liquidation_pressure",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="爆仓压力 (long-short差值)",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="long_liq_ratio",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="多头爆仓占比",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="liquidation_cluster",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="爆仓聚集度",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="liquidation_acceleration",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="爆仓加速率",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="liquidation_chain_probability",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="连锁爆仓概率",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="long_short_liq_ratio",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="多空爆仓比率",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="funding_explosion",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.BOOL,
+        default_timeframes=[],
+        required_sources=["funding"],
+        description="资金费率爆炸事件 (|zscore|>3)",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
+    ),
+    FeatureDef(
+        name="volume_vacuum_event",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.BOOL,
+        default_timeframes=["1m", "5m", "15m"],
+        required_sources=["kline"],
+        description="成交量真空事件 (volume_zscore < -2)",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
     ),
     FeatureDef(
         name="news_event",
@@ -945,7 +1617,16 @@ _risk_features = [
         default_timeframes=[],
         required_sources=["composite"],
         description="新闻事件标记",
+        alpha_family=AlphaFamily.EVENT_DRIVEN,
     ),
+]
+
+
+# =====================================================================
+# RISK / EXECUTION (非 alpha, 保留在 COMPOSITE 但无 alpha_family)
+# =====================================================================
+
+_risk_execution_features = [
     FeatureDef(
         name="overtrading",
         category=FeatureCategory.COMPOSITE,
@@ -978,107 +1659,108 @@ _risk_features = [
         required_sources=["composite"],
         description="执行暂停标记",
     ),
-    FeatureDef(
-        name="regime_change",
-        category=FeatureCategory.COMPOSITE,
-        value_type=FeatureValueType.BOOL,
-        default_timeframes=[],
-        required_sources=["composite"],
-        description=" regime 切换标记",
-    ),
-    FeatureDef(
-        name="extreme_move",
-        category=FeatureCategory.COMPOSITE,
-        value_type=FeatureValueType.BOOL,
-        default_timeframes=[],
-        required_sources=["composite"],
-        description="极端行情标记",
-    ),
-    FeatureDef(
-        name="risk_multiplier",
-        category=FeatureCategory.COMPOSITE,
-        value_type=FeatureValueType.FLOAT,
-        default_timeframes=[],
-        required_sources=["composite"],
-        description="风险乘数",
-    ),
 ]
 
 
-# ========== 填充注册表 ==========
-for features in [
+# =====================================================================
+# 填充注册表
+# =====================================================================
+
+_ALL_FEATURE_GROUPS = [
     _raw_kline_features,
-    _technical_features,
-    _derivatives_features,
-    _liquidation_features,
-    _orderbook_features,
-    _flow_features,
-    _price_derived_features,
-    _cross_market_features,
-    _risk_features,
-]:
+    _price_action_features,
+    _volatility_features,
+    _volume_features,
+    _funding_features,
+    _open_interest_features,
+    _order_flow_features,
+    _liquidity_features,
+    _cross_sectional_features,
+    _regime_features,
+    _event_driven_features,
+    _risk_execution_features,
+]
+
+for features in _ALL_FEATURE_GROUPS:
     for feature in features:
         FEATURE_REGISTRY[feature.name] = feature
 
 
-# ========== 公共 API ==========
+# =====================================================================
+# 公共 API
+# =====================================================================
+
 def get_feature_def(name: str) -> Optional[FeatureDef]:
-    """
-    获取特征定义
-    
-    Args:
-        name: 特征名称（会通过 aliases 归一化）
-    
-    Returns:
-        FeatureDef 或 None
-    """
     from .aliases import normalize_feature_name
     normalized_name = normalize_feature_name(name)
     return FEATURE_REGISTRY.get(normalized_name)
 
 
 def is_feature_registered(name: str) -> bool:
-    """
-    检查特征是否已注册
-    
-    Args:
-        name: 特征名称
-    
-    Returns:
-        是否在注册表中
-    """
     from .aliases import normalize_feature_name
     normalized_name = normalize_feature_name(name)
     return normalized_name in FEATURE_REGISTRY
 
 
-def list_features_by_category(category: FeatureCategory) -> list[FeatureDef]:
-    """
-    按分类列出所有特征
-    
-    Args:
-        category: 特征分类
-    
-    Returns:
-        该分类的 FeatureDef 列表
-    """
+def list_features_by_category(category: FeatureCategory) -> List[FeatureDef]:
     return [
         feature for feature in FEATURE_REGISTRY.values()
         if feature.category == category
     ]
 
 
-def list_all_feature_names() -> list[str]:
-    """
-    列出所有已注册的特征名称
-    
-    Returns:
-        特征名称列表
-    """
+def list_features_by_alpha_family(family: AlphaFamily) -> List[FeatureDef]:
+    return [
+        feature for feature in FEATURE_REGISTRY.values()
+        if feature.alpha_family == family
+    ]
+
+
+def list_all_feature_names() -> List[str]:
     return list(FEATURE_REGISTRY.keys())
 
 
-# ========== 导入时校验（安全检查） ==========
+def get_alpha_family_coverage() -> Dict[AlphaFamily, Dict[str, int]]:
+    """返回每个 AlphaFamily 的覆盖情况
+
+    Returns:
+        {family: {"count": N, "with_extractor": M}}
+        with_extractor: 有对应提取代码的 feature 数量
+    """
+    coverage: Dict[AlphaFamily, Dict[str, int]] = {}
+    for family in AlphaFamily:
+        features = list_features_by_alpha_family(family)
+        coverage[family] = {
+            "count": len(features),
+        }
+    return coverage
+
+
+def get_taxonomy_summary() -> str:
+    """返回 Feature Taxonomy 摘要"""
+    lines = []
+    lines.append("=" * 70)
+    lines.append("Feature Taxonomy Summary")
+    lines.append("=" * 70)
+
+    for family in AlphaFamily:
+        features = list_features_by_alpha_family(family)
+        names = [f.name for f in features]
+        lines.append(f"\n{family.value.upper()} ({len(features)} features):")
+        for name in names:
+            lines.append(f"  - {name}")
+
+    total = len(FEATURE_REGISTRY)
+    with_family = sum(1 for f in FEATURE_REGISTRY.values() if f.alpha_family is not None)
+    lines.append(f"\nTotal: {total} features, {with_family} with alpha_family")
+
+    return "\n".join(lines)
+
+
+# =====================================================================
+# 导入时校验
+# =====================================================================
+
 _duplicate_names = set()
 _seen_names = set()
 for name in FEATURE_REGISTRY:

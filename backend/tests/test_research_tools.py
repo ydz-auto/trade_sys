@@ -338,20 +338,20 @@ def run_simple_backtest_test(strategies, market_contexts, timestamps, prices):
     
     for strategy in strategies:
         try:
-            result = run_simple_backtest(strategy, market_contexts, timestamps, prices)
+            trades, metrics = run_simple_backtest(strategy, market_contexts, timestamps, prices)
             
-            if result.total_trades == 0:
+            if metrics.total_trades == 0:
                 print(f"[{strategy.meta.name}] 无交易，跳过")
                 continue
             
-            print(f"[{strategy.meta.name}] 交易数:{result.total_trades}, 胜率:{result.win_rate:.2%}")
-            print(f"  平均收益:{result.avg_trade_return*100:.2f}%, Sharpe:{result.sharpe_ratio:.2f}")
-            print(f"  总盈亏:{result.total_pnl:.4f}, 最大回撤:{result.max_drawdown:.4f}")
-            print(f"  盈利因子:{result.profit_factor:.2f}")
+            print(f"[{strategy.meta.name}] 交易数:{metrics.total_trades}, 胜率:{metrics.win_rate:.2%}")
+            print(f"  平均收益:{metrics.avg_trade_return*100:.2f}%, Sharpe:{metrics.sharpe_ratio:.2f}")
+            print(f"  总盈亏:{metrics.total_pnl_pct:.4f}, 最大回撤:{metrics.max_drawdown:.4f}")
+            print(f"  盈利因子:{metrics.profit_factor:.2f}")
             
-            if result.total_pnl > 0 and result.sharpe_ratio > 0.5:
+            if metrics.total_pnl_pct > 0 and metrics.sharpe_ratio > 0.5:
                 print(f"  ✓ 盈利且 Sharpe > 0.5")
-            elif result.total_pnl > 0:
+            elif metrics.total_pnl_pct > 0:
                 print(f"  ✓ 盈利")
             else:
                 print(f"  ✗ 亏损")
@@ -362,9 +362,10 @@ def run_simple_backtest_test(strategies, market_contexts, timestamps, prices):
     
     print("--- 详细回测结果 (Short Squeeze) ---")
     try:
-        result = run_simple_backtest(strategies[0], market_contexts, timestamps, prices)
-        if result.total_trades > 0:
-            print(result)
+        trades, metrics = run_simple_backtest(strategies[0], market_contexts, timestamps, prices)
+        if metrics.total_trades > 0:
+            print(f"  trades={metrics.total_trades}, win_rate={metrics.win_rate:.2%}, "
+                  f"sharpe={metrics.sharpe_ratio:.2f}, pf={metrics.profit_factor:.2f}")
     except Exception:
         print("无交易")
 
