@@ -34,7 +34,16 @@ class StrategyInstanceState:
     # Bollinger 策略
     prev_above_middle: Optional[bool] = None
     
-    # 其他策略可以在这里添加状态字段
+    # 流动性真空策略
+    avg_spread: Optional[float] = None
+    prev_top5_depth: Optional[float] = None
+    
+    # SMA交叉策略
+    sma_fast_prev: Optional[float] = None
+    sma_slow_prev: Optional[float] = None
+    
+    # 布林带普通策略
+    price_prev: Optional[float] = None
     
     # 元数据
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -44,6 +53,12 @@ class StrategyInstanceState:
     def touch(self):
         """更新最后修改时间"""
         self.updated_at_ms = int(datetime.now().timestamp() * 1000)
+    
+    def update_from_dict(self, state_dict: Dict[str, Any]):
+        """从字典更新状态"""
+        for key, value in state_dict.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
 
 
 class StrategyStateManager:

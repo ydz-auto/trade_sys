@@ -153,7 +153,7 @@ class DomainKernel:
         所有事件必须经过这里，禁止绕过
         
         流程：
-        1. 更新 Market State Machine
+        1. 更新 Market State Machine（使用 ClockAuthority 获取时间）
         2. 运行策略生成信号
         3. 发布结果事件
         
@@ -162,11 +162,16 @@ class DomainKernel:
         self._mode = KernelMode.PROCESSING
         
         try:
+            # 获取当前时间（通过 ClockAuthority，确保三范式一致性）
+            current_time_ms = self._clock.now_ms()
+            current_time = datetime.fromtimestamp(current_time_ms / 1000)
+            
             # Step 1: 更新状态机（如果启用）
             if self._state_machine:
                 self._state_machine.update(
                     event_type=event.event_type,
                     features=features,
+                    timestamp=current_time,
                 )
             
             # Step 2: 运行策略（策略完全不知道是 LIVE/REPLAY/RESEARCH）

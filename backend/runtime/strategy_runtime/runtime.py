@@ -13,6 +13,24 @@ from engines.compute.strategy.calculators import (
     calculate_macd_signal,
     calculate_trend_following_signal,
     calculate_bb_compression_signal,
+    calculate_panic_reversal,
+    calculate_oi_flush,
+    calculate_short_squeeze,
+    calculate_funding_exhaustion_trap,
+    calculate_dead_cat_echo,
+    calculate_imbalance_pressure,
+    calculate_sweep_detection,
+    calculate_liquidity_vacuum,
+    calculate_aggressive_flow,
+    calculate_volume_climax_fade,
+    calculate_weak_bounce_short,
+    calculate_breakout,
+    calculate_volatility_expansion,
+    calculate_momentum_ignition,
+    calculate_sma_crossover,
+    calculate_ema_crossover,
+    calculate_bollinger_bands,
+    calculate_momentum,
 )
 from engines.compute.strategy.strategies import (
     RSIStrategy,
@@ -71,6 +89,20 @@ class StrategyRuntime:
             'macd': self._calculate_using_macd_calculator,
             'trend_following': self._calculate_using_trend_calculator,
             'bb_compression_breakout': self._calculate_using_bollinger_calculator,
+            'panic_reversal': self._calculate_using_panic_reversal_calculator,
+            'oi_flush': self._calculate_using_oi_flush_calculator,
+            'short_squeeze': self._calculate_using_short_squeeze_calculator,
+            'funding_exhaustion_trap': self._calculate_using_funding_exhaustion_trap_calculator,
+            'dead_cat_echo': self._calculate_using_dead_cat_echo_calculator,
+            'imbalance_pressure': self._calculate_using_imbalance_pressure_calculator,
+            'sweep_detection': self._calculate_using_sweep_detection_calculator,
+            'liquidity_vacuum': self._calculate_using_liquidity_vacuum_calculator,
+            'aggressive_flow': self._calculate_using_aggressive_flow_calculator,
+            'volume_climax_fade': self._calculate_using_volume_climax_fade_calculator,
+            'weak_bounce_short': self._calculate_using_weak_bounce_short_calculator,
+            'breakout': self._calculate_using_breakout_calculator,
+            'volatility_expansion': self._calculate_using_volatility_expansion_calculator,
+            'momentum_ignition': self._calculate_using_momentum_ignition_calculator,
         }
     
     def process_strategy(
@@ -233,6 +265,318 @@ class StrategyRuntime:
             bb_middle=bb_middle,
             close=close,
             prev_above_middle=state.prev_above_middle,
+            params=params
+        )
+        
+        return self._build_signal(signal_dict, strategy_id, symbol, features), new_state
+    
+    def _calculate_using_panic_reversal_calculator(
+        self,
+        strategy_id: str,
+        symbol: str,
+        features: Dict[str, Any],
+        state: StrategyInstanceState,
+        params: Dict[str, Any]
+    ):
+        """使用恐慌反转无状态计算器"""
+        return_1h = features.get('return_1h')
+        volume_ratio = features.get('volume_ratio')
+        
+        signal_dict, new_state = calculate_panic_reversal(
+            return_1h=return_1h,
+            volume_ratio=volume_ratio,
+            params=params
+        )
+        
+        return self._build_signal(signal_dict, strategy_id, symbol, features), new_state
+    
+    def _calculate_using_oi_flush_calculator(
+        self,
+        strategy_id: str,
+        symbol: str,
+        features: Dict[str, Any],
+        state: StrategyInstanceState,
+        params: Dict[str, Any]
+    ):
+        """使用OI清洗无状态计算器"""
+        oi_delta = features.get('oi_delta')
+        funding_delta = features.get('funding_delta')
+        return_1h = features.get('return_1h')
+        close = features.get('close')
+        
+        signal_dict, new_state = calculate_oi_flush(
+            oi_delta=oi_delta,
+            funding_delta=funding_delta,
+            return_1h=return_1h,
+            close=close,
+            params=params
+        )
+        
+        return self._build_signal(signal_dict, strategy_id, symbol, features), new_state
+    
+    def _calculate_using_short_squeeze_calculator(
+        self,
+        strategy_id: str,
+        symbol: str,
+        features: Dict[str, Any],
+        state: StrategyInstanceState,
+        params: Dict[str, Any]
+    ):
+        """使用空头挤压无状态计算器"""
+        funding_zscore = features.get('funding_zscore')
+        oi_delta = features.get('oi_delta')
+        short_pressure = features.get('short_pressure')
+        
+        signal_dict, new_state = calculate_short_squeeze(
+            funding_zscore=funding_zscore,
+            oi_delta=oi_delta,
+            short_pressure=short_pressure,
+            params=params
+        )
+        
+        return self._build_signal(signal_dict, strategy_id, symbol, features), new_state
+    
+    def _calculate_using_funding_exhaustion_trap_calculator(
+        self,
+        strategy_id: str,
+        symbol: str,
+        features: Dict[str, Any],
+        state: StrategyInstanceState,
+        params: Dict[str, Any]
+    ):
+        """使用资金费率耗尽陷阱无状态计算器"""
+        funding_zscore = features.get('funding_zscore')
+        funding_divergence = features.get('funding_divergence')
+        
+        signal_dict, new_state = calculate_funding_exhaustion_trap(
+            funding_zscore=funding_zscore,
+            funding_divergence=funding_divergence,
+            params=params
+        )
+        
+        return self._build_signal(signal_dict, strategy_id, symbol, features), new_state
+    
+    def _calculate_using_dead_cat_echo_calculator(
+        self,
+        strategy_id: str,
+        symbol: str,
+        features: Dict[str, Any],
+        state: StrategyInstanceState,
+        params: Dict[str, Any]
+    ):
+        """使用死猫回声无状态计算器"""
+        return_4h = features.get('return_4h')
+        return_1h = features.get('return_1h')
+        volume_ratio = features.get('volume_ratio')
+        
+        signal_dict, new_state = calculate_dead_cat_echo(
+            return_4h=return_4h,
+            return_1h=return_1h,
+            volume_ratio=volume_ratio,
+            params=params
+        )
+        
+        return self._build_signal(signal_dict, strategy_id, symbol, features), new_state
+    
+    def _calculate_using_imbalance_pressure_calculator(
+        self,
+        strategy_id: str,
+        symbol: str,
+        features: Dict[str, Any],
+        state: StrategyInstanceState,
+        params: Dict[str, Any]
+    ):
+        """使用订单簿失衡压力无状态计算器"""
+        imbalance_5 = features.get('imbalance_5')
+        microprice = features.get('microprice')
+        mid_price = features.get('mid_price')
+        
+        signal_dict, new_state = calculate_imbalance_pressure(
+            imbalance_5=imbalance_5,
+            microprice=microprice,
+            mid_price=mid_price,
+            params=params
+        )
+        
+        return self._build_signal(signal_dict, strategy_id, symbol, features), new_state
+    
+    def _calculate_using_sweep_detection_calculator(
+        self,
+        strategy_id: str,
+        symbol: str,
+        features: Dict[str, Any],
+        state: StrategyInstanceState,
+        params: Dict[str, Any]
+    ):
+        """使用扫单检测无状态计算器"""
+        sweep_buy_score = features.get('sweep_buy_score')
+        sweep_sell_score = features.get('sweep_sell_score')
+        
+        signal_dict, new_state = calculate_sweep_detection(
+            sweep_buy_score=sweep_buy_score,
+            sweep_sell_score=sweep_sell_score,
+            params=params
+        )
+        
+        return self._build_signal(signal_dict, strategy_id, symbol, features), new_state
+    
+    def _calculate_using_liquidity_vacuum_calculator(
+        self,
+        strategy_id: str,
+        symbol: str,
+        features: Dict[str, Any],
+        state: StrategyInstanceState,
+        params: Dict[str, Any]
+    ):
+        """使用流动性真空无状态计算器"""
+        spread = features.get('spread')
+        top5_depth = features.get('top5_depth')
+        cancel_rate = features.get('cancel_rate')
+        trade_delta = features.get('trade_delta')
+        
+        signal_dict, new_state = calculate_liquidity_vacuum(
+            spread=spread,
+            top5_depth=top5_depth,
+            cancel_rate=cancel_rate,
+            trade_delta=trade_delta,
+            prev_avg_spread=state.avg_spread,
+            prev_top5_depth=state.prev_top5_depth,
+            params=params
+        )
+        
+        return self._build_signal(signal_dict, strategy_id, symbol, features), new_state
+    
+    def _calculate_using_aggressive_flow_calculator(
+        self,
+        strategy_id: str,
+        symbol: str,
+        features: Dict[str, Any],
+        state: StrategyInstanceState,
+        params: Dict[str, Any]
+    ):
+        """使用激进流向无状态计算器"""
+        cumulative_delta = features.get('cumulative_delta')
+        aggressive_buy_volume = features.get('aggressive_buy_volume')
+        aggressive_sell_volume = features.get('aggressive_sell_volume')
+        
+        signal_dict, new_state = calculate_aggressive_flow(
+            cumulative_delta=cumulative_delta,
+            aggressive_buy_volume=aggressive_buy_volume,
+            aggressive_sell_volume=aggressive_sell_volume,
+            params=params
+        )
+        
+        return self._build_signal(signal_dict, strategy_id, symbol, features), new_state
+    
+    def _calculate_using_volume_climax_fade_calculator(
+        self,
+        strategy_id: str,
+        symbol: str,
+        features: Dict[str, Any],
+        state: StrategyInstanceState,
+        params: Dict[str, Any]
+    ):
+        """使用放量高潮衰竭无状态计算器"""
+        volume_ratio = features.get('volume_ratio')
+        upper_shadow_ratio = features.get('upper_shadow_ratio')
+        return_1h = features.get('return_1h')
+        
+        signal_dict, new_state = calculate_volume_climax_fade(
+            volume_ratio=volume_ratio,
+            upper_shadow_ratio=upper_shadow_ratio,
+            return_1h=return_1h,
+            params=params
+        )
+        
+        return self._build_signal(signal_dict, strategy_id, symbol, features), new_state
+    
+    def _calculate_using_weak_bounce_short_calculator(
+        self,
+        strategy_id: str,
+        symbol: str,
+        features: Dict[str, Any],
+        state: StrategyInstanceState,
+        params: Dict[str, Any]
+    ):
+        """使用弱反弹做空无状态计算器"""
+        return_4h = features.get('return_4h')
+        return_1h = features.get('return_1h')
+        volume_ratio = features.get('volume_ratio')
+        
+        signal_dict, new_state = calculate_weak_bounce_short(
+            return_4h=return_4h,
+            return_1h=return_1h,
+            volume_ratio=volume_ratio,
+            params=params
+        )
+        
+        return self._build_signal(signal_dict, strategy_id, symbol, features), new_state
+    
+    def _calculate_using_breakout_calculator(
+        self,
+        strategy_id: str,
+        symbol: str,
+        features: Dict[str, Any],
+        state: StrategyInstanceState,
+        params: Dict[str, Any]
+    ):
+        """使用突破无状态计算器"""
+        close = features.get('close')
+        high = features.get('high')
+        low = features.get('low')
+        volume_ratio = features.get('volume_ratio')
+        range_high = features.get('range_high')
+        range_low = features.get('range_low')
+        
+        signal_dict, new_state = calculate_breakout(
+            close=close,
+            high=high,
+            low=low,
+            volume_ratio=volume_ratio,
+            range_high=range_high,
+            range_low=range_low,
+            params=params
+        )
+        
+        return self._build_signal(signal_dict, strategy_id, symbol, features), new_state
+    
+    def _calculate_using_volatility_expansion_calculator(
+        self,
+        strategy_id: str,
+        symbol: str,
+        features: Dict[str, Any],
+        state: StrategyInstanceState,
+        params: Dict[str, Any]
+    ):
+        """使用波动率扩张无状态计算器"""
+        atr_ratio = features.get('atr_ratio')
+        price_position = features.get('price_position')
+        close = features.get('close')
+        
+        signal_dict, new_state = calculate_volatility_expansion(
+            atr_ratio=atr_ratio,
+            price_position=price_position,
+            close=close,
+            params=params
+        )
+        
+        return self._build_signal(signal_dict, strategy_id, symbol, features), new_state
+    
+    def _calculate_using_momentum_ignition_calculator(
+        self,
+        strategy_id: str,
+        symbol: str,
+        features: Dict[str, Any],
+        state: StrategyInstanceState,
+        params: Dict[str, Any]
+    ):
+        """使用动量点火无状态计算器"""
+        volume_ratio = features.get('volume_ratio')
+        return_1h = features.get('return_1h')
+        
+        signal_dict, new_state = calculate_momentum_ignition(
+            volume_ratio=volume_ratio,
+            return_1h=return_1h,
             params=params
         )
         
