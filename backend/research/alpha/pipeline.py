@@ -688,6 +688,13 @@ class AlphaPipeline:
         train_bars = 30 * bars_per_day
         test_bars = 7 * bars_per_day
 
+        # For walk-forward, we use TRAIN-ONLY thresholds to avoid leakage
+        # Use the same percentile that gave us the best_params in signal testing
+        # Default to 90th percentile if not specified
+        percentile = 90.0
+        if self.percentile_thresholds:
+            percentile = self.percentile_thresholds[0]
+
         wf_result = run_feature_walk_forward(
             close=close,
             feature_vals=feature_vals,
@@ -698,6 +705,8 @@ class AlphaPipeline:
             taker_fee=self.taker_fee,
             train_bars=train_bars,
             test_bars=test_bars,
+            use_train_only_threshold=True,  # IMPORTANT: No leakage!
+            percentile=percentile,
         )
 
         if wf_result.total_windows == 0:

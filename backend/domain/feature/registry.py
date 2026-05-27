@@ -26,6 +26,7 @@ Feature Taxonomy (Alpha Family):
 │ CROSS_SECTIONAL  │ 跨币种截面 alpha                             │
 │ REGIME           │ 市场状态 / regime                            │
 │ EVENT_DRIVEN     │ 事件驱动（爆仓、funding spike 等）            │
+│ SHORT_EXHAUSTION │ 做空衰竭 / 爆顶反转                          │
 └──────────────────┴─────────────────────────────────────────────┘
 """
 
@@ -1435,6 +1436,95 @@ _regime_features = [
 
 
 # =====================================================================
+# SHORT_EXHAUSTION Family (做空衰竭 / 爆顶反转)
+# =====================================================================
+
+_short_exhaustion_features = [
+    FeatureDef(
+        name="distance_from_high",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="距离高点的百分比",
+        alpha_family=AlphaFamily.SHORT_EXHAUSTION,
+    ),
+    FeatureDef(
+        name="parabolic_ret_10",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="10周期抛物线累计收益",
+        alpha_family=AlphaFamily.SHORT_EXHAUSTION,
+    ),
+    FeatureDef(
+        name="parabolic_ret_zscore",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="抛物线收益Z-score（相对于历史）",
+        alpha_family=AlphaFamily.SHORT_EXHAUSTION,
+    ),
+    FeatureDef(
+        name="volatility_spike",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="波动率尖峰",
+        alpha_family=AlphaFamily.SHORT_EXHAUSTION,
+    ),
+    FeatureDef(
+        name="upper_wick_pct",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="上影线百分比（相对于低）",
+        alpha_family=AlphaFamily.SHORT_EXHAUSTION,
+    ),
+    FeatureDef(
+        name="consecutive_green",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.INT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="连续阳线数量",
+        alpha_family=AlphaFamily.SHORT_EXHAUSTION,
+    ),
+    FeatureDef(
+        name="new_high_60",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.INT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="60周期新高标记 (0/1)",
+        alpha_family=AlphaFamily.SHORT_EXHAUSTION,
+    ),
+    FeatureDef(
+        name="high_volume_decline",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.INT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="放量下跌标记 (0/1)",
+        alpha_family=AlphaFamily.SHORT_EXHAUSTION,
+    ),
+    FeatureDef(
+        name="funding_extreme_positive",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.INT,
+        default_timeframes=[],
+        required_sources=["funding"],
+        description="资金费率极端正向标记 (0/1) (多头拥挤)",
+        alpha_family=AlphaFamily.SHORT_EXHAUSTION,
+    ),
+]
+
+
+# =====================================================================
 # EVENT_DRIVEN Family
 # =====================================================================
 
@@ -1677,6 +1767,7 @@ _ALL_FEATURE_GROUPS = [
     _liquidity_features,
     _cross_sectional_features,
     _regime_features,
+    _short_exhaustion_features,
     _event_driven_features,
     _risk_execution_features,
 ]

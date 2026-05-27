@@ -41,6 +41,7 @@ class AlphaFamily(str, Enum):
     - CROSS_SECTIONAL: 跨币种截面 alpha
     - REGIME:        市场状态 / regime
     - EVENT_DRIVEN:  事件驱动（爆仓、funding spike 等）
+    - SHORT_EXHAUSTION: 做空衰竭 / 爆顶反转
     """
     PRICE_ACTION = "price_action"
     VOLATILITY = "volatility"
@@ -52,6 +53,7 @@ class AlphaFamily(str, Enum):
     CROSS_SECTIONAL = "cross_sectional"
     REGIME = "regime"
     EVENT_DRIVEN = "event_driven"
+    SHORT_EXHAUSTION = "short_exhaustion"
 
 
 class FeatureValueType(str, Enum):

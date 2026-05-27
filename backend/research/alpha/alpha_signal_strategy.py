@@ -236,25 +236,51 @@ def run_feature_walk_forward(
     train_bars: int = 720,
     test_bars: int = 168,
     gap_bars: int = 0,
+    use_train_only_threshold: bool = True,
+    percentile: float = 90.0,
 ) -> WalkForwardFeatureResult:
+    """
+    Walk-forward validation for feature signals.
+    
+    IMPORTANT: To avoid leakage, thresholds should be computed from TRAIN set only!
+    """
     n = len(close)
     window_results = []
     idx = 0
     window_idx = 0
 
     while idx + train_bars + gap_bars + test_bars <= n:
-        test_start = idx + train_bars + gap_bars
+        train_end = idx + train_bars
+        test_start = train_end + gap_bars
         test_end = test_start + test_bars
 
+        # Get TRAIN data for threshold calculation
+        train_feature = feature_vals[idx:train_end]
+        
+        # Get TEST data
         test_close = close[test_start:test_end]
         test_feature = feature_vals[test_start:test_end]
         test_regime = regime_labels[test_start:test_end]
+
+        # Calculate threshold from TRAIN set only if enabled
+        window_threshold = threshold
+        if use_train_only_threshold and len(train_feature) > 0:
+            valid_train = train_feature[~np.isnan(train_feature)]
+            if len(valid_train) > 0:
+                if direction == "long":
+                    # For long, we use lower tail (negative side)
+                    window_threshold = float(np.nanpercentile(np.abs(valid_train), percentile))
+                elif direction == "short":
+                    # For short, we use upper tail
+                    window_threshold = float(np.nanpercentile(np.abs(valid_train), percentile))
+                else:  # both
+                    window_threshold = float(np.nanpercentile(np.abs(valid_train), percentile))
 
         result = run_signal_test(
             close=test_close,
             feature_vals=test_feature,
             regime_labels=test_regime,
-            feature_threshold=threshold,
+            feature_threshold=window_threshold,
             holding_bars=holding_bars,
             direction=direction,
             taker_fee=taker_fee,
