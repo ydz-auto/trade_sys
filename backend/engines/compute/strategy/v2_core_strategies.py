@@ -1,28 +1,30 @@
 """
-V2 Core Strategies - 重构后的核心策略（Top 6）
+V2 Core Strategies - 重构后的核心策略（Top 5）
 
-基于 Event + State 架构实现，区别于传统 "特征堆 if 判断"
+基于 Event + MarketContext 架构实现，区别于传统 "特征堆 if 判断"
 
 策略列表（按优先级）：
 1. OpenInterestBehaviorV2 - 仓位行为策略
 2. TradePressureExhaustionV2 - 交易压力耗尽策略
 3. FundingExtremeReversalV2 - 资金费率极端反转策略
 4. LiquidationCascadeV2 - 爆仓连锁策略
-5. CVDDivergenceV2 - CVD 背离策略（待定）
-6. PanicReversalV2 - 恐慌反转策略（待定）
+5. MomentumIgnitionV2 - 动量点火策略
+
+核心设计原则（按照用户定义）：
+- 策略只读 MarketContext，不直接读 features
+- StrategyInfo 定义周期依赖和上下文需求
+- 周期设计：4h/1h 过滤，15m 出信号，5m 确认，1m 执行
 """
-from typing import Optional, Dict, Any
-from dataclasses import dataclass
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 import logging
 
 from .v2_base import (
     StateAwareStrategy,
-    EventDrivenStrategy,
-    RegimeAwareStrategy,
     StrategySignalV2,
     SignalDirection,
     SignalStrength,
+    StrategyInfo,
 )
 from domain.config.strategy_config import (
     StrategyConfigV2,
@@ -31,7 +33,7 @@ from domain.config.strategy_config import (
     RiskParams,
     StrategyType,
 )
-from domain.market_state.state import MarketState
+from domain.market_state import MarketContext
 from domain.event.base_event import BaseEvent
 from domain.event.event_type import EventType
 from infrastructure.logging import get_logger
@@ -39,240 +41,354 @@ from infrastructure.logging import get_logger
 logger = get_logger("strategy_v2_core")
 
 
+# ============== 配置工厂 ==============
+
+def create_v2_configs() -> Dict[str, StrategyConfigV2]:
+    """创建 V2 策略配置"""
+    return {
+        "open_interest_behavior_v2": StrategyConfigV2(
+            strategy_id="open_interest_behavior_v2",
+            strategy_name="Open Interest Behavior V2",
+            strategy_type=StrategyType.DERIVATIVES,
+            is_active=True,
+            entry_params=EntryParams(
+                lookback_period=24,
+                confirmation_threshold=0.6,
+                min_confidence=0.7,
+            ),
+            exit_params=ExitParams(
+                profit_take_pct=2.0,
+                stop_loss_pct=1.5,
+                trailing_stop_pct=0.5,
+            ),
+            risk_params=RiskParams(
+                max_position_size=0.1,
+                position_size_pct=0.05,
+                max_drawdown_pct=5.0,
+            ),
+        ),
+        "trade_pressure_exhaustion_v2": StrategyConfigV2(
+            strategy_id="trade_pressure_exhaustion_v2",
+            strategy_name="Trade Pressure Exhaustion V2",
+            strategy_type=StrategyType.BEHAVIORAL,
+            is_active=True,
+            entry_params=EntryParams(
+                lookback_period=12,
+                confirmation_threshold=0.7,
+                min_confidence=0.65,
+            ),
+            exit_params=ExitParams(
+                profit_take_pct=1.5,
+                stop_loss_pct=1.0,
+                trailing_stop_pct=0.3,
+            ),
+            risk_params=RiskParams(
+                max_position_size=0.08,
+                position_size_pct=0.04,
+                max_drawdown_pct=4.0,
+            ),
+        ),
+        "funding_extreme_reversal_v2": StrategyConfigV2(
+            strategy_id="funding_extreme_reversal_v2",
+            strategy_name="Funding Extreme Reversal V2",
+            strategy_type=StrategyType.DERIVATIVES,
+            is_active=True,
+            entry_params=EntryParams(
+                lookback_period=8,
+                confirmation_threshold=0.65,
+                min_confidence=0.7,
+            ),
+            exit_params=ExitParams(
+                profit_take_pct=1.8,
+                stop_loss_pct=1.2,
+                trailing_stop_pct=0.4,
+            ),
+            risk_params=RiskParams(
+                max_position_size=0.07,
+                position_size_pct=0.035,
+                max_drawdown_pct=4.5,
+            ),
+        ),
+        "liquidation_cascade_v2": StrategyConfigV2(
+            strategy_id="liquidation_cascade_v2",
+            strategy_name="Liquidation Cascade V2",
+            strategy_type=StrategyType.EVENT,
+            is_active=True,
+            entry_params=EntryParams(
+                lookback_period=6,
+                confirmation_threshold=0.6,
+                min_confidence=0.65,
+            ),
+            exit_params=ExitParams(
+                profit_take_pct=1.2,
+                stop_loss_pct=0.8,
+                trailing_stop_pct=0.2,
+            ),
+            risk_params=RiskParams(
+                max_position_size=0.06,
+                position_size_pct=0.03,
+                max_drawdown_pct=3.5,
+            ),
+        ),
+        "momentum_ignition_v2": StrategyConfigV2(
+            strategy_id="momentum_ignition_v2",
+            strategy_name="Momentum Ignition V2",
+            strategy_type=StrategyType.TECHNICAL,
+            is_active=True,
+            entry_params=EntryParams(
+                lookback_period=12,
+                confirmation_threshold=0.7,
+                min_confidence=0.75,
+            ),
+            exit_params=ExitParams(
+                profit_take_pct=2.5,
+                stop_loss_pct=1.8,
+                trailing_stop_pct=0.6,
+            ),
+            risk_params=RiskParams(
+                max_position_size=0.09,
+                position_size_pct=0.045,
+                max_drawdown_pct=5.0,
+            ),
+        ),
+    }
+
+
+# ============== 策略实现 ==============
+
 class OpenInterestBehaviorV2(StateAwareStrategy):
     """
     Open Interest 仓位行为策略（重构版）
     
-    核心逻辑（语义化，不再是原始值比较）：
-    - 趋势上涨 + OI上升 + 状态有确认 -> 做多
-    - 趋势上涨 + OI下降 + 压力耗尽 -> 做空
-    - 趋势下跌 + OI上升 + 压力积累 -> 做空
-    - 趋势下跌 + OI下降 + 压力耗尽 -> 做多
+    核心逻辑（语义化）：
+    - 主周期 15m 评估 OI 行为
+    - 1h 过滤趋势方向
+    - 5m 确认资金流
+    - 衍生品上下文提供 OI 和资金费率数据
     
-    旧代码的问题：
-    ```
-    if price_change > 0 and oi_change > 0:  # 原始值比较
-        return LONG
-    ```
-    
-    新代码的方式：
-    ```
-    if market_state.is_trending_up() and market_state.oi_regime == 'rising':
-        return LONG
-    ```
+    策略只读：
+    - ctx.tfs["15m"].*
+    - ctx.tfs["1h"].trend_state
+    - ctx.derivatives.oi
+    - ctx.derivatives.funding_rate
     """
     
-    def __init__(self, config: StrategyConfigV2):
-        super().__init__(config)
-        self.min_confidence = 0.6
+    def _define_strategy_info(self) -> StrategyInfo:
+        return StrategyInfo(
+            strategy_id=self.strategy_id,
+            strategy_name=self.strategy_name,
+            required_features=[
+                "oi", "oi_delta", "oi_zscore",
+                "funding_rate", "funding_zscore",
+                "oi_funding_divergence",
+            ],
+            required_context=[
+                "tfs.15m.flow",
+                "tfs.1h.trend_state",
+                "derivatives.oi",
+                "derivatives.funding_rate",
+            ],
+            primary_timeframe="15m",
+            confirm_timeframes=["5m", "1h"],
+            execution_timeframe="1m",
+            tags={"derivatives", "oi_behavior", "regime_aware"},
+        )
     
     def _generate_signal_impl(
         self,
-        market_state: MarketState,
+        market_context: MarketContext,
         triggering_event: Optional[BaseEvent],
-        current_features: Dict[str, Any],
+        features: Dict[str, Any],
     ) -> Optional[StrategySignalV2]:
-        """核心逻辑 - 基于 State 的语义化判断"""
+        """核心逻辑 - 基于 MarketContext 的语义化判断"""
         
-        symbol = market_state.symbol
-        confidence = market_state.confidence
+        symbol = market_context.symbol
+        info = self.strategy_info
         
-        if confidence < self.min_confidence:
+        # 读取上下文
+        tf_15m = market_context.tf(info.primary_timeframe)
+        tf_1h = market_context.tf("1h")
+        tf_5m = market_context.tf("5m")
+        derivatives = market_context.derivatives
+        
+        # ==== 大周期过滤 ====
+        if tf_1h.trend_state.name == "DOWN":
+            # 1h 下跌时，限制多头
+            if derivatives.oi_zscore > 2.0:
+                # OI 极端高，可能反转
+                base_conf = 0.7
+            else:
+                return None
+        elif tf_1h.trend_state.name == "UP":
+            base_conf = 0.75
+        else:  # RANGE
+            base_conf = 0.6
+        
+        # ==== 主周期信号 ====
+        signal_confidence = market_context.calculate_signal_confidence(
+            base_confidence=base_conf,
+            primary_timeframe=info.primary_timeframe,
+        )
+        
+        if signal_confidence < 0.6:
             return None
         
-        # ==== 多头入场场景 ====
+        # ==== 多头入场 ====
         if (
-            market_state.is_trending_up()
-            and market_state.oi_regime == 'rising'
-            and market_state.confidence > 0.7
+            tf_15m.trend_state.name == "UP"
+            and derivatives.oi_zscore > 1.0
+            and tf_5m.flow_pressure.name == "BUY"
         ):
             return StrategySignalV2(
                 strategy_id=self.strategy_id,
                 strategy_name=self.strategy_name,
                 symbol=symbol,
                 direction=SignalDirection.LONG,
-                strength=SignalStrength.STRONG if confidence > 0.8 else SignalStrength.MODERATE,
-                confidence=confidence,
+                strength=SignalStrength.STRONG if signal_confidence > 0.8 else SignalStrength.MODERATE,
+                confidence=signal_confidence,
                 triggering_event_type=triggering_event.type if triggering_event else None,
-                triggering_market_state=market_state,
-                key_features={
-                    'oi_regime': market_state.oi_regime,
-                    'confidence': confidence,
-                },
-                reason=f"OI行为做多: 趋势上涨+仓位增加 [conf={confidence:.2f}]",
-                timestamp=market_state.timestamp,
+                key_context_paths=[
+                    "tfs.15m.trend_state",
+                    "tfs.1h.trend_state",
+                    "derivatives.oi_zscore",
+                ],
+                reason=f"OI rising with trend, confidence={signal_confidence:.2f}",
             )
         
+        # ==== 空头入场 ====
         if (
-            market_state.is_exhausted()
-            and market_state.oi_regime == 'falling'
-            and market_state.is_trending_down()
-            and confidence > 0.65
-        ):
-            return StrategySignalV2(
-                strategy_id=self.strategy_id,
-                strategy_name=self.strategy_name,
-                symbol=symbol,
-                direction=SignalDirection.LONG,
-                strength=SignalStrength.STRONG,
-                confidence=confidence,
-                triggering_event_type=triggering_event.type if triggering_event else None,
-                triggering_market_state=market_state,
-                key_features={
-                    'pressure_state': market_state.pressure,
-                    'oi_regime': market_state.oi_regime,
-                },
-                reason=f"OI行为做多: 价格下跌+压力耗尽+仓位减少 [conf={confidence:.2f}]",
-                timestamp=market_state.timestamp,
-            )
-        
-        # ==== 空头入场场景 ====
-        if (
-            market_state.is_trending_down()
-            and market_state.oi_regime == 'rising'
-            and market_state.confidence > 0.7
+            tf_15m.trend_state.name == "DOWN"
+            and derivatives.oi_zscore < -1.0
+            and tf_5m.flow_pressure.name == "SELL"
         ):
             return StrategySignalV2(
                 strategy_id=self.strategy_id,
                 strategy_name=self.strategy_name,
                 symbol=symbol,
                 direction=SignalDirection.SHORT,
-                strength=SignalStrength.STRONG if confidence > 0.8 else SignalStrength.MODERATE,
-                confidence=confidence,
+                strength=SignalStrength.STRONG if signal_confidence > 0.8 else SignalStrength.MODERATE,
+                confidence=signal_confidence,
                 triggering_event_type=triggering_event.type if triggering_event else None,
-                triggering_market_state=market_state,
-                key_features={
-                    'oi_regime': market_state.oi_regime,
-                    'confidence': confidence,
-                },
-                reason=f"OI行为做空: 趋势下跌+仓位增加 [conf={confidence:.2f}]",
-                timestamp=market_state.timestamp,
-            )
-        
-        if (
-            market_state.is_trending_up()
-            and market_state.oi_regime == 'falling'
-            and (market_state.has_pressure_divergence() or market_state.is_exhausted())
-            and confidence > 0.65
-        ):
-            return StrategySignalV2(
-                strategy_id=self.strategy_id,
-                strategy_name=self.strategy_name,
-                symbol=symbol,
-                direction=SignalDirection.SHORT,
-                strength=SignalStrength.MODERATE,
-                confidence=confidence,
-                triggering_event_type=triggering_event.type if triggering_event else None,
-                triggering_market_state=market_state,
-                key_features={
-                    'pressure_state': market_state.pressure,
-                    'oi_regime': market_state.oi_regime,
-                },
-                reason=f"OI行为做空: 价格上涨+压力耗尽+仓位减少 [conf={confidence:.2f}]",
-                timestamp=market_state.timestamp,
+                key_context_paths=[
+                    "tfs.15m.trend_state",
+                    "tfs.1h.trend_state",
+                    "derivatives.oi_zscore",
+                ],
+                reason=f"OI falling with trend, confidence={signal_confidence:.2f}",
             )
         
         return None
 
 
-class TradePressureExhaustionV2(EventDrivenStrategy):
+class TradePressureExhaustionV2(StateAwareStrategy):
     """
     交易压力耗尽策略（重构版）
     
-    完全事件驱动：
-    - 只关注 TRADE_PRESSURE_EXHAUSTION 和 TRADE_PRESSURE_FLUSH 事件
-    - 结合当前 State 确认入场时机
+    核心逻辑：
+    - 15m 检测压力耗尽
+    - 5m 确认资金流方向
+    - 1m 检查流动性质量
     
-    旧代码模式（特征堆）：
-    ```
-    if zscore_pressure < -3 and volume > 2*avg:  # 魔法数字
-        return Signal
-    ```
-    
-    新代码模式（事件 + 状态）：
-    ```
-    if (event.type == EventType.TRADE_PRESSURE_FLUSH 
-        and market_state.is_exhausted()
-        and market_state.is_high_confidence()):
-        return Signal
-    ```
+    策略只读：
+    - ctx.tfs["15m"].flow
+    - ctx.tfs["15m"].volume_state
+    - ctx.tfs["5m"].flow_pressure
+    - ctx.tfs["1m"].liquidity_state
     """
     
-    def __init__(self, config: StrategyConfigV2):
-        # 定义感兴趣的事件
-        interested_events = [
-            EventType.TRADE_PRESSURE_EXHAUSTION,
-            EventType.TRADE_PRESSURE_FLUSH,
-        ]
-        super().__init__(config, interested_event_types=interested_events)
+    def _define_strategy_info(self) -> StrategyInfo:
+        return StrategyInfo(
+            strategy_id=self.strategy_id,
+            strategy_name=self.strategy_name,
+            required_features=[
+                "trade_delta", "cumulative_delta",
+                "pressure_zscore", "volume_ratio",
+                "cvd", "sweep_score",
+            ],
+            required_context=[
+                "tfs.15m.flow",
+                "tfs.15m.volume_state",
+                "tfs.5m.flow_pressure",
+                "tfs.1m.liquidity_state",
+            ],
+            primary_timeframe="15m",
+            confirm_timeframes=["5m", "1m"],
+            execution_timeframe="1m",
+            tags={"behavioral", "flow_analysis", "momentum"},
+        )
     
-    def _handle_event(
+    def _generate_signal_impl(
         self,
-        event: BaseEvent,
-        market_state: MarketState,
-        current_features: Dict[str, Any],
+        market_context: MarketContext,
+        triggering_event: Optional[BaseEvent],
+        features: Dict[str, Any],
     ) -> Optional[StrategySignalV2]:
-        """处理特定事件"""
-        symbol = market_state.symbol
         
-        # ==== 做多场景：压力释放/耗尽在下跌趋势中 ====
-        if (
-            (event.type == EventType.TRADE_PRESSURE_FLUSH or event.type == EventType.TRADE_PRESSURE_EXHAUSTION)
-            and market_state.is_trending_down()
-            and market_state.confidence > 0.65
-        ):
-            # 确认是"底部"行为
-            if (
-                market_state.is_exhausted()
-                or market_state.has_pressure_divergence()
-                or market_state.is_liquid_vacuum()
-            ):
-                strength = SignalStrength.STRONG if market_state.confidence > 0.8 else SignalStrength.MODERATE
-                return StrategySignalV2(
-                    strategy_id=self.strategy_id,
-                    strategy_name=self.strategy_name,
-                    symbol=symbol,
-                    direction=SignalDirection.LONG,
-                    strength=strength,
-                    confidence=market_state.confidence,
-                    triggering_event_type=event.type,
-                    triggering_market_state=market_state,
-                    key_features={
-                        'pressure_state': market_state.pressure,
-                        'liquidity_state': market_state.liquidity,
-                        'event_type': event.type.value,
-                    },
-                    reason=f"压力耗尽做多: {event.type.value} 在下跌趋势中触发 [conf={market_state.confidence:.2f}]",
-                    timestamp=event.timestamp if hasattr(event, 'timestamp') else datetime.utcnow(),
-                )
+        symbol = market_context.symbol
+        info = self.strategy_info
         
-        # ==== 做空场景：压力释放/耗尽在上涨趋势中 ====
+        # 读取上下文
+        tf_15m = market_context.tf(info.primary_timeframe)
+        tf_5m = market_context.tf("5m")
+        tf_1m = market_context.tf("1m")
+        
+        # ==== 检查压力耗尽 ====
+        if not market_context.is_exhausted():
+            return None
+        
+        # ==== 计算置信度 ====
+        base_conf = 0.7
+        signal_confidence = market_context.calculate_signal_confidence(
+            base_confidence=base_conf,
+            primary_timeframe=info.primary_timeframe,
+        )
+        
+        if signal_confidence < 0.65:
+            return None
+        
+        # ==== 多头入场（卖出压力耗尽）====
         if (
-            (event.type == EventType.TRADE_PRESSURE_FLUSH or event.type == EventType.TRADE_PRESSURE_EXHAUSTION)
-            and market_state.is_trending_up()
-            and market_state.confidence > 0.65
+            tf_15m.volume_state.name == "CLIMAX"
+            and tf_5m.flow_pressure.name == "BUY"
+            and tf_1m.liquidity_state.name != "VACUUM"
         ):
-            if (
-                market_state.is_exhausted()
-                or market_state.has_pressure_divergence()
-            ):
-                strength = SignalStrength.STRONG if market_state.confidence > 0.8 else SignalStrength.MODERATE
-                return StrategySignalV2(
-                    strategy_id=self.strategy_id,
-                    strategy_name=self.strategy_name,
-                    symbol=symbol,
-                    direction=SignalDirection.SHORT,
-                    strength=strength,
-                    confidence=market_state.confidence,
-                    triggering_event_type=event.type,
-                    triggering_market_state=market_state,
-                    key_features={
-                        'pressure_state': market_state.pressure,
-                        'event_type': event.type.value,
-                    },
-                    reason=f"压力耗尽做空: {event.type.value} 在上涨趋势中触发 [conf={market_state.confidence:.2f}]",
-                    timestamp=event.timestamp if hasattr(event, 'timestamp') else datetime.utcnow(),
-                )
+            return StrategySignalV2(
+                strategy_id=self.strategy_id,
+                strategy_name=self.strategy_name,
+                symbol=symbol,
+                direction=SignalDirection.LONG,
+                strength=SignalStrength.EXTREME if signal_confidence > 0.9 else SignalStrength.STRONG,
+                confidence=signal_confidence,
+                triggering_event_type=triggering_event.type if triggering_event else None,
+                key_context_paths=[
+                    "tfs.15m.volume_state",
+                    "tfs.5m.flow_pressure",
+                    "tfs.1m.liquidity_state",
+                ],
+                reason=f"Buy pressure exhaustion, confidence={signal_confidence:.2f}",
+            )
+        
+        # ==== 空头入场（买入压力耗尽）====
+        if (
+            tf_15m.volume_state.name == "CLIMAX"
+            and tf_5m.flow_pressure.name == "SELL"
+            and tf_1m.liquidity_state.name != "VACUUM"
+        ):
+            return StrategySignalV2(
+                strategy_id=self.strategy_id,
+                strategy_name=self.strategy_name,
+                symbol=symbol,
+                direction=SignalDirection.SHORT,
+                strength=SignalStrength.EXTREME if signal_confidence > 0.9 else SignalStrength.STRONG,
+                confidence=signal_confidence,
+                triggering_event_type=triggering_event.type if triggering_event else None,
+                key_context_paths=[
+                    "tfs.15m.volume_state",
+                    "tfs.5m.flow_pressure",
+                    "tfs.1m.liquidity_state",
+                ],
+                reason=f"Sell pressure exhaustion, confidence={signal_confidence:.2f}",
+            )
         
         return None
 
@@ -282,314 +398,313 @@ class FundingExtremeReversalV2(StateAwareStrategy):
     资金费率极端反转策略（重构版）
     
     核心逻辑：
-    - 极端正费率 + 趋势疲态 + 压力背离 -> 做空
-    - 极端负费率 + 趋势疲态 + 压力背离 -> 做多
+    - 资金费率极端值 + 价格背离 = 反转信号
+    - 4h 过滤大方向
+    - 1h 确认趋势
     
-    利用 State 的 funding_regime 字段判断，而非原始值
+    策略只读：
+    - ctx.derivatives.funding_zscore
+    - ctx.derivatives.funding_extreme_reversal
+    - ctx.tfs["4h"].trend_state
+    - ctx.tfs["1h"].trend_state
     """
     
-    def __init__(self, config: StrategyConfigV2):
-        super().__init__(config)
+    def _define_strategy_info(self) -> StrategyInfo:
+        return StrategyInfo(
+            strategy_id=self.strategy_id,
+            strategy_name=self.strategy_name,
+            required_features=[
+                "funding_rate", "funding_zscore",
+                "funding_extreme_reversal", "funding_extreme_side",
+                "oi_funding_divergence",
+            ],
+            required_context=[
+                "derivatives.funding_zscore",
+                "derivatives.funding_extreme_reversal",
+                "tfs.4h.trend_state",
+                "tfs.1h.trend_state",
+            ],
+            primary_timeframe="1h",
+            confirm_timeframes=["15m", "4h"],
+            execution_timeframe="5m",
+            tags={"derivatives", "funding", "mean_reversion"},
+        )
     
     def _generate_signal_impl(
         self,
-        market_state: MarketState,
+        market_context: MarketContext,
         triggering_event: Optional[BaseEvent],
-        current_features: Dict[str, Any],
+        features: Dict[str, Any],
     ) -> Optional[StrategySignalV2]:
-        symbol = market_state.symbol
         
-        # ==== 做空场景：极端正费率 + 上涨趋势疲态 ====
-        if (
-            market_state.funding_regime == 'extreme_positive'
-            and market_state.is_trending_up()
-            and (market_state.has_pressure_divergence() or market_state.is_exhausted())
-            and market_state.confidence > 0.6
-        ):
-            return StrategySignalV2(
-                strategy_id=self.strategy_id,
-                strategy_name=self.strategy_name,
-                symbol=symbol,
-                direction=SignalDirection.SHORT,
-                strength=SignalStrength.MODERATE,
-                confidence=market_state.confidence,
-                triggering_event_type=triggering_event.type if triggering_event else None,
-                triggering_market_state=market_state,
-                key_features={
-                    'funding_regime': market_state.funding_regime,
-                    'pressure_state': market_state.pressure,
-                },
-                reason=f"资金费率反转做空: 极端正费率+上涨疲态 [conf={market_state.confidence:.2f}]",
-                timestamp=market_state.timestamp,
-            )
+        symbol = market_context.symbol
+        info = self.strategy_info
         
-        # ==== 做多场景：极端负费率 + 下跌趋势疲态 ====
-        if (
-            market_state.funding_regime == 'extreme_negative'
-            and market_state.is_trending_down()
-            and (market_state.is_exhausted() or market_state.has_pressure_divergence())
-            and market_state.confidence > 0.6
-        ):
-            return StrategySignalV2(
-                strategy_id=self.strategy_id,
-                strategy_name=self.strategy_name,
-                symbol=symbol,
-                direction=SignalDirection.LONG,
-                strength=SignalStrength.MODERATE,
-                confidence=market_state.confidence,
-                triggering_event_type=triggering_event.type if triggering_event else None,
-                triggering_market_state=market_state,
-                key_features={
-                    'funding_regime': market_state.funding_regime,
-                    'pressure_state': market_state.pressure,
-                },
-                reason=f"资金费率反转做多: 极端负费率+下跌疲态 [conf={market_state.confidence:.2f}]",
-                timestamp=market_state.timestamp,
-            )
+        # 读取上下文
+        derivatives = market_context.derivatives
+        tf_4h = market_context.tf("4h")
+        tf_1h = market_context.tf(info.primary_timeframe)
         
-        return None
-
-
-class LiquidationCascadeV2(EventDrivenStrategy):
-    """
-    爆仓连锁策略（重构版）
-    
-    完全事件驱动，结合 Market State 确认
-    """
-    
-    def __init__(self, config: StrategyConfigV2):
-        interested_events = [
-            EventType.MARKET_STRUCTURE_LIQUIDATION,
-        ]
-        super().__init__(config, interested_event_types=interested_events)
-    
-    def _handle_event(
-        self,
-        event: BaseEvent,
-        market_state: MarketState,
-        current_features: Dict[str, Any],
-    ) -> Optional[StrategySignalV2]:
-        symbol = market_state.symbol
-        
-        # ==== 做多场景：大量多头爆仓 + 压力耗尽 + Crash/Squeeze Regime ====
-        if (
-            market_state.is_crash()
-            and market_state.is_exhausted()
-            and market_state.oi_regime == 'falling'
-            and market_state.confidence > 0.7
-        ):
-            return StrategySignalV2(
-                strategy_id=self.strategy_id,
-                strategy_name=self.strategy_name,
-                symbol=symbol,
-                direction=SignalDirection.LONG,
-                strength=SignalStrength.EXTREME,
-                confidence=market_state.confidence,
-                triggering_event_type=event.type,
-                triggering_market_state=market_state,
-                key_features={
-                    'regime': market_state.regime,
-                    'pressure_state': market_state.pressure,
-                    'oi_regime': market_state.oi_regime,
-                },
-                reason=f"爆仓连锁做多: Crash状态+压力耗尽+仓位减少 [conf={market_state.confidence:.2f}]",
-                timestamp=event.timestamp if hasattr(event, 'timestamp') else datetime.utcnow(),
-            )
-        
-        return None
-
-
-class MomentumIgnitionV2(StateAwareStrategy):
-    """
-    动量点火策略（重构版）
-    
-    核心逻辑（State 驱动）：
-        - 在 TRENDING 状态下，成交量急放 + 价格大幅移动 → 跟随动量方向
-        
-    符合您对“高质量低频”策略的期望
-    """
-    
-    def __init__(self, config: StrategyConfigV2):
-        super().__init__(config)
-        self.min_volume_spike = 3.0  # 成交量急放阈值
-        self.min_return = 0.01  # 1h 涨跌幅阈值
-    
-    def _generate_signal_impl(
-        self,
-        market_state: MarketState,
-        triggering_event: Optional[BaseEvent],
-        current_features: Dict[str, Any],
-    ) -> Optional[StrategySignalV2]:
-        """核心逻辑 - 基于当前 Regime 决定是否点火"""
-        
-        # 只在 TRENDING 或 BREAKOUT 状态下工作
-        if not (market_state.regime in [RegimeType.TRENDING_UP, RegimeType.TRENDING_DOWN] 
-                or market_state.regime == RegimeType.BREAKOUT):
+        # ==== 检查资金费率极端 ====
+        if not derivatives.funding_extreme_reversal:
             return None
         
-        symbol = market_state.symbol
-        volume_ratio = current_features.get('volume_ratio', 0.0)
-        return_1h = current_features.get('return_1h', 0.0)
+        # ==== 大周期过滤 ====
+        if tf_4h.trend_state.name == "DOWN":
+            if derivatives.funding_extreme_side == "short":
+                # 4h 下跌 + 资金费率极端空头 -> 可能反弹
+                base_conf = 0.75
+            else:
+                return None  # 不做逆势
+        elif tf_4h.trend_state.name == "UP":
+            if derivatives.funding_extreme_side == "long":
+                base_conf = 0.75
+            else:
+                return None
+        else:  # RANGE
+            base_conf = 0.65
         
-        # 确认成交量急放
-        if volume_ratio < self.min_volume_spike:
+        # ==== 计算置信度 ====
+        signal_confidence = market_context.calculate_signal_confidence(
+            base_confidence=base_conf,
+            primary_timeframe=info.primary_timeframe,
+        )
+        
+        if signal_confidence < 0.65:
             return None
         
-        # 确认价格大幅移动
-        if abs(return_1h) < self.min_return:
-            return None
-        
-        # 方向判断
-        direction = SignalDirection.LONG if return_1h > 0 else SignalDirection.SHORT
-        
-        # 确认方向与当前 Regime 一致（避免逆势）
-        if direction == SignalDirection.LONG and market_state.is_trending_down():
-            return None
-        if direction == SignalDirection.SHORT and market_state.is_trending_up():
-            return None
-        
-        # 计算信心度
-        confidence = min(0.9, (
-            min(1.0, volume_ratio / 5.0) * 0.5 +
-            min(1.0, abs(return_1h) / 0.03) * 0.4 +
-            0.1
-        ))
+        # ==== 生成信号 ====
+        direction = SignalDirection.LONG if derivatives.funding_extreme_side == "short" else SignalDirection.SHORT
         
         return StrategySignalV2(
             strategy_id=self.strategy_id,
             strategy_name=self.strategy_name,
             symbol=symbol,
             direction=direction,
-            strength=SignalStrength.STRONG if confidence > 0.7 else SignalStrength.MODERATE,
-            confidence=confidence,
+            strength=SignalStrength.STRONG if signal_confidence > 0.8 else SignalStrength.MODERATE,
+            confidence=signal_confidence,
             triggering_event_type=triggering_event.type if triggering_event else None,
-            triggering_market_state=market_state,
-            key_features={
-                'volume_ratio': volume_ratio,
-                'return_1h': return_1h,
-                'regime': market_state.regime,
-            },
-            reason=f"动量点火{direction}: 成交量急放={volume_ratio:.2f}x, 1h涨跌={return_1h*100:.2f}%",
-            timestamp=market_state.timestamp,
+            key_context_paths=[
+                "derivatives.funding_extreme_side",
+                "tfs.4h.trend_state",
+                "tfs.1h.trend_state",
+            ],
+            reason=f"Funding extreme {derivatives.funding_extreme_side}, confidence={signal_confidence:.2f}",
         )
 
 
-def create_v2_configs() -> Dict[str, StrategyConfigV2]:
+class LiquidationCascadeV2(StateAwareStrategy):
     """
-    创建所有 V2 策略的默认配置（Top 5 策略）
+    爆仓连锁策略（重构版）
     
-    这样所有策略都使用类型化的配置，不再有散参数
+    核心逻辑：
+    - 检测强平后的反转机会
+    - 5m 确认资金流
+    - 1m 检查入场条件
+    
+    策略只读：
+    - ctx.derivatives.liquidation_total
+    - ctx.derivatives.liquidation_reversal_signal
+    - ctx.tfs["5m"].flow_pressure
+    - ctx.tfs["1m"].liquidity_state
     """
-    return {
-        'open_interest_behavior_v2': StrategyConfigV2(
-            strategy_id='open_interest_behavior_v2',
-            strategy_name='Open Interest 仓位行为策略 V2',
-            strategy_type=StrategyType.BEHAVIORAL,
-            is_active=True,
-            entry_params=EntryParams(
-                signal_threshold=0.6,
-                max_entries_per_symbol=1,
-            ),
-            exit_params=ExitParams(
-                stop_loss_pct=0.02,
-                take_profit_pct=0.05,
-            ),
-            risk_params=RiskParams(
-                position_size_pct=0.1,
-                max_positions=3,
-            ),
-            supported_symbols=['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
-            description='基于仓位变化的事件驱动策略 V2',
-        ),
-        'trade_pressure_exhaustion_v2': StrategyConfigV2(
-            strategy_id='trade_pressure_exhaustion_v2',
-            strategy_name='交易压力耗尽策略 V2',
-            strategy_type=StrategyType.BEHAVIORAL,
-            is_active=True,
-            entry_params=EntryParams(
-                signal_threshold=0.65,
-                max_entries_per_symbol=2,
-            ),
-            exit_params=ExitParams(
-                stop_loss_pct=0.015,
-                take_profit_pct=0.04,
-            ),
-            risk_params=RiskParams(
-                position_size_pct=0.08,
-                max_positions=2,
-            ),
-            supported_symbols=['BTCUSDT', 'ETHUSDT'],
-            description='基于交易压力事件的反转策略 V2',
-        ),
-        'funding_extreme_reversal_v2': StrategyConfigV2(
-            strategy_id='funding_extreme_reversal_v2',
-            strategy_name='资金费率极端反转策略 V2',
-            strategy_type=StrategyType.BEHAVIORAL,
-            is_active=True,
-            entry_params=EntryParams(
-                signal_threshold=0.6,
-                max_entries_per_symbol=1,
-            ),
-            exit_params=ExitParams(
-                stop_loss_pct=0.02,
-                take_profit_pct=0.06,
-            ),
-            risk_params=RiskParams(
-                position_size_pct=0.07,
-                max_positions=2,
-            ),
-            supported_symbols=['BTCUSDT', 'ETHUSDT'],
-            description='基于资金费率极端值的反转策略 V2',
-        ),
-        'liquidation_cascade_v2': StrategyConfigV2(
-            strategy_id='liquidation_cascade_v2',
-            strategy_name='爆仓连锁策略 V2',
-            strategy_type=StrategyType.EVENT_DRIVEN,
-            is_active=True,
-            entry_params=EntryParams(
-                signal_threshold=0.7,
-                max_entries_per_symbol=1,
-            ),
-            exit_params=ExitParams(
-                stop_loss_pct=0.025,
-                take_profit_pct=0.08,
-            ),
-            risk_params=RiskParams(
-                position_size_pct=0.12,
-                max_positions=1,
-            ),
-            supported_symbols=['BTCUSDT', 'ETHUSDT'],
-            description='基于爆仓事件的连锁策略 V2',
-        ),
-        'momentum_ignition_v2': StrategyConfigV2(
-            strategy_id='momentum_ignition_v2',
-            strategy_name='动量点火策略 V2',
-            strategy_type=StrategyType.TREND,
-            is_active=True,
-            entry_params=EntryParams(
-                signal_threshold=0.65,
-                max_entries_per_symbol=1,
-            ),
-            exit_params=ExitParams(
-                stop_loss_pct=0.015,
-                take_profit_pct=0.06,
-            ),
-            risk_params=RiskParams(
-                position_size_pct=0.08,
-                max_positions=2,
-            ),
-            supported_symbols=['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
-            description='高质量低频：成交量急放 + 趋势确认 V2',
-        ),
-    }
+    
+    def _define_strategy_info(self) -> StrategyInfo:
+        return StrategyInfo(
+            strategy_id=self.strategy_id,
+            strategy_name=self.strategy_name,
+            required_features=[
+                "liquidation_long", "liquidation_short",
+                "liquidation_total", "liquidation_reversal_signal",
+            ],
+            required_context=[
+                "derivatives.liquidation_total",
+                "derivatives.liquidation_reversal_signal",
+                "tfs.5m.flow_pressure",
+                "tfs.1m.liquidity_state",
+            ],
+            primary_timeframe="5m",
+            confirm_timeframes=["1m", "15m"],
+            execution_timeframe="1m",
+            tags={"event_driven", "liquidation", "reversal"},
+        )
+    
+    def _generate_signal_impl(
+        self,
+        market_context: MarketContext,
+        triggering_event: Optional[BaseEvent],
+        features: Dict[str, Any],
+    ) -> Optional[StrategySignalV2]:
+        
+        symbol = market_context.symbol
+        info = self.strategy_info
+        
+        # 读取上下文
+        derivatives = market_context.derivatives
+        tf_5m = market_context.tf(info.primary_timeframe)
+        tf_1m = market_context.tf("1m")
+        tf_15m = market_context.tf("15m")
+        
+        # ==== 检查强平反转信号 ====
+        if not derivatives.liquidation_reversal_signal:
+            return None
+        
+        # ==== 检查流动性 ====
+        if tf_1m.liquidity_state.name == "VACUUM":
+            return None  # 流动性真空，不入场
+        
+        # ==== 判断方向 ====
+        if derivatives.liquidation_long > derivatives.liquidation_short:
+            # 多单被强平，可能反弹做多
+            if tf_5m.flow_pressure.name != "SELL":  # 资金流不再卖出
+                direction = SignalDirection.LONG
+                base_conf = 0.7
+            else:
+                return None
+        else:
+            # 空单被强平，可能反弹做空
+            if tf_5m.flow_pressure.name != "BUY":
+                direction = SignalDirection.SHORT
+                base_conf = 0.7
+            else:
+                return None
+        
+        # ==== 计算置信度 ====
+        signal_confidence = market_context.calculate_signal_confidence(
+            base_confidence=base_conf,
+            primary_timeframe=info.primary_timeframe,
+        )
+        
+        if signal_confidence < 0.6:
+            return None
+        
+        return StrategySignalV2(
+            strategy_id=self.strategy_id,
+            strategy_name=self.strategy_name,
+            symbol=symbol,
+            direction=direction,
+            strength=SignalStrength.STRONG if signal_confidence > 0.8 else SignalStrength.MODERATE,
+            confidence=signal_confidence,
+            triggering_event_type=triggering_event.type if triggering_event else None,
+            key_context_paths=[
+                "derivatives.liquidation_reversal_signal",
+                "tfs.5m.flow_pressure",
+                "tfs.1m.liquidity_state",
+            ],
+            reason=f"Liquidation cascade reversal, confidence={signal_confidence:.2f}",
+        )
 
 
-# 导出
+class MomentumIgnitionV2(StateAwareStrategy):
+    """
+    动量点火策略（重构版）
+    
+    核心逻辑：
+    - 高置信度趋势 + 动量突破
+    - 15m 主周期判断
+    - 1h 趋势过滤
+    - 5m 动量确认
+    
+    策略只读：
+    - ctx.tfs["15m"].momentum_score
+    - ctx.tfs["1h"].trend_state
+    - ctx.tfs["5m"].momentum_direction
+    - ctx.tfs["15m"].volatility_state
+    """
+    
+    def _define_strategy_info(self) -> StrategyInfo:
+        return StrategyInfo(
+            strategy_id=self.strategy_id,
+            strategy_name=self.strategy_name,
+            required_features=[
+                "momentum_score", "momentum_direction",
+                "volatility", "volume_ratio",
+            ],
+            required_context=[
+                "tfs.15m.momentum_score",
+                "tfs.1h.trend_state",
+                "tfs.5m.momentum_direction",
+                "tfs.15m.volatility_state",
+            ],
+            primary_timeframe="15m",
+            confirm_timeframes=["5m", "1h"],
+            execution_timeframe="1m",
+            tags={"technical", "momentum", "trend_following"},
+        )
+    
+    def _generate_signal_impl(
+        self,
+        market_context: MarketContext,
+        triggering_event: Optional[BaseEvent],
+        features: Dict[str, Any],
+    ) -> Optional[StrategySignalV2]:
+        
+        symbol = market_context.symbol
+        info = self.strategy_info
+        
+        # 读取上下文
+        tf_15m = market_context.tf(info.primary_timeframe)
+        tf_1h = market_context.tf("1h")
+        tf_5m = market_context.tf("5m")
+        
+        # ==== 检查动量 ====
+        momentum_score = tf_15m.momentum_score
+        if abs(momentum_score) < 0.7:
+            return None
+        
+        # ==== 趋势对齐 ====
+        if tf_1h.trend_state.name == "UP" and momentum_score > 0:
+            direction = SignalDirection.LONG
+        elif tf_1h.trend_state.name == "DOWN" and momentum_score < 0:
+            direction = SignalDirection.SHORT
+        elif tf_1h.trend_state.name == "RANGE":
+            # 区间内按动量方向
+            direction = SignalDirection.LONG if momentum_score > 0 else SignalDirection.SHORT
+        else:
+            return None  # 逆势
+        
+        # ==== 确认周期 ====
+        if tf_5m.momentum_direction.name == "NEUTRAL":
+            return None  # 5m 没有确认
+        
+        # ==== 波动率检查 ====
+        if tf_15m.volatility_state.name == "EXTREME":
+            return None  # 极端波动不入场
+        
+        # ==== 计算置信度 ====
+        base_conf = 0.75
+        signal_confidence = market_context.calculate_signal_confidence(
+            base_confidence=base_conf,
+            primary_timeframe=info.primary_timeframe,
+        )
+        
+        if signal_confidence < 0.7:
+            return None
+        
+        return StrategySignalV2(
+            strategy_id=self.strategy_id,
+            strategy_name=self.strategy_name,
+            symbol=symbol,
+            direction=direction,
+            strength=SignalStrength.STRONG if signal_confidence > 0.85 else SignalStrength.MODERATE,
+            confidence=signal_confidence,
+            triggering_event_type=triggering_event.type if triggering_event else None,
+            key_context_paths=[
+                "tfs.15m.momentum_score",
+                "tfs.1h.trend_state",
+                "tfs.5m.momentum_direction",
+            ],
+            reason=f"Momentum ignition {direction.value}, confidence={signal_confidence:.2f}",
+        )
+
+
+# ============== 导出接口 ==============
+
 __all__ = [
-    'OpenInterestBehaviorV2',
-    'TradePressureExhaustionV2',
-    'FundingExtremeReversalV2',
-    'LiquidationCascadeV2',
-    'MomentumIgnitionV2',
-    'create_v2_configs',
+    "create_v2_configs",
+    "OpenInterestBehaviorV2",
+    "TradePressureExhaustionV2",
+    "FundingExtremeReversalV2",
+    "LiquidationCascadeV2",
+    "MomentumIgnitionV2",
 ]

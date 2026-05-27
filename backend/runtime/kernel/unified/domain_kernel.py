@@ -9,10 +9,25 @@ DomainKernel - 唯一的业务真相（三范式共享）
 5. 禁止策略分叉
 6. 禁止绕过 MarketContextAuthority 直接访问状态
 
-这解决了之前的问题：
-- ❌ 分散式隐式上下文 → ✅ 集中式显式上下文
-- ❌ 双 context 体系 → ✅ 单一 context 权威层
-- ❌ 策略自己解释市场 → ✅ 系统统一解释，策略只能消费
+数据流架构（按照用户定义）：
+    raw event / kline / orderbook / trades / funding / oi / liquidation
+         ↓
+    FeatureRuntime 生成标准 features
+         ↓
+    ContextAuthority 生成 MarketContext
+         ↓
+    Strategy 只读 MarketContext
+         ↓
+    Signal
+         ↓
+    Risk / Execution
+
+过渡期可以保留：
+    StrategyInput(
+        market_context=ctx,
+        raw_features=features,  # 只允许 legacy adapter 用
+    )
+但新策略禁止直接 features.get(...)
 """
 
 from typing import Dict, Any, Optional, List, Callable
@@ -21,10 +36,9 @@ from enum import Enum, auto
 from datetime import datetime
 
 from domain.market_state import (
-    MarketState,
-    MarketStateMachine,
     MarketContext,
     MarketContextAuthority,
+    STANDARD_TIMEFRAMES,
 )
 from domain.event.base_event import BaseEvent
 from domain.event.event_type import EventType
@@ -57,12 +71,21 @@ class DomainKernelConfig:
     symbol: str
     enabled_strategies: List[str] = field(default_factory=list)
     
-    # 状态机配置（强制启用，不再可选）
-    state_machine_enabled: bool = True  # 现在强制启用，不能关闭
-    
     # 验证配置
     validation_enabled: bool = True
     journaling_enabled: bool = True
+
+
+@dataclass
+class StrategyInput:
+    """
+    策略输入（过渡期结构）
+    
+    新策略应该只使用 market_context
+    raw_features 只允许 legacy adapter 使用
+    """
+    market_context: MarketContext
+    raw_features: Optional[Dict[str, Any]] = None  # legacy 兼容
 
 
 class DomainKernel:
@@ -89,11 +112,8 @@ class DomainKernel:
         self._mode = KernelMode.IDLE
         
         # ============== 核心组件 ==============
-        # MarketStateMachine（被 MarketContextAuthority 包装）
-        self._state_machine: MarketStateMachine = MarketStateMachine(symbol=config.symbol)
-        
         # MarketContextAuthority（唯一真相源，强制依赖）
-        self._context_authority: MarketContextAuthority = MarketContextAuthority(self._state_machine)
+        self._context_authority: MarketContextAuthority = MarketContextAuthority(config.symbol)
         
         # 策略实例
         self._strategies: Dict[str, StateAwareStrategy] = {}
@@ -107,9 +127,6 @@ class DomainKernel:
         """初始化 Kernel"""
         logger.info("Initializing DomainKernel...")
         self._mode = KernelMode.PROCESSING
-        
-        # 注意：MarketStateMachine 和 MarketContextAuthority 已经在 __init__ 中初始化
-        logger.info("MarketStateMachine + MarketContextAuthority initialized (强制依赖)")
         
         # 初始化策略（三范式共享同一套策略）
         await self._initialize_strategies()
@@ -152,7 +169,6 @@ class DomainKernel:
     
     def _register_event_handlers(self) -> None:
         """注册事件处理器"""
-        # 注册 Market Structure 事件
         structure_events = [
             EventType.TRADE_PRESSURE_FLUSH,
             EventType.TRADE_PRESSURE_EXHAUSTION,
@@ -168,11 +184,11 @@ class DomainKernel:
         """
         处理事件（唯一入口）
         
-        强制流程：
+        强制流程（按照用户定义）：
         1. 获取时间（从 ClockAuthority）
-        2. 更新 MarketContext（通过 MarketContextAuthority，唯一入口）
+        2. 更新 MarketContext（通过 ContextAuthority，唯一入口）
         3. 运行策略（策略只能消费 MarketContext）
-        4. 发布事件
+        4. 发布信号
         
         禁止策略自己解释市场！
         """
@@ -186,16 +202,20 @@ class DomainKernel:
             # Step 2: 更新 MarketContext（通过 ContextAuthority，唯一真相源）
             # ❌ 禁止绕过这个！
             market_context = self._context_authority.update(
-                event=event,
                 features=features,
-                recent_events=[],  # 可以传入最近事件列表
                 timestamp=current_time,
             )
             
-            # Step 3: 运行策略（策略只能消费 MarketContext）
-            await self._run_strategies(market_context, event, features)
+            # Step 3: 构建策略输入
+            strategy_input = StrategyInput(
+                market_context=market_context,
+                raw_features=features,  # 过渡期保留，只允许 legacy adapter 使用
+            )
             
-            # Step 4: 调用事件处理器
+            # Step 4: 运行策略（策略只能消费 MarketContext）
+            await self._run_strategies(strategy_input, event)
+            
+            # Step 5: 调用事件处理器
             await self._dispatch_event(event, features)
             
         except Exception as e:
@@ -206,25 +226,24 @@ class DomainKernel:
     
     async def _run_strategies(
         self,
-        market_context: MarketContext,
+        strategy_input: StrategyInput,
         event: BaseEvent,
-        features: Dict[str, Any],
     ) -> None:
         """
         运行策略（策略只能消费 MarketContext）
         
         强制约束：
-        - 策略输入只能是 MarketContext + Event
-        - ❌ 禁止策略直接访问 features（除非作为辅助）
-        - ❌ 禁止策略自己解释市场
+        - 策略输入只能是 StrategyInput（包含 MarketContext）
+        - 新策略禁止直接访问 raw_features
+        - 策略只能消费 MarketContext，不能自己解释市场
         """
         for strategy_id, strategy in self._strategies.items():
             try:
                 # 策略只能消费 MarketContext，不能自己解释市场
                 signal = strategy.generate_signal(
-                    market_state=market_context.core,  # 从 context 来
+                    market_context=strategy_input.market_context,
                     event=event,
-                    features=features,  # 这个是可选辅助，但主要应依赖 market_state
+                    features=strategy_input.raw_features,  # 过渡期允许，但新策略不应使用
                 )
                 
                 if signal:
@@ -254,7 +273,7 @@ class DomainKernel:
         """
         获取当前市场上下文（唯一方式）
         
-        ❌ 禁止直接访问 _state_machine 或 _context_authority
+        ❌ 禁止直接访问 _context_authority
         """
         return self._context_authority.get_current_context()
     
@@ -273,5 +292,7 @@ class DomainKernel:
 __all__ = [
     "KernelMode",
     "DomainKernelConfig",
+    "StrategyInput",
     "DomainKernel",
+    "STANDARD_TIMEFRAMES",
 ]
