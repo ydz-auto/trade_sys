@@ -29,7 +29,8 @@ import numpy as np
 
 from infrastructure.logging import get_logger
 from infrastructure.acceleration import (
-    torch, device, is_gpu, to_gpu, to_cpu, get_accelerator_info
+    torch, get_device, get_is_gpu, get_accelerator_info,
+    to_gpu, to_cpu
 )
 from infrastructure.utilities.progress import ProgressTracker, ProgressType, ProgressBar, get_progress_tracker
 
@@ -143,7 +144,7 @@ class TorchFeatureCalculator:
             progress_callback(0, 1, "Starting feature computation")
         
         try:
-            if use_gpu and is_gpu and n > 1000:
+            if use_gpu and get_is_gpu() and n > 1000:
                 result = self._compute_batch_gpu(df, symbol)
             else:
                 result = self._compute_batch_cpu(df, symbol)
@@ -224,7 +225,7 @@ class TorchFeatureCalculator:
         for period in [7, 14, 21]:
             if n < period + 1:
                 # 数据不足时返回 NaN（None在Tensor中表示为NaN）
-                results[f"rsi_{period}"] = torch.full((n,), float('nan'), device=device)
+                results[f"rsi_{period}"] = torch.full((n,), float('nan'), device=get_device())
                 continue
             
             deltas = closes[1:] - closes[:-1]
@@ -232,7 +233,7 @@ class TorchFeatureCalculator:
             gains = torch.where(deltas > 0, deltas, torch.zeros_like(deltas))
             losses = torch.where(deltas < 0, -deltas, torch.zeros_like(deltas))
             
-            kernel = torch.ones(period, device=device) / period
+            kernel = torch.ones(period, device=get_device()) / period
             kernel = kernel.view(1, 1, -1)
             
             gains_padded = torch.nn.functional.pad(gains.view(1, 1, -1), (period - 1, 0))
@@ -244,11 +245,11 @@ class TorchFeatureCalculator:
             rsi = torch.where(
                 avg_losses > 0,
                 100.0 - (100.0 / (1 + avg_gains / avg_losses)),
-                torch.tensor(100.0, device=device)
+                torch.tensor(100.0, device=get_device())
             )
             
             # 前period个值设为NaN（数据不足）
-            rsi = torch.cat([torch.full((period,), float('nan'), device=device), rsi])
+            rsi = torch.cat([torch.full((period,), float('nan'), device=get_device()), rsi])
             results[f"rsi_{period}"] = rsi[:n]
         
         return results
@@ -261,17 +262,17 @@ class TorchFeatureCalculator:
         for window in [10, 20, 50, 100]:
             if n < window:
                 # 数据不足时返回 NaN
-                results[f"sma_{window}"] = torch.full((n,), float('nan'), device=device)
+                results[f"sma_{window}"] = torch.full((n,), float('nan'), device=get_device())
                 continue
             
-            kernel = torch.ones(window, device=device) / window
+            kernel = torch.ones(window, device=get_device()) / window
             kernel = kernel.view(1, 1, -1)
             
             padded = torch.nn.functional.pad(closes.view(1, 1, -1), (window - 1, 0))
             sma = torch.nn.functional.conv1d(padded, kernel).squeeze()
             
             # 前window-1个值设为NaN（数据不足）
-            sma = torch.cat([torch.full((window - 1,), float('nan'), device=device), sma])
+            sma = torch.cat([torch.full((window - 1,), float('nan'), device=get_device()), sma])
             results[f"sma_{window}"] = sma[:n]
         
         return results
@@ -284,7 +285,7 @@ class TorchFeatureCalculator:
             alpha = 2.0 / (span + 1)
             
             weights = torch.exp(
-                -alpha * torch.arange(len(closes), device=device, dtype=torch.float32)
+                -alpha * torch.arange(len(closes), device=get_device(), dtype=torch.float32)
             )
             weights = weights.flip(0)
             
@@ -303,7 +304,7 @@ class TorchFeatureCalculator:
         n = len(closes)
         
         if n < 35:
-            zeros = torch.zeros(n, device=device)
+            zeros = torch.zeros(n, device=get_device())
             return {"macd": zeros, "macd_signal": zeros, "macd_hist": zeros}
         
         ema_fast = self._compute_ema_single(closes, 12)
@@ -335,7 +336,7 @@ class TorchFeatureCalculator:
         n = len(closes)
         window = 20
         
-        kernel = torch.ones(window, device=device) / window
+        kernel = torch.ones(window, device=get_device()) / window
         kernel = kernel.view(1, 1, -1)
         
         padded = torch.nn.functional.pad(closes.view(1, 1, -1), (window - 1, 0))
@@ -353,7 +354,7 @@ class TorchFeatureCalculator:
         
         bb_upper = torch.cat([closes[:window-1], bb_upper])[:n]
         bb_lower = torch.cat([closes[:window-1], bb_lower])[:n]
-        bb_width = torch.cat([torch.zeros(window-1, device=device), bb_width])[:n]
+        bb_width = torch.cat([torch.zeros(window-1, device=get_device()), bb_width])[:n]
         bb_middle = torch.cat([closes[:window-1], sma])[:n]
         
         return {
@@ -368,7 +369,7 @@ class TorchFeatureCalculator:
         n = len(volumes)
         window = 20
         
-        kernel = torch.ones(window, device=device) / window
+        kernel = torch.ones(window, device=get_device()) / window
         kernel = kernel.view(1, 1, -1)
         
         padded = torch.nn.functional.pad(volumes.view(1, 1, -1), (window - 1, 0))
@@ -393,7 +394,7 @@ class TorchFeatureCalculator:
         n = len(closes)
         period = 14
         
-        tr = torch.zeros(n, device=device)
+        tr = torch.zeros(n, device=get_device())
         tr[0] = highs[0] - lows[0]
         
         tr[1:] = torch.max(
@@ -405,13 +406,13 @@ class TorchFeatureCalculator:
             dim=0,
         )[0]
         
-        kernel = torch.ones(period, device=device) / period
+        kernel = torch.ones(period, device=get_device()) / period
         kernel = kernel.view(1, 1, -1)
         
         padded = torch.nn.functional.pad(tr.view(1, 1, -1), (period - 1, 0))
         atr = torch.nn.functional.conv1d(padded, kernel).squeeze()
         
-        atr = torch.cat([torch.zeros(period-1, device=device), atr])[:n]
+        atr = torch.cat([torch.zeros(period-1, device=get_device()), atr])[:n]
         
         return {"atr_14": atr}
     
@@ -420,7 +421,7 @@ class TorchFeatureCalculator:
         n = len(closes)
         period = 10
         
-        momentum = torch.zeros(n, device=device)
+        momentum = torch.zeros(n, device=get_device())
         
         if n > period:
             momentum[period:] = (closes[period:] - closes[:-period]) / closes[:-period]
