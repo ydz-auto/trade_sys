@@ -43,9 +43,17 @@ except ImportError:
 try:
     from research.common.loaders import get_strategy_class, save_results_to_json
     from research.common.types import StrategyName
+    from research.common.backtest_engine import (
+        run_single_bar_backtest, run_holding_period_backtest,
+        BacktestMetrics, SingleSignalResult,
+    )
 except ImportError:
     from common.loaders import get_strategy_class, save_results_to_json
     from common.types import StrategyName
+    from common.backtest_engine import (
+        run_single_bar_backtest, run_holding_period_backtest,
+        BacktestMetrics, SingleSignalResult,
+    )
 
 
 @dataclass
@@ -140,17 +148,29 @@ class WalkForwardAnalyzer:
         self,
         train_period_days: int = 30,
         test_period_days: int = 7,
-        gap_days: int = 0
+        gap_days: int = 0,
+        maker_fee: float = 0.0002,
+        taker_fee: float = 0.0005,
+        slippage_bps: float = 2.0,
+        holding_bars: int = 1,
     ):
         """
         Args:
             train_period_days: 训练周期（天数）
             test_period_days: 测试周期（天数）
             gap_days: 训练集和测试集之间的间隔天数
+            maker_fee: Maker手续费率
+            taker_fee: Taker手续费率
+            slippage_bps: 滑点（基点）
+            holding_bars: 持仓bar数（1=单bar评估，>1=持仓周期回测）
         """
         self.train_period_days = train_period_days
         self.test_period_days = test_period_days
         self.gap_days = gap_days
+        self.maker_fee = maker_fee
+        self.taker_fee = taker_fee
+        self.slippage_bps = slippage_bps
+        self.holding_bars = holding_bars
         self.window_results: List[WindowResult] = []
     
     def analyze(
@@ -208,7 +228,11 @@ class WalkForwardAnalyzer:
                 timestamps[idx],
                 timestamps[train_end],
                 timestamps[test_start],
-                timestamps[test_end - 1]
+                timestamps[test_end - 1],
+                maker_fee=self.maker_fee,
+                taker_fee=self.taker_fee,
+                slippage_bps=self.slippage_bps,
+                holding_bars=self.holding_bars
             )
             
             self.window_results.append(window_result)
@@ -243,72 +267,60 @@ class WalkForwardAnalyzer:
         train_start: int,
         train_end: int,
         test_start: int,
-        test_end: int
+        test_end: int,
+        maker_fee: float = 0.0002,
+        taker_fee: float = 0.0005,
+        slippage_bps: float = 2.0,
+        holding_bars: int = 1,
     ) -> WindowResult:
         """
-        在单个窗口上评估策略
+        在单个窗口上评估策略（使用统一的回测引擎）
         
         Returns:
             WindowResult: 窗口评估结果
         """
-        signals = []
-        returns = []
-        
-        for i, ctx in enumerate(contexts):
-            signal = strategy.generate_signal(ctx)
-            
-            if signal.type in (SignalType.LONG, SignalType.SHORT):
-                signals.append(signal)
-                
-                # 计算该信号的收益（持有到下一个 bar）
-                if i + 1 < len(prices):
-                    price_change = (prices[i + 1] - prices[i]) / prices[i]
-                    if signal.type == "short":
-                        price_change = -price_change
-                    returns.append(price_change)
-        
-        # 计算统计指标
-        long_signals = sum(1 for s in signals if s.type == "long")
-        short_signals = sum(1 for s in signals if s.type == "short")
-        
-        if returns:
-            total_return = np.sum(returns)
-            avg_return = np.mean(returns)
-            median_return = np.median(returns)
-            
-            # 计算最大回撤（简化版）
-            cumulative = np.cumsum(returns)
-            max_drawdown = np.min(cumulative - np.maximum.accumulate(cumulative))
-            
-            # 计算 Sharpe（简化版，假设无风险利率为0）
-            returns_std = np.std(returns)
-            sharpe_ratio = avg_return / returns_std if returns_std > 0 else 0
-            
-            # 胜率和盈利因子
-            wins = [r for r in returns if r > 0]
-            losses = [r for r in returns if r < 0]
-            win_rate = len(wins) / len(returns) if returns else 0
-            profit_factor = np.sum(wins) / abs(np.sum(losses)) if losses else float('inf')
+        if holding_bars <= 1:
+            results, metrics = run_single_bar_backtest(
+                strategy,
+                contexts,
+                timestamps,
+                prices,
+                start_idx=0,
+                end_idx=None,
+                maker_fee=maker_fee,
+                taker_fee=taker_fee,
+                slippage_bps=slippage_bps
+            )
         else:
-            total_return = avg_return = median_return = 0.0
-            max_drawdown = sharpe_ratio = win_rate = profit_factor = 0.0
-        
+            results, metrics = run_holding_period_backtest(
+                strategy,
+                contexts,
+                timestamps,
+                prices,
+                start_idx=0,
+                end_idx=None,
+                maker_fee=maker_fee,
+                taker_fee=taker_fee,
+                slippage_bps=slippage_bps,
+                max_holding_bars=holding_bars
+            )
+
         return WindowResult(
             window_idx=window_idx,
             train_start=train_start,
             train_end=train_end,
             test_start=test_start,
             test_end=test_end,
-            signals=len(signals),
-            long_signals=long_signals,
-            short_signals=short_signals,
-            total_return=total_return,
-            avg_return=avg_return,
-            median_return=median_return,
-            max_drawdown=max_drawdown,
-            sharpe_ratio=sharpe_ratio,
-            win_rate=win_rate,
-            profit_factor=profit_factor
+            signals=metrics.total_trades,
+            long_signals=metrics.long_trades,
+            short_signals=metrics.short_trades,
+            total_return=metrics.total_pnl_pct,
+            avg_return=metrics.avg_trade_return,
+            median_return=metrics.median_trade_return,
+            max_drawdown=metrics.max_drawdown,
+            sharpe_ratio=metrics.sharpe_ratio,
+            win_rate=metrics.win_rate,
+            profit_factor=metrics.profit_factor
         )
     
     def _compute_summary(self) -> WalkForwardResult:
@@ -397,7 +409,11 @@ def run_walk_forward(
     prices: np.ndarray,
     train_period_days: int = 30,
     test_period_days: int = 7,
-    gap_days: int = 0
+    gap_days: int = 0,
+    maker_fee: float = 0.0002,
+    taker_fee: float = 0.0005,
+    slippage_bps: float = 2.0,
+    holding_bars: int = 1,
 ) -> WalkForwardResult:
     """
     运行滚动验证
@@ -410,6 +426,10 @@ def run_walk_forward(
         train_period_days: 训练周期（天数）
         test_period_days: 测试周期（天数）
         gap_days: 间隔天数
+        maker_fee: Maker手续费率
+        taker_fee: Taker手续费率
+        slippage_bps: 滑点（基点）
+        holding_bars: 持仓bar数（1=单bar评估，>1=持仓周期回测）
     
     Returns:
         WalkForwardResult: 滚动验证结果
@@ -417,7 +437,11 @@ def run_walk_forward(
     analyzer = WalkForwardAnalyzer(
         train_period_days=train_period_days,
         test_period_days=test_period_days,
-        gap_days=gap_days
+        gap_days=gap_days,
+        maker_fee=maker_fee,
+        taker_fee=taker_fee,
+        slippage_bps=slippage_bps,
+        holding_bars=holding_bars
     )
     
     return analyzer.analyze(strategy, market_contexts, timestamps, prices)
@@ -475,55 +499,35 @@ def compare_strategy_walk_forward(
 
 # ==================== 并行版本 ====================
 
-def _evaluate_window_task(args):
+def _evaluate_window_task(
+    strategy_class, symbol, contexts, timestamps, prices,
+    window_idx, train_start, train_end, test_start, test_end,
+    maker_fee=0.0002, taker_fee=0.0005, slippage_bps=2.0, holding_bars=1,
+):
     """
     单个窗口评估任务（用于并行执行）
-    
-    Args:
-        args: (strategy_class, symbol, contexts, timestamps, prices, window_idx, train_start, train_end, test_start, test_end)
-    
+
+    使用统一回测引擎（与串行路径一致）。
+    CPUExecutor 会以 func(*task) 方式调用，因此参数为独立位置参数。
+
     Returns:
         WindowResult
     """
-    strategy_class, symbol, contexts, timestamps, prices, window_idx, train_start, train_end, test_start, test_end = args
-    
     strategy = strategy_class(symbol)
-    signals = []
-    returns = []
     
-    for i, ctx in enumerate(contexts):
-        signal = strategy.generate_signal(ctx)
-        
-        if signal.type in (SignalType.LONG, SignalType.SHORT):
-            signals.append(signal)
-            
-            if i + 1 < len(prices):
-                price_change = (prices[i + 1] - prices[i]) / prices[i]
-                if signal.type == SignalType.SHORT:
-                    price_change = -price_change
-                returns.append(price_change)
-    
-    long_signals = sum(1 for s in signals if s.type == SignalType.LONG)
-    short_signals = sum(1 for s in signals if s.type == SignalType.SHORT)
-    
-    if returns:
-        total_return = np.sum(returns)
-        avg_return = np.mean(returns)
-        median_return = np.median(returns)
-        
-        cumulative = np.cumsum(returns)
-        max_drawdown = np.min(cumulative - np.maximum.accumulate(cumulative))
-        
-        returns_std = np.std(returns)
-        sharpe_ratio = avg_return / returns_std if returns_std > 0 else 0
-        
-        wins = [r for r in returns if r > 0]
-        losses = [r for r in returns if r < 0]
-        win_rate = len(wins) / len(returns) if returns else 0
-        profit_factor = np.sum(wins) / abs(np.sum(losses)) if losses else float('inf')
+    if holding_bars <= 1:
+        _, metrics = run_single_bar_backtest(
+            strategy, contexts, timestamps, prices,
+            start_idx=0, end_idx=None,
+            maker_fee=maker_fee, taker_fee=taker_fee, slippage_bps=slippage_bps
+        )
     else:
-        total_return = avg_return = median_return = 0.0
-        max_drawdown = sharpe_ratio = win_rate = profit_factor = 0.0
+        _, metrics = run_holding_period_backtest(
+            strategy, contexts, timestamps, prices,
+            start_idx=0, end_idx=None,
+            maker_fee=maker_fee, taker_fee=taker_fee, slippage_bps=slippage_bps,
+            max_holding_bars=holding_bars
+        )
     
     return WindowResult(
         window_idx=window_idx,
@@ -531,16 +535,16 @@ def _evaluate_window_task(args):
         train_end=train_end,
         test_start=test_start,
         test_end=test_end,
-        signals=len(signals),
-        long_signals=long_signals,
-        short_signals=short_signals,
-        total_return=total_return,
-        avg_return=avg_return,
-        median_return=median_return,
-        max_drawdown=max_drawdown,
-        sharpe_ratio=sharpe_ratio,
-        win_rate=win_rate,
-        profit_factor=profit_factor
+        signals=metrics.total_trades,
+        long_signals=metrics.long_trades,
+        short_signals=metrics.short_trades,
+        total_return=metrics.total_pnl_pct,
+        avg_return=metrics.avg_trade_return,
+        median_return=metrics.median_trade_return,
+        max_drawdown=metrics.max_drawdown,
+        sharpe_ratio=metrics.sharpe_ratio,
+        win_rate=metrics.win_rate,
+        profit_factor=metrics.profit_factor
     )
 
 
@@ -552,6 +556,10 @@ def run_walk_forward_parallel(
     train_period_days: int = 30,
     test_period_days: int = 7,
     gap_days: int = 0,
+    maker_fee: float = 0.0002,
+    taker_fee: float = 0.0005,
+    slippage_bps: float = 2.0,
+    holding_bars: int = 1,
     executor: str = "process",
     max_workers: Optional[int] = None
 ) -> WalkForwardResult:
@@ -566,6 +574,10 @@ def run_walk_forward_parallel(
         train_period_days: 训练周期（天数）
         test_period_days: 测试周期（天数）
         gap_days: 间隔天数
+        maker_fee: Maker手续费率
+        taker_fee: Taker手续费率
+        slippage_bps: 滑点（基点）
+        holding_bars: 持仓bar数（1=单bar评估，>1=持仓周期回测）
         executor: 执行器类型 ("process" | "thread" | "sequential")
         max_workers: 最大工作进程数
     
@@ -610,7 +622,11 @@ def run_walk_forward_parallel(
             timestamps[idx],
             timestamps[train_end],
             timestamps[test_start],
-            timestamps[test_end - 1]
+            timestamps[test_end - 1],
+            maker_fee,
+            taker_fee,
+            slippage_bps,
+            holding_bars,
         ))
         
         idx += test_bars
@@ -621,7 +637,7 @@ def run_walk_forward_parallel(
     
     # 并行执行窗口评估
     if not ACCELERATION_AVAILABLE or executor == "sequential":
-        window_results = [_evaluate_window_task(task) for task in tasks]
+        window_results = [_evaluate_window_task(*task) for task in tasks]
     else:
         service = AccelerationService.create_for_optimization(
             enable_multiprocess=executor != "sequential",
@@ -1119,9 +1135,52 @@ def main():
     )
     
     parser.add_argument(
+        "--holding-bars",
+        type=int,
+        default=1,
+        help="持仓bar数 (1=单bar评估, >1=持仓周期回测, 默认: 1)"
+    )
+    
+    parser.add_argument(
+        "--taker-fee",
+        type=float,
+        default=0.0005,
+        help="Taker手续费率 (默认: 0.0005)"
+    )
+    
+    parser.add_argument(
+        "--maker-fee",
+        type=float,
+        default=0.0002,
+        help="Maker手续费率 (默认: 0.0002)"
+    )
+    
+    parser.add_argument(
+        "--slippage",
+        type=float,
+        default=2.0,
+        help="滑点 (基点, 默认: 2.0)"
+    )
+    
+    parser.add_argument(
+        "--source",
+        type=str,
+        default="mock",
+        choices=["mock", "datalake", "parquet"],
+        help="数据源: mock(模拟), datalake(数据湖), parquet(本地parquet文件)"
+    )
+
+    parser.add_argument(
         "--parallel",
         action="store_true",
-        help="启用并行执行"
+        default=True,
+        help="启用并行执行 (默认)"
+    )
+    parser.add_argument(
+        "--no-parallel",
+        dest="parallel",
+        action="store_false",
+        help="禁用并行执行"
     )
     
     parser.add_argument(
@@ -1145,11 +1204,26 @@ def main():
         print(f"错误: 未知策略 {args.strategy}")
         sys.exit(1)
     
-    # 生成测试数据（需要足够的数据进行滚动）
-    samples_per_day = 96
-    num_samples = args.days * samples_per_day
-    print(f"生成 {num_samples} 个样本...")
-    market_contexts, timestamps, prices = generate_test_contexts(num_samples)
+    if args.source == "parquet":
+        from research.common.loaders import load_from_parquet
+        market_contexts, timestamps, prices = load_from_parquet(args.symbol, args.days)
+        if not market_contexts:
+            samples_per_day = 96
+            num_samples = args.days * samples_per_day
+            print(f"parquet 无数据，回退到 mock 生成 {num_samples} 个样本...")
+            market_contexts, timestamps, prices = generate_test_contexts(num_samples)
+        else:
+            print(f"从 parquet 加载 {len(market_contexts)} 个样本")
+    elif args.source == "datalake":
+        samples_per_day = 96
+        num_samples = args.days * samples_per_day
+        print(f"生成 {num_samples} 个样本...")
+        market_contexts, timestamps, prices = generate_test_contexts(num_samples)
+    else:
+        samples_per_day = 96
+        num_samples = args.days * samples_per_day
+        print(f"生成 {num_samples} 个样本...")
+        market_contexts, timestamps, prices = generate_test_contexts(num_samples)
     
     # 创建策略实例并运行滚动验证
     strategy = strategy_class(args.symbol)
@@ -1164,6 +1238,10 @@ def main():
                 train_period_days=args.train_days,
                 test_period_days=args.test_days,
                 gap_days=args.gap_days,
+                maker_fee=args.maker_fee,
+                taker_fee=args.taker_fee,
+                slippage_bps=args.slippage,
+                holding_bars=args.holding_bars,
                 executor="process"
             )
         else:
@@ -1174,7 +1252,11 @@ def main():
                 prices,
                 train_period_days=args.train_days,
                 test_period_days=args.test_days,
-                gap_days=args.gap_days
+                gap_days=args.gap_days,
+                maker_fee=args.maker_fee,
+                taker_fee=args.taker_fee,
+                slippage_bps=args.slippage,
+                holding_bars=args.holding_bars
             )
     except ValueError as e:
         print(f"错误: {e}")

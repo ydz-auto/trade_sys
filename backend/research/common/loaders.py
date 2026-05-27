@@ -124,6 +124,313 @@ def generate_test_data(
     return price_data, signals
 
 
+# ==================== Parquet 数据加载 ====================
+
+
+def load_from_parquet(
+    symbol: str,
+    days: int,
+    timeframe: str = "1m",
+) -> Tuple[List[Any], List[int], np.ndarray]:
+    """
+    从本地 Parquet 文件加载真实历史数据并构建 MarketContext
+
+    数据路径: DATA_LAKE_ROOT/crypto/binance/{klines,oi,funding}/symbol={symbol}/
+
+    Args:
+        symbol: 交易对
+        days: 天数
+        timeframe: K线周期
+
+    Returns:
+        Tuple[List[MarketContext], List[int], np.ndarray]:
+            (MarketContext 列表, 时间戳列表, 价格数组)
+    """
+    from engines.compute.context import (
+        MarketContext,
+        TimeframeContext,
+        PriceState,
+        TrendStateData,
+        VolatilityStateData,
+        VolumeStateData,
+        FlowState,
+        LiquidityStateData,
+        DerivativesContext,
+        OIData,
+        FundingData,
+        LiquidationData,
+        RiskContext,
+        TrendState,
+        FlowPressure,
+        FundingBias,
+        LiquidityState,
+        VolatilityState,
+        VolumeState,
+    )
+
+    from infrastructure.storage.data_lake.file_reader import FileDataLakeReader
+
+    reader = FileDataLakeReader()
+
+    print(f"  加载 Klines (via FileDataLakeReader): binance/{symbol}")
+    klines_df = reader.load_klines("binance", symbol, timeframe=timeframe)
+
+    if klines_df.empty:
+        print(f"  错误: Klines 数据为空")
+        return [], [], np.array([])
+
+    if "timestamp" in klines_df.columns:
+        klines_df["timestamp"] = pd.to_datetime(klines_df["timestamp"]).dt.tz_localize(None)
+
+    if "interval" in klines_df.columns:
+        tf_df = klines_df[klines_df["interval"] == timeframe]
+        if not tf_df.empty:
+            klines_df = tf_df
+
+    if "timestamp" in klines_df.columns and len(klines_df) > 0:
+        latest_ts = klines_df["timestamp"].iloc[-1]
+        if hasattr(latest_ts, "value"):
+            end_ts = int(latest_ts.value / 1e6)
+        else:
+            end_ts = int(pd.Timestamp(latest_ts).value / 1e6)
+        start_ts = end_ts - days * 24 * 60 * 60 * 1000
+
+        ts_start = pd.Timestamp(start_ts, unit="ms")
+        ts_end = pd.Timestamp(end_ts, unit="ms")
+        klines_df = klines_df[(klines_df["timestamp"] >= ts_start) & (klines_df["timestamp"] <= ts_end)]
+
+    if klines_df.empty:
+        print(f"  错误: 时间范围过滤后 Klines 数据为空")
+        return [], [], np.array([])
+
+    print(f"  Klines: {len(klines_df)} rows, {klines_df['timestamp'].iloc[0]} ~ {klines_df['timestamp'].iloc[-1]}")
+
+    print(f"  加载 OI (via FileDataLakeReader)")
+    oi_df = reader.load_oi("binance", symbol)
+    print(f"  OI: {len(oi_df)} rows")
+
+    print(f"  加载 Funding (via FileDataLakeReader)")
+    funding_df = reader.load_funding("binance", symbol)
+    print(f"  Funding: {len(funding_df)} rows")
+
+    if not oi_df.empty:
+        if "sumOpenInterestValue" in oi_df.columns:
+            oi_values = oi_df["sumOpenInterestValue"].astype(float)
+            oi_mean = oi_values.rolling(100, min_periods=10).mean()
+            oi_std = oi_values.rolling(100, min_periods=10).std()
+            oi_df["oi_zscore"] = (oi_values - oi_mean) / (oi_std + 1e-10)
+        oi_ts = oi_df.set_index("timestamp")
+    else:
+        oi_ts = pd.DataFrame()
+
+    if not funding_df.empty:
+        if "fundingRate" in funding_df.columns:
+            fr_values = funding_df["fundingRate"].astype(float)
+            fr_mean = fr_values.rolling(100, min_periods=10).mean()
+            fr_std = fr_values.rolling(100, min_periods=10).std()
+            funding_df["funding_zscore"] = (fr_values - fr_mean) / (fr_std + 1e-10)
+        funding_ts = funding_df.set_index("timestamp")
+    else:
+        funding_ts = pd.DataFrame()
+
+    market_contexts = []
+    timestamps = []
+    prices = []
+
+    for idx, row in klines_df.iterrows():
+        ts = row["timestamp"]
+        ts_ms = int(ts.value / 1e6) if hasattr(ts, "value") else int(pd.Timestamp(ts).value / 1e6)
+        close = float(row["close"])
+        open_ = float(row["open"])
+        high = float(row["high"])
+        low = float(row["low"])
+        volume = float(row.get("volume", 0))
+        change_pct = (close - open_) / open_ * 100 if open_ > 0 else 0
+
+        timestamps.append(ts_ms)
+        prices.append(close)
+
+        tf_contexts = {}
+
+        tf_contexts["1m"] = TimeframeContext(
+            timeframe="1m",
+            price=PriceState(
+                open=open_,
+                high=high,
+                low=low,
+                close=close,
+                change_percent=change_pct,
+            ),
+            liquidity=LiquidityStateData(
+                state=LiquidityState.NORMAL,
+                spread=0.5,
+            ),
+            flow=FlowState(
+                pressure=FlowPressure.NEUTRAL,
+                score=0.0,
+                cvd=0.0,
+            ),
+        )
+
+        tf_contexts["5m"] = TimeframeContext(
+            timeframe="5m",
+            price=PriceState(
+                open=open_,
+                high=high,
+                low=low,
+                close=close,
+                change_percent=change_pct,
+            ),
+            flow=FlowState(
+                pressure=FlowPressure.NEUTRAL,
+                score=0.0,
+                cvd=0.0,
+            ),
+        )
+
+        trend_state = TrendState.SIDEWAYS
+        if change_pct > 0.3:
+            trend_state = TrendState.WEAK_UP
+        elif change_pct < -0.3:
+            trend_state = TrendState.WEAK_DOWN
+
+        vol_state = VolatilityState.NORMAL
+        atr_pct = (high - low) / close if close > 0 else 0.01
+        if atr_pct > 0.02:
+            vol_state = VolatilityState.ELEVATED
+        elif atr_pct < 0.005:
+            vol_state = VolatilityState.LOW
+
+        tf_contexts["15m"] = TimeframeContext(
+            timeframe="15m",
+            price=PriceState(
+                open=open_,
+                high=high,
+                low=low,
+                close=close,
+                change_percent=change_pct,
+            ),
+            trend=TrendStateData(
+                state=trend_state,
+                slope=change_pct * 0.001,
+                strength=min(abs(change_pct) / 2.0, 0.95),
+            ),
+            volatility=VolatilityStateData(
+                state=vol_state,
+                atr_pct=atr_pct,
+            ),
+            volume=VolumeStateData(
+                state=VolumeState.NORMAL,
+                volume_zscore=0.0,
+            ),
+            flow=FlowState(
+                pressure=FlowPressure.NEUTRAL,
+                score=0.0,
+                cvd=0.0,
+                cvd_slope=0.0,
+                aggressive_ratio=0.5,
+            ),
+        )
+
+        tf_contexts["1h"] = TimeframeContext(
+            timeframe="1h",
+            trend=TrendStateData(
+                state=trend_state,
+                slope=change_pct * 0.0005,
+                strength=min(abs(change_pct) / 3.0, 0.95),
+            ),
+            price=PriceState(close=close, change_percent=change_pct),
+        )
+
+        tf_contexts["4h"] = TimeframeContext(
+            timeframe="4h",
+            trend=TrendStateData(
+                state=trend_state,
+                slope=change_pct * 0.0003,
+                strength=min(abs(change_pct) / 4.0, 0.95),
+            ),
+        )
+
+        oi_value = 0.0
+        oi_delta = 0.0
+        oi_zscore = 0.0
+        if not oi_ts.empty:
+            try:
+                ts_pd = pd.Timestamp(ts_ms, unit="ms")
+                nearest = oi_ts.index.get_indexer([ts_pd], method="nearest")
+                if nearest[0] >= 0:
+                    oi_row = oi_ts.iloc[nearest[0]]
+                    oi_val_str = str(oi_row.get("sumOpenInterestValue", "0"))
+                    oi_value = float(oi_val_str) if oi_val_str and oi_val_str != "" else 0.0
+                    if "oi_zscore" in oi_row.index:
+                        oi_zscore = float(oi_row["oi_zscore"]) if not pd.isna(oi_row["oi_zscore"]) else 0.0
+            except Exception:
+                pass
+
+        funding_rate = 0.0
+        funding_zscore = 0.0
+        funding_bias = FundingBias.NEUTRAL
+        if not funding_ts.empty:
+            try:
+                ts_pd = pd.Timestamp(ts_ms, unit="ms")
+                nearest = funding_ts.index.get_indexer([ts_pd], method="nearest")
+                if nearest[0] >= 0:
+                    f_row = funding_ts.iloc[nearest[0]]
+                    fr_str = str(f_row.get("fundingRate", "0"))
+                    funding_rate = float(fr_str) if fr_str and fr_str != "" else 0.0
+                    if "funding_zscore" in f_row.index:
+                        funding_zscore = float(f_row["funding_zscore"]) if not pd.isna(f_row["funding_zscore"]) else 0.0
+                    else:
+                        funding_zscore = funding_rate / 0.0001 if abs(funding_rate) > 0 else 0.0
+
+                    if funding_zscore > 2.0:
+                        funding_bias = FundingBias.EXTREME_POSITIVE
+                    elif funding_zscore > 0.5:
+                        funding_bias = FundingBias.POSITIVE
+                    elif funding_zscore < -2.0:
+                        funding_bias = FundingBias.EXTREME_NEGATIVE
+                    elif funding_zscore < -0.5:
+                        funding_bias = FundingBias.NEGATIVE
+            except Exception:
+                pass
+
+        derivatives = DerivativesContext(
+            oi=OIData(
+                value=oi_value,
+                delta=oi_delta,
+                zscore=oi_zscore,
+            ),
+            funding=FundingData(
+                rate=funding_rate,
+                zscore=funding_zscore,
+                bias=funding_bias,
+            ),
+            liquidation=LiquidationData(
+                long=0.0,
+                short=0.0,
+                total=0.0,
+                long_zscore=0.0,
+                short_zscore=0.0,
+                reversal_signal=False,
+            ),
+        )
+
+        ctx = MarketContext(
+            symbol=symbol,
+            timestamp=ts_ms,
+            tf=tf_contexts,
+            derivatives=derivatives,
+            risk=RiskContext(multiplier=1.0),
+        )
+
+        market_contexts.append(ctx)
+
+    prices_arr = np.array(prices)
+    print(f"  构建 MarketContext: {len(market_contexts)} 条, 价格范围 [{prices_arr.min():.2f}, {prices_arr.max():.2f}]")
+
+    return market_contexts, timestamps, prices_arr
+
+
 # ==================== DataLake 数据加载 ====================
 
 def load_from_datalake(
@@ -161,26 +468,26 @@ def load_from_datalake(
             start_time = end_time - timedelta(days=days)
             
             request = QueryRequest(
-                layer=DataLayer.HOT,
-                table=f"ohlcv_{timeframe}",
+                layer=DataLayer.AGGREGATED,
+                table="aggregated_klines",
                 symbol=symbol,
                 start_time=start_time,
                 end_time=end_time,
+                filters={"timeframe": timeframe},
                 limit=0,
-                order_by="timestamp"
+                order_by="open_time",
+                time_column="open_time",
             )
             
             data = loop.run_until_complete(manager.query(request))
             
             if not data:
-                print(f"警告: 从 HOT 层未获取到数据，尝试 WARM 层")
-                request.layer = DataLayer.WARM
-                data = loop.run_until_complete(manager.query(request))
+                print(f"警告: 从 AGGREGATED 层未获取到数据")
             
             loop.run_until_complete(manager.close())
             
             if data:
-                timestamps = [row["timestamp"] for row in data]
+                timestamps = [int(row["open_time"].timestamp() * 1000) if hasattr(row["open_time"], "timestamp") else row["open_time"] for row in data]
                 prices = np.array([row["close"] for row in data])
                 return data, timestamps, prices
             else:
@@ -254,6 +561,7 @@ __all__ = [
     'load_ohlcv_from_csv',
     'load_signals_from_csv',
     'generate_test_data',
+    'load_from_parquet',
     'load_from_datalake',
     'get_strategy_class',
     'save_results_to_csv',

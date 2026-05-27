@@ -877,7 +877,15 @@ def main():
         default=30,
         help="测试天数 (默认: 30)"
     )
-    
+
+    parser.add_argument(
+        "--source",
+        type=str,
+        default="mock",
+        choices=["mock", "datalake", "parquet"],
+        help="数据源: mock(模拟), datalake(数据湖), parquet(本地parquet文件) (默认: mock)"
+    )
+
     parser.add_argument(
         "--forward-bars",
         type=str,
@@ -907,11 +915,24 @@ def main():
         print(f"错误: 未知策略 {args.strategy}")
         sys.exit(1)
     
-    # 生成测试数据
-    samples_per_day = 96
-    num_samples = args.days * samples_per_day
-    print(f"生成 {num_samples} 个样本...")
-    market_contexts, timestamps, prices = generate_test_contexts(num_samples)
+    if args.source == "parquet":
+        from research.common.loaders import load_from_parquet
+        market_contexts, timestamps, prices = load_from_parquet(args.symbol, args.days)
+        if not market_contexts:
+            samples_per_day = 96
+            num_samples = args.days * samples_per_day
+            print(f"parquet 无数据，回退生成 {num_samples} 个模拟样本...")
+            market_contexts, timestamps, prices = generate_test_contexts(num_samples)
+    elif args.source == "datalake":
+        samples_per_day = 96
+        num_samples = args.days * samples_per_day
+        print(f"生成 {num_samples} 个样本...")
+        market_contexts, timestamps, prices = generate_test_contexts(num_samples)
+    else:
+        samples_per_day = 96
+        num_samples = args.days * samples_per_day
+        print(f"生成 {num_samples} 个样本...")
+        market_contexts, timestamps, prices = generate_test_contexts(num_samples)
     
     # 创建策略实例并运行事件研究
     strategy = strategy_class(args.symbol)

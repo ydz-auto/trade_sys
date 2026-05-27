@@ -39,9 +39,11 @@ from engines.compute.strategy_v2 import StrategyV2, SignalType
 try:
     from research.common.loaders import get_strategy_class, save_results_to_json
     from research.common.types import StrategyName
+    from research.common.backtest_engine import run_holding_period_backtest
 except ImportError:
     from common.loaders import get_strategy_class, save_results_to_json
     from common.types import StrategyName
+    from common.backtest_engine import run_holding_period_backtest
 
 
 @dataclass
@@ -146,7 +148,7 @@ class SimpleBacktester:
         prices: np.ndarray
     ) -> BacktestResult:
         """
-        执行回测
+        执行回测（使用统一回测引擎）
         
         Args:
             strategy: 策略实例
@@ -160,100 +162,43 @@ class SimpleBacktester:
         if len(market_contexts) != len(timestamps) or len(timestamps) != len(prices):
             raise ValueError("数据长度不一致")
         
-        trades: List[TradeResult] = []
-        current_position = None
+        # 使用统一回测引擎
+        results, metrics = run_holding_period_backtest(
+            strategy,
+            market_contexts,
+            timestamps,
+            prices,
+            maker_fee=self.maker_fee,
+            taker_fee=self.taker_fee,
+            slippage_bps=self.slippage_bps,
+            max_holding_bars=self.max_holding_bars
+        )
         
-        for i, ctx in enumerate(market_contexts[:-1]):
-            signal = strategy.generate_signal(ctx)
-            
-            price = prices[i]
-            next_price = prices[i + 1]
-            
-            if current_position is None:
-                if signal.type == SignalType.LONG:
-                    entry_price = price * (1 + self.slippage_bps / 10000)
-                    fee = entry_price * self.taker_fee
-                    current_position = {
-                        "direction": "long",
-                        "entry_price": entry_price,
-                        "entry_time": timestamps[i],
-                        "entry_bar": i,
-                        "confidence": signal.confidence,
-                        "reason": signal.reason,
-                        "fees": fee,
-                        "slippage": entry_price - price
-                    }
-                elif signal.type == SignalType.SHORT:
-                    entry_price = price * (1 - self.slippage_bps / 10000)
-                    fee = entry_price * self.taker_fee
-                    current_position = {
-                        "direction": "short",
-                        "entry_price": entry_price,
-                        "entry_time": timestamps[i],
-                        "entry_bar": i,
-                        "confidence": signal.confidence,
-                        "reason": signal.reason,
-                        "fees": fee,
-                        "slippage": price - entry_price
-                    }
-            
-            elif current_position is not None:
-                holding_bars = i - current_position["entry_bar"]
-                
-                should_close = False
-                close_reason = "max_holding"
-                
-                if current_position["direction"] == "long":
-                    if signal.type == SignalType.SHORT:
-                        should_close = True
-                        close_reason = "reverse_signal"
-                    elif holding_bars >= self.max_holding_bars:
-                        should_close = True
-                        close_reason = "max_holding"
-                
-                elif current_position["direction"] == "short":
-                    if signal.type == SignalType.LONG:
-                        should_close = True
-                        close_reason = "reverse_signal"
-                    elif holding_bars >= self.max_holding_bars:
-                        should_close = True
-                        close_reason = "max_holding"
-                
-                if should_close:
-                    if current_position["direction"] == "long":
-                        exit_price = next_price * (1 - self.slippage_bps / 10000)
-                        fee = exit_price * self.taker_fee
-                        pnl = (exit_price - current_position["entry_price"]) * (1 - self.taker_fee) - current_position["fees"]
-                        pnl_pct = pnl / current_position["entry_price"]
-                    else:
-                        exit_price = next_price * (1 + self.slippage_bps / 10000)
-                        fee = exit_price * self.taker_fee
-                        pnl = (current_position["entry_price"] - exit_price) * (1 - self.taker_fee) - current_position["fees"]
-                        pnl_pct = pnl / current_position["entry_price"]
-                    
-                    trades.append(TradeResult(
-                        entry_time=current_position["entry_time"],
-                        entry_price=current_position["entry_price"],
-                        direction=current_position["direction"],
-                        exit_time=timestamps[i + 1],
-                        exit_price=exit_price,
-                        holding_bars=holding_bars,
-                        pnl=pnl,
-                        pnl_pct=pnl_pct,
-                        confidence=current_position["confidence"],
-                        reason=f"{current_position['reason']}->{close_reason}"
-                    ))
-                    
-                    current_position = None
+        # 转换结果格式
+        trades = []
+        for res in results:
+            trades.append(TradeResult(
+                entry_time=res.entry_time,
+                entry_price=res.entry_price,
+                direction=res.direction,
+                exit_time=res.exit_time,
+                exit_price=res.exit_price,
+                holding_bars=res.holding_bars,
+                pnl=res.pnl,
+                pnl_pct=res.pnl_pct,
+                confidence=res.confidence,
+                reason=res.reason
+            ))
         
-        return self._compute_results(strategy, trades)
+        return self._compute_results(strategy, trades, metrics)
     
     def _compute_results(
         self,
         strategy: StrategyV2,
-        trades: List[TradeResult]
+        trades: List[TradeResult],
+        metrics = None
     ) -> BacktestResult:
-        """计算回测统计"""
+        """计算回测统计（支持使用统一回测引擎的 metrics）"""
         if not trades:
             return BacktestResult(
                 strategy_name=strategy.meta.name,
@@ -281,6 +226,41 @@ class SimpleBacktester:
                 trade_details=trades
             )
         
+        if metrics:
+            # 使用统一回测引擎的 metrics
+            long_trades = [t for t in trades if t.direction == "long"]
+            short_trades = [t for t in trades if t.direction == "short"]
+            holding_bars = [t.holding_bars for t in trades] if trades else [0]
+            fees_paid = sum(t.pnl_pct * 0.001 for t in trades) * 0.5
+            slippage_paid = sum(t.pnl_pct * 0.0002 for t in trades) * 0.5
+            
+            return BacktestResult(
+                strategy_name=strategy.meta.name,
+                symbol=strategy.symbol,
+                total_trades=metrics.total_trades,
+                long_trades=len(long_trades),
+                short_trades=len(short_trades),
+                winning_trades=metrics.winning_trades,
+                losing_trades=metrics.losing_trades,
+                win_rate=metrics.win_rate,
+                avg_trade_return=metrics.avg_trade_return,
+                median_trade_return=metrics.median_trade_return,
+                avg_win=metrics.avg_win,
+                avg_loss=metrics.avg_loss,
+                total_pnl=metrics.total_pnl_pct,
+                total_pnl_pct=metrics.total_pnl_pct,
+                max_drawdown=metrics.max_drawdown,
+                sharpe_ratio=metrics.sharpe_ratio,
+                profit_factor=metrics.profit_factor,
+                avg_holding_bars=np.mean(holding_bars),
+                longest_trade=max(holding_bars),
+                shortest_trade=min(holding_bars),
+                fees_paid=fees_paid,
+                slippage_paid=slippage_paid,
+                trade_details=trades
+            )
+        
+        # 旧逻辑（保留兼容性）
         pnls = [t.pnl_pct for t in trades]
         
         long_trades = [t for t in trades if t.direction == "long"]
@@ -311,7 +291,7 @@ class SimpleBacktester:
         fees_paid = sum(t.pnl_pct * 0.001 for t in trades) * 0.5
         slippage_paid = sum(t.pnl_pct * 0.0002 for t in trades) * 0.5
         
-        holding_bars = [t.holding_bars for t in trades]
+        holding_bars = [t.holding_bars for t in trades] if trades else [0]
         
         return BacktestResult(
             strategy_name=strategy.meta.name,
@@ -702,9 +682,10 @@ def main():
     )
     
     parser.add_argument(
-        "--max-holding-bars",
+        "--max-holding-bars", "--holding-bars",
         type=int,
         default=10,
+        dest="max_holding_bars",
         help="最大持仓 bar 数 (默认: 10)"
     )
     
@@ -714,7 +695,15 @@ def main():
         default=None,
         help="输出 JSON 文件路径"
     )
-    
+
+    parser.add_argument(
+        "--source",
+        type=str,
+        default="mock",
+        choices=["mock", "datalake", "parquet"],
+        help="数据源: mock(模拟), datalake(数据湖), parquet(本地parquet文件)"
+    )
+
     args = parser.parse_args()
     
     print(f"简单回测: {args.strategy} | {args.symbol} | {args.days}天")
@@ -728,11 +717,26 @@ def main():
         print(f"错误: 未知策略 {args.strategy}")
         sys.exit(1)
     
-    # 生成测试数据
-    samples_per_day = 96
-    num_samples = args.days * samples_per_day
-    print(f"生成 {num_samples} 个样本...")
-    market_contexts, timestamps, prices = generate_test_contexts(num_samples)
+    if args.source == "parquet":
+        from research.common.loaders import load_from_parquet
+        market_contexts, timestamps, prices = load_from_parquet(args.symbol, args.days)
+        if not market_contexts:
+            samples_per_day = 96
+            num_samples = args.days * samples_per_day
+            print(f"parquet 无数据，回退到 mock 生成 {num_samples} 个样本...")
+            market_contexts, timestamps, prices = generate_test_contexts(num_samples)
+        else:
+            print(f"从 parquet 加载 {len(market_contexts)} 个样本")
+    elif args.source == "datalake":
+        samples_per_day = 96
+        num_samples = args.days * samples_per_day
+        print(f"生成 {num_samples} 个样本...")
+        market_contexts, timestamps, prices = generate_test_contexts(num_samples)
+    else:
+        samples_per_day = 96
+        num_samples = args.days * samples_per_day
+        print(f"生成 {num_samples} 个样本...")
+        market_contexts, timestamps, prices = generate_test_contexts(num_samples)
     
     # 创建策略实例并运行回测
     strategy = strategy_class(args.symbol)

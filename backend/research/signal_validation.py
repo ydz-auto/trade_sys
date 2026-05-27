@@ -557,8 +557,8 @@ def main():
         "--source",
         type=str,
         default="mock",
-        choices=["mock", "datalake"],
-        help="数据源: mock (测试数据) 或 datalake (真实数据) (默认: mock)"
+        choices=["mock", "datalake", "parquet"],
+        help="数据源: mock / datalake / parquet (默认: mock)"
     )
     
     parser.add_argument(
@@ -581,7 +581,18 @@ def main():
         sys.exit(1)
     
     # 根据数据源获取数据
-    if args.source == "datalake":
+    if args.source == "parquet":
+        print(f"从 Parquet 加载 {args.symbol} 最近 {args.days} 天数据...")
+        from research.common.loaders import load_from_parquet
+        market_contexts, timestamps, prices = load_from_parquet(args.symbol, args.days)
+        
+        if not market_contexts:
+            print("警告: 从 Parquet 未获取到数据，使用 mock 数据")
+            samples_per_day = 96
+            num_samples = args.days * samples_per_day
+            market_contexts, timestamps = generate_test_contexts(num_samples)
+    
+    elif args.source == "datalake":
         print(f"从 DataLake 加载 {args.symbol} 最近 {args.days} 天数据...")
         data, timestamps, prices = load_from_datalake(args.symbol, args.days)
         
@@ -591,7 +602,6 @@ def main():
             num_samples = args.days * samples_per_day
             market_contexts, timestamps = generate_test_contexts(num_samples)
         else:
-            # 将 DataLake 数据转换为 MarketContext
             print(f"将 {len(data)} 条数据转换为 MarketContext...")
             from engines.compute.context import MarketContextBuilder
             builder = MarketContextBuilder()

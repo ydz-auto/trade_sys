@@ -7,6 +7,8 @@ from .data_lake import (
     get_data_lake_manager,
     DataLayer,
     QueryRequest,
+    FileDataLakeReader,
+    get_file_reader,
 )
 
 __all__ = [
@@ -14,4 +16,6 @@ __all__ = [
     "get_data_lake_manager",
     "DataLayer",
     "QueryRequest",
+    "FileDataLakeReader",
+    "get_file_reader",
 ]

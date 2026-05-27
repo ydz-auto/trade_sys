@@ -11,6 +11,7 @@ from .manager import (
 )
 from .layer import DataLayer, DataCategory, DataLineage, get_layer_config
 from .schemas import DATA_LAKE_SCHEMAS, DATA_LAKE_VIEWS
+from .file_reader import FileDataLakeReader, get_file_reader
 
 __all__ = [
     "DataLakeManager",
@@ -24,4 +25,6 @@ __all__ = [
     "get_layer_config",
     "DATA_LAKE_SCHEMAS",
     "DATA_LAKE_VIEWS",
+    "FileDataLakeReader",
+    "get_file_reader",
 ]

@@ -61,7 +61,8 @@ class QueryRequest:
     offset: int = 0
     
     filters: Dict[str, Any] = field(default_factory=dict)
-    order_by: str = "timestamp"
+    order_by: str = "open_time"
+    time_column: str = "open_time"
 
 
 @dataclass
@@ -232,11 +233,11 @@ class DataLakeManager:
             params["exchange"] = request.exchange
         
         if request.start_time:
-            conditions.append("timestamp >= %(start_time)s")
+            conditions.append(f"{request.time_column} >= %(start_time)s")
             params["start_time"] = request.start_time
         
         if request.end_time:
-            conditions.append("timestamp < %(end_time)s")
+            conditions.append(f"{request.time_column} < %(end_time)s")
             params["end_time"] = request.end_time
         
         for key, value in request.filters.items():
