@@ -4,7 +4,9 @@ Subdirectories:
   risk/        Risk engine and checkers
   signal/      Signal fusion and scoring
   feature/     Feature calculation and matrix management
-  strategy/    Strategy definitions, discovery, and registry
+  strategy/    Legacy strategy definitions (deprecated)
+  strategy_v2/ Strategy V2 - MarketContext based strategies
+  context/     MarketContext builder and validators
   aggregation/ Candle aggregation and event grouping
   correlation/ Correlation computation and service
   scoring/     LLM-based scoring

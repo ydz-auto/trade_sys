@@ -1,0 +1,452 @@
+"""
+MarketContext Builder - 从 raw features 构建结构化上下文
+
+核心职责：
+1. 接收 raw features
+2. 按时间周期分组
+3. 构建各个分层上下文
+4. 返回完整的 MarketContext
+
+数据流：
+raw data → features_by_tf → MarketContextBuilder → MarketContext
+"""
+
+from typing import Dict, Any, Optional, Tuple
+
+from .schema import (
+    MarketContext,
+    TimeframeContext,
+    PriceState,
+    TrendStateData,
+    MomentumState,
+    VolatilityStateData,
+    VolumeStateData,
+    FlowState,
+    LiquidityStateData,
+    DerivativesContext,
+    OIData,
+    FundingData,
+    LiquidationData,
+    CrossMarketData,
+    RiskContext,
+    STANDARD_TIMEFRAMES,
+    TrendState,
+    MomentumDirection,
+    VolatilityState,
+    VolumeState,
+    FlowPressure,
+    LiquidityState,
+    FundingBias,
+)
+
+
+class MarketContextBuilder:
+    """
+    将 raw features 转换为结构化的 MarketContext
+    """
+    
+    def __init__(self, symbol: str):
+        self.symbol = symbol
+    
+    def build(
+        self,
+        features_by_tf: Dict[str, Dict[str, Any]],
+        timestamp: int,
+    ) -> MarketContext:
+        """
+        构建完整的 MarketContext
+        
+        Args:
+            features_by_tf: 按时间周期分组的特征，如 {"1m": {"close": 42000, ...}, ...}
+            timestamp: 毫秒时间戳
+        
+        Returns:
+            完整的 MarketContext
+        """
+        # 构建时间周期上下文
+        tf_contexts: Dict[str, TimeframeContext] = {}
+        for tf in STANDARD_TIMEFRAMES:
+            features = features_by_tf.get(tf, {})
+            tf_contexts[tf] = self._build_timeframe_context(tf, features)
+        
+        # 构建跨周期上下文
+        derivatives = self._build_derivatives_context(features_by_tf)
+        cross_market = self._build_cross_market_context(features_by_tf)
+        risk = self._build_risk_context(features_by_tf, tf_contexts)
+        
+        return MarketContext(
+            symbol=self.symbol,
+            timestamp=timestamp,
+            tf=tf_contexts,
+            derivatives=derivatives,
+            cross_market=cross_market,
+            risk=risk,
+        )
+    
+    def _build_timeframe_context(
+        self,
+        timeframe: str,
+        features: Dict[str, Any],
+    ) -> TimeframeContext:
+        """
+        构建单个时间周期的上下文
+        """
+        return TimeframeContext(
+            timeframe=timeframe,
+            price=self._build_price_state(features),
+            trend=self._build_trend_state(features),
+            momentum=self._build_momentum_state(features),
+            volatility=self._build_volatility_state(features),
+            volume=self._build_volume_state(features),
+            flow=self._build_flow_state(features),
+            liquidity=self._build_liquidity_state(features),
+        )
+    
+    def _build_price_state(self, features: Dict[str, Any]) -> PriceState:
+        """构建价格状态"""
+        return PriceState(
+            open=features.get("open", 0.0),
+            high=features.get("high", 0.0),
+            low=features.get("low", 0.0),
+            close=features.get("close", 0.0),
+            return_1h=features.get("return_1h", 0.0),
+            return_24h=features.get("return_24h", 0.0),
+            change=features.get("change", 0.0),
+            change_percent=features.get("change_percent", 0.0),
+            closes=tuple(features.get("closes", [])),
+            highs=tuple(features.get("highs", [])),
+            lows=tuple(features.get("lows", [])),
+            support=features.get("support"),
+            resistance=features.get("resistance"),
+        )
+    
+    def _build_trend_state(self, features: Dict[str, Any]) -> TrendStateData:
+        """构建趋势状态"""
+        ema_20 = features.get("ema_20", 0.0)
+        ema_50 = features.get("ema_50", 0.0)
+        close = features.get("close", 0.0)
+        
+        # 判断趋势状态
+        if ema_20 > ema_50:
+            if close > ema_20 * 1.005:
+                state = TrendState.STRONG_UP
+            else:
+                state = TrendState.WEAK_UP
+        elif ema_20 < ema_50:
+            if close < ema_20 * 0.995:
+                state = TrendState.STRONG_DOWN
+            else:
+                state = TrendState.WEAK_DOWN
+        else:
+            state = TrendState.SIDEWAYS
+        
+        return TrendStateData(
+            state=state,
+            ema_20=ema_20,
+            ema_50=ema_50,
+            slope=features.get("slope", 0.0),
+            structure=features.get("structure", "unknown"),
+            strength=features.get("strength", 0.0),
+        )
+    
+    def _build_momentum_state(self, features: Dict[str, Any]) -> MomentumState:
+        """构建动量状态"""
+        rsi = features.get("rsi", 50.0)
+        macd = features.get("macd", 0.0)
+        macd_signal = features.get("macd_signal", 0.0)
+        
+        # 判断动量方向
+        score = 0.0
+        if rsi > 50:
+            score = (rsi - 50) / 50
+        else:
+            score = (rsi - 50) / 50
+        
+        if macd > macd_signal:
+            score += 0.3
+        else:
+            score -= 0.3
+        
+        score = max(-1.0, min(1.0, score))
+        
+        if score > 0.2:
+            direction = MomentumDirection.BUY
+        elif score < -0.2:
+            direction = MomentumDirection.SELL
+        else:
+            direction = MomentumDirection.NEUTRAL
+        
+        return MomentumState(
+            direction=direction,
+            score=score,
+            rsi=rsi,
+            macd=macd,
+            macd_signal=macd_signal,
+        )
+    
+    def _build_volatility_state(self, features: Dict[str, Any]) -> VolatilityStateData:
+        """构建波动率状态"""
+        atr_pct = features.get("atr_pct", 0.0)
+        realized_vol_zscore = features.get("realized_vol_zscore", 0.0)
+        
+        # 判断波动率状态
+        if realized_vol_zscore > 2.0 or atr_pct > 3.0:
+            state = VolatilityState.EXTREME
+        elif realized_vol_zscore > 1.0 or atr_pct > 1.5:
+            state = VolatilityState.ELEVATED
+        elif realized_vol_zscore < -1.0 or atr_pct < 0.5:
+            state = VolatilityState.LOW
+        else:
+            state = VolatilityState.NORMAL
+        
+        return VolatilityStateData(
+            state=state,
+            atr=features.get("atr", 0.0),
+            atr_pct=atr_pct,
+            bb_width=features.get("bb_width", 0.0),
+            bb_width_pct=features.get("bb_width_pct", 0.0),
+            realized_vol=features.get("realized_vol", 0.0),
+            realized_vol_zscore=realized_vol_zscore,
+        )
+    
+    def _build_volume_state(self, features: Dict[str, Any]) -> VolumeStateData:
+        """构建成交量状态"""
+        volume_zscore = features.get("volume_zscore", 0.0)
+        
+        # 判断成交量状态
+        if volume_zscore > 2.0:
+            state = VolumeState.CLIMAX
+        elif volume_zscore < -1.0:
+            state = VolumeState.DRY
+        else:
+            state = VolumeState.NORMAL
+        
+        return VolumeStateData(
+            state=state,
+            volume=features.get("volume", 0.0),
+            volume_ma=features.get("volume_ma", 0.0),
+            volume_zscore=volume_zscore,
+            volume_ratio=features.get("volume_ratio", 1.0),
+        )
+    
+    def _build_flow_state(self, features: Dict[str, Any]) -> FlowState:
+        """构建资金流状态"""
+        aggressive_buy = features.get("aggressive_buy", 0.0)
+        aggressive_sell = features.get("aggressive_sell", 0.0)
+        cvd_slope = features.get("cvd_slope", 0.0)
+        
+        # 计算压力分数
+        total = aggressive_buy + aggressive_sell
+        if total > 0:
+            score = (aggressive_buy - aggressive_sell) / total
+        else:
+            score = 0.0
+        
+        # 结合 CVD slope
+        score += cvd_slope * 0.5
+        score = max(-1.0, min(1.0, score))
+        
+        # 判断压力方向
+        if score > 0.2:
+            pressure = FlowPressure.BUY
+        elif score < -0.2:
+            pressure = FlowPressure.SELL
+        else:
+            pressure = FlowPressure.NEUTRAL
+        
+        return FlowState(
+            pressure=pressure,
+            score=score,
+            cvd=features.get("cvd", 0.0),
+            cvd_slope=cvd_slope,
+            cumulative_delta=features.get("cumulative_delta", 0.0),
+            aggressive_buy=aggressive_buy,
+            aggressive_sell=aggressive_sell,
+            aggressive_ratio=features.get("aggressive_ratio", 1.0),
+            whale_buy_count=features.get("whale_buy_count", 0),
+            whale_sell_count=features.get("whale_sell_count", 0),
+            whale_buy_volume=features.get("whale_buy_volume", 0.0),
+            whale_sell_volume=features.get("whale_sell_volume", 0.0),
+            imbalance_5=features.get("imbalance_5", 0.0),
+        )
+    
+    def _build_liquidity_state(self, features: Dict[str, Any]) -> LiquidityStateData:
+        """构建流动性状态"""
+        spread_bps = features.get("spread_bps", 0.0)
+        vacuum_score = features.get("vacuum_score", 0.0)
+        is_vacuum = features.get("is_vacuum", False)
+        
+        # 判断流动性状态
+        if is_vacuum or vacuum_score > 0.7:
+            state = LiquidityState.VACUUM
+        elif spread_bps > 5 or features.get("depth_ratio", 1.0) < 0.5:
+            state = LiquidityState.THIN
+        elif features.get("depth_ratio", 1.0) > 2.0:
+            state = LiquidityState.FLOODED
+        else:
+            state = LiquidityState.NORMAL
+        
+        return LiquidityStateData(
+            state=state,
+            spread=features.get("spread", 0.0),
+            spread_bps=spread_bps,
+            depth_ratio=features.get("depth_ratio", 1.0),
+            top5_bid_depth=features.get("top5_bid_depth", 0.0),
+            top5_ask_depth=features.get("top5_ask_depth", 0.0),
+            microprice=features.get("microprice", 0.0),
+            is_vacuum=is_vacuum,
+            vacuum_score=vacuum_score,
+            cancel_rate=features.get("cancel_rate", 0.0),
+        )
+    
+    def _build_derivatives_context(
+        self,
+        features_by_tf: Dict[str, Dict[str, Any]],
+    ) -> DerivativesContext:
+        """构建衍生品上下文（取最新特征）"""
+        # 合并所有时间周期的特征
+        all_features: Dict[str, Any] = {}
+        for tf_features in features_by_tf.values():
+            all_features.update(tf_features)
+        
+        # 构建持仓量数据
+        oi_zscore = all_features.get("oi_zscore", 0.0)
+        oi_trend = "neutral"
+        if oi_zscore > 1.0:
+            oi_trend = "rising"
+        elif oi_zscore < -1.0:
+            oi_trend = "falling"
+        elif abs(oi_zscore) > 2.0:
+            oi_trend = "spike"
+        
+        oi_data = OIData(
+            value=all_features.get("oi", 0.0),
+            delta=all_features.get("oi_delta", 0.0),
+            zscore=oi_zscore,
+            history=tuple(all_features.get("oi_history", [])),
+            trend=oi_trend,
+        )
+        
+        # 构建资金费率数据
+        funding_zscore = all_features.get("funding_zscore", 0.0)
+        if funding_zscore > 2.0:
+            funding_bias = FundingBias.EXTREME_POSITIVE
+        elif funding_zscore > 0.5:
+            funding_bias = FundingBias.POSITIVE
+        elif funding_zscore < -2.0:
+            funding_bias = FundingBias.EXTREME_NEGATIVE
+        elif funding_zscore < -0.5:
+            funding_bias = FundingBias.NEGATIVE
+        else:
+            funding_bias = FundingBias.NEUTRAL
+        
+        funding_data = FundingData(
+            rate=all_features.get("funding_rate", 0.0),
+            zscore=funding_zscore,
+            bias=funding_bias,
+            history=tuple(all_features.get("funding_history", [])),
+        )
+        
+        # 构建强平数据
+        liquidation_data = LiquidationData(
+            long=all_features.get("liquidation_long", 0.0),
+            short=all_features.get("liquidation_short", 0.0),
+            total=all_features.get("liquidation_total", 0.0),
+            long_zscore=all_features.get("liquidation_long_zscore", 0.0),
+            short_zscore=all_features.get("liquidation_short_zscore", 0.0),
+            reversal_signal=all_features.get("liquidation_reversal_signal", False),
+        )
+        
+        return DerivativesContext(
+            oi=oi_data,
+            funding=funding_data,
+            liquidation=liquidation_data,
+        )
+    
+    def _build_cross_market_context(
+        self,
+        features_by_tf: Dict[str, Dict[str, Any]],
+    ) -> CrossMarketData:
+        """构建跨市场上下文"""
+        all_features: Dict[str, Any] = {}
+        for tf_features in features_by_tf.values():
+            all_features.update(tf_features)
+        
+        returns = {
+            "binance": all_features.get("binance_return", 0.0),
+            "okx": all_features.get("okx_return", 0.0),
+            "bybit": all_features.get("bybit_return", 0.0),
+        }
+        
+        lead_exchange = max(returns, key=returns.get, default="")
+        lag_exchange = min(returns, key=returns.get, default="")
+        
+        return CrossMarketData(
+            binance_return=all_features.get("binance_return", 0.0),
+            okx_return=all_features.get("okx_return", 0.0),
+            bybit_return=all_features.get("bybit_return", 0.0),
+            basis=all_features.get("basis", 0.0),
+            premium=all_features.get("premium", 0.0),
+            spread=all_features.get("spread", 0.0),
+            lead_exchange=lead_exchange,
+            lag_exchange=lag_exchange,
+            lead_lag_score=all_features.get("lead_lag_score", 0.0),
+        )
+    
+    def _build_risk_context(
+        self,
+        features_by_tf: Dict[str, Dict[str, Any]],
+        tf_contexts: Dict[str, TimeframeContext],
+    ) -> RiskContext:
+        """构建风险上下文（由 4h 周期决定）"""
+        h4 = tf_contexts.get("4h")
+        
+        # 默认值
+        high_volatility = False
+        low_liquidity = False
+        extreme_move = False
+        regime_change = False
+        multiplier = 1.0
+        
+        if h4:
+            # 波动率判断
+            if h4.volatility.state in [VolatilityState.ELEVATED, VolatilityState.EXTREME]:
+                high_volatility = True
+            
+            # 流动性判断
+            if h4.liquidity.state in [LiquidityState.THIN, LiquidityState.VACUUM]:
+                low_liquidity = True
+            
+            # 极端波动判断
+            if h4.price.change_percent > 5:
+                extreme_move = True
+            
+            # 趋势反转判断
+            if h4.trend.state == TrendState.SIDEWAYS:
+                regime_change = True
+            
+            # 风险乘数（由 4h 决定）
+            if high_volatility or low_liquidity:
+                multiplier = 0.7
+            elif extreme_move:
+                multiplier = 0.5
+            elif regime_change:
+                multiplier = 0.8
+        
+        return RiskContext(
+            high_volatility=high_volatility,
+            low_liquidity=low_liquidity,
+            news_event=features_by_tf.get("1h", {}).get("news_event", False),
+            overtrading=False,  # 由执行层设置
+            drawdown_exceeded=False,  # 由执行层设置
+            slippage_warning=False,  # 由执行层设置
+            execution_paused=False,  # 由执行层设置
+            regime_change=regime_change,
+            extreme_move=extreme_move,
+            multiplier=multiplier,
+        )
+
+
+__all__ = [
+    "MarketContextBuilder",
+]
