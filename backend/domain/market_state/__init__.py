@@ -8,6 +8,8 @@ Key Components:
 - RegimeType: 市场状态枚举
 - MarketState: 不可变的市场状态对象
 - MarketStateMachine: 事件驱动的状态转换引擎
+- MarketContext: 统一市场上下文（单一真相源）
+- MarketContextAuthority: 市场上下文权威层
 """
 
 from domain.market_state.state import (
@@ -19,6 +21,10 @@ from domain.market_state.state import (
     MarketState,
 )
 from domain.market_state.machine import MarketStateMachine
+from domain.market_state.context import (
+    MarketContext,
+    MarketContextAuthority,
+)
 
 __all__ = [
     "RegimeType",
@@ -28,4 +34,6 @@ __all__ = [
     "TrendState",
     "MarketState",
     "MarketStateMachine",
+    "MarketContext",
+    "MarketContextAuthority",
 ]
