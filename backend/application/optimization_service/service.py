@@ -25,6 +25,7 @@ import asyncio
 import uuid
 import json
 
+from infrastructure.acceleration import CPUExecutor
 from infrastructure.logging import get_logger
 from infrastructure.utilities.time_authority import ensure_time_ms
 
@@ -385,33 +386,25 @@ class OptimizationService:
         max_workers: int,
         metric: str,
     ) -> List[Dict[str, Any]]:
-        """使用 ProcessPoolExecutor 进行真正的多进程并行"""
-        from concurrent.futures import ProcessPoolExecutor, as_completed
-        
         backtest_config = engine.config
+        tasks = [
+            (data_path, symbol, strategy_id, start_time, end_time, params, backtest_config, metric)
+            for params in param_combinations
+        ]
+        executor = CPUExecutor(executor_type="process", max_workers=max_workers)
+        exec_results = executor.execute(_run_single_backtest_sync, tasks)
         results = []
-        
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(
-                    _run_single_backtest_sync,
-                    data_path, symbol, strategy_id, start_time, end_time,
-                    params, backtest_config, metric
-                ): params for params in param_combinations
-            }
-            for future in as_completed(futures):
-                try:
-                    result = future.result()
-                    results.append(result)
-                except Exception as e:
-                    logger.warning(f"Multiprocess combo failed: {e}")
-                    results.append({
-                        "params": futures[future],
-                        "score": -float('inf'),
-                        "result": None,
-                        "error": str(e),
-                    })
-        
+        for r in exec_results:
+            if r.error is None:
+                results.append(r.result)
+            else:
+                logger.warning(f"Multiprocess combo failed: {r.error}")
+                results.append({
+                    "params": param_combinations[r.task_id],
+                    "score": -float('inf'),
+                    "result": None,
+                    "error": r.error,
+                })
         return results
     
     async def create_task(

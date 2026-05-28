@@ -13,7 +13,7 @@ Matrix Builder - 统一特征矩阵构建器
 
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from infrastructure.acceleration import CPUExecutor, get_default_workers
 import pandas as pd
 import numpy as np
 
@@ -157,11 +157,12 @@ class UnifiedMatrixBuilder:
     - _align_and_fill_batch_gpu() GPU 批量前向填充（大数据量）
     """
     
-    def __init__(self, symbol: str, interval_ms: int = 60000, n_workers: int = 4, accelerator=None):
+    def __init__(self, symbol: str, interval_ms: int = 60000, n_workers: Optional[int] = None, accelerator=None):
         self.symbol = symbol
         self.interval_ms = interval_ms
         self.schema_registry = get_schema_registry()
-        self.n_workers = n_workers
+        self.n_workers = n_workers if n_workers is not None else get_default_workers()
+        self._cpu_executor = CPUExecutor(executor_type="thread", max_workers=self.n_workers)
         self._accelerator = accelerator
         
         self.timestamps: List[int] = []
@@ -235,21 +236,18 @@ class UnifiedMatrixBuilder:
                 self._align_and_fill(feature_name, df)
     
     def _add_feature_group_parallel(self, group_data: Dict[str, pd.DataFrame]):
-        """多线程并行对齐填充"""
-        with ThreadPoolExecutor(max_workers=min(self.n_workers, len(group_data))) as executor:
-            futures = {}
-            for feature_name, df in group_data.items():
-                futures[executor.submit(
-                    self._align_and_fill_return, feature_name, df
-                )] = feature_name
-            
-            for future in as_completed(futures):
-                feature_name = futures[future]
-                try:
-                    aligned_values = future.result()
-                    self.feature_vector[feature_name] = aligned_values
-                except Exception as e:
-                    logger.warning(f"Parallel align failed for {feature_name}: {e}")
+        kwargs_list = [{"feature_name": name, "df": df} for name, df in group_data.items()]
+        keys = list(group_data.keys())
+        results = self._cpu_executor.submit_map(
+            func=self._align_and_fill_return,
+            kwargs_list=kwargs_list,
+            keys=keys
+        )
+        for r in results:
+            if r.error is None:
+                self.feature_vector[r.key] = r.result
+            else:
+                logger.warning(f"Parallel align failed for {r.key}: {r.error}")
     
     def _align_and_fill_return(self, feature_name: str, df: pd.DataFrame) -> List[float]:
         """对齐并填充，返回结果列表（线程安全，不修改 self）"""

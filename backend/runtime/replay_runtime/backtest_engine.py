@@ -635,7 +635,7 @@ async def run_parallel_optimization(
 
     engine = optimization_engine
 
-    max_concurrent = n_workers or 4
+    max_concurrent = n_workers or get_default_workers()
     semaphore = asyncio.Semaphore(max_concurrent)
 
     async def _run_single(params: Dict[str, Any]):

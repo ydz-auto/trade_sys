@@ -9,15 +9,15 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 import pandas as pd
 import numpy as np
-from concurrent.futures import ProcessPoolExecutor, as_completed
-import multiprocessing
+
 
 # 添加 backend 路径
 script_dir = os.path.dirname(os.path.abspath(__file__))
 backend_path = os.path.abspath(os.path.join(script_dir, '..', 'backend'))
 sys.path.insert(0, backend_path)
 
-# 导入真实系统内回测引擎
+from infrastructure.acceleration import CPUExecutor, get_default_workers
+
 from runtime.replay_runtime.backtest_engine import (
     BacktestEngine,
     BacktestConfig,
@@ -562,22 +562,16 @@ def main():
         for strategy_id in strategies:
             tasks.append((strategy_id, bars, year))
             
+    max_workers = min(get_default_workers(), 16)
     print(f"\n🚀 准备运行 {len(tasks)} 个回测任务")
-    print(f"   使用 {min(multiprocessing.cpu_count(), 16)} 个 CPU 核心并行运行...")
-    
-    # 并行运行
+    print(f"   使用 {max_workers} 个 CPU 核心并行运行...")
+
+    executor = CPUExecutor(executor_type="process", max_workers=max_workers)
+    results_raw = executor.execute(run_single_strategy_backtest, tasks)
     results = []
-    with ProcessPoolExecutor(max_workers=min(multiprocessing.cpu_count(), 16)) as executor:
-        future_to_task = {executor.submit(run_single_strategy_backtest, *task): task for task in tasks}
-        
-        completed = 0
-        for future in as_completed(future_to_task):
-            completed += 1
-            if completed % 10 == 0:
-                print(f"   进度: {completed}/{len(tasks)}")
-                
-            result = future.result()
-            results.append(result)
+    for r in results_raw:
+        if r.error is None:
+            results.append(r.result)
             
     # 分析结果
     print("\n" + "=" * 120)

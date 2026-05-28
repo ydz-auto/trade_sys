@@ -15,15 +15,15 @@ CLI:
 """
 
 import sys
-import os
 from pathlib import Path
 from typing import List, Optional, Dict
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import argparse
 
 import numpy as np
 import pandas as pd
 from scipy import stats
+
+from infrastructure.acceleration import CPUExecutor, get_default_workers
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
@@ -166,7 +166,7 @@ def compute_ic_table(
                 continue
             tasks.append((feat, lab))
 
-    def _worker(feat, lab):
+    def _worker(*, feat, lab):
         f_vals = fm[feat].values.astype(float)
         l_vals = lb[lab].values.astype(float)
         result = _compute_single_ic(f_vals, l_vals)
@@ -178,15 +178,18 @@ def compute_ic_table(
 
     rows = []
     if max_workers is None:
-        max_workers = min(os.cpu_count() or 4, 8)
+        max_workers = get_default_workers()
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(_worker, feat, lab): (feat, lab)
-            for feat, lab in tasks
-        }
-        for future in as_completed(futures):
-            rows.append(future.result())
+    executor = CPUExecutor(executor_type="thread", max_workers=max_workers)
+    submit_results = executor.submit_map(
+        func=_worker,
+        kwargs_list=[{"feat": feat, "lab": lab} for feat, lab in tasks],
+        keys=[(feat, lab) for feat, lab in tasks],
+    )
+    for sr in submit_results:
+        if sr.error is not None:
+            continue
+        rows.append(sr.result)
 
     result_df = pd.DataFrame(rows)
     if len(result_df) > 0:
@@ -219,9 +222,8 @@ def compute_conditional_ic(
     lb = label_df.loc[common_idx]
 
     regimes = fm[regime_col].unique()
-    rows = []
 
-    def _worker(regime):
+    def _worker(*, regime):
         mask = fm[regime_col] == regime
         f_vals = fm.loc[mask, feature].values.astype(float)
         l_vals = lb.loc[mask, label].values.astype(float)
@@ -231,10 +233,20 @@ def compute_conditional_ic(
         result["label"] = label
         return result
 
-    with ThreadPoolExecutor(max_workers=max_workers or 4) as executor:
-        futures = {executor.submit(_worker, r): r for r in regimes}
-        for future in as_completed(futures):
-            rows.append(future.result())
+    if max_workers is None:
+        max_workers = get_default_workers()
+
+    executor = CPUExecutor(executor_type="thread", max_workers=max_workers)
+    submit_results = executor.submit_map(
+        func=_worker,
+        kwargs_list=[{"regime": r} for r in regimes],
+        keys=list(regimes),
+    )
+    rows = []
+    for sr in submit_results:
+        if sr.error is not None:
+            continue
+        rows.append(sr.result)
 
     return pd.DataFrame(rows).sort_values("regime").reset_index(drop=True)
 

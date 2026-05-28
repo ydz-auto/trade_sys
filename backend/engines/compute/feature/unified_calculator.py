@@ -33,7 +33,6 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any, Callable
 from pathlib import Path
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import numpy as np
 

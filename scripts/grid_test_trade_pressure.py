@@ -6,13 +6,13 @@ import sys
 import os
 from pathlib import Path
 from itertools import product
-from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 backend_path = os.path.abspath(os.path.join(script_dir, '..', 'backend'))
 sys.path.insert(0, backend_path)
 
+from infrastructure.acceleration import CPUExecutor, get_default_workers
 from infrastructure.storage.parquet_reader import read_parquet_safe
 from engines.compute.strategy.registry import get_strategy, get_strategy_info
 import numpy as np
@@ -229,23 +229,16 @@ def test_strategy_grid_parallel(strategy_id, param_grid, bars, min_trades=30, ma
     print(f"Testing {len(tasks)} parameter combinations with parallel execution...")
     
     if max_workers is None:
-        max_workers = min(multiprocessing.cpu_count(), 8)
+        max_workers = min(get_default_workers(), 8)
     print(f"Using {max_workers} CPU cores")
-    
+
+    executor = CPUExecutor(executor_type="process", max_workers=max_workers)
+    wrapped_tasks = [(task,) for task in tasks]
+    results_raw = executor.execute(run_single_test, wrapped_tasks)
     results = []
-    
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(run_single_test, task): task for task in tasks}
-        
-        completed = 0
-        for future in as_completed(futures):
-            completed += 1
-            if completed % 20 == 0:
-                print(f"  Progress: {completed}/{len(tasks)}")
-            
-            result = future.result()
-            if result:
-                results.append(result)
+    for r in results_raw:
+        if r.error is None and r.result is not None:
+            results.append(r.result)
     
     results.sort(key=lambda x: x["trades"], reverse=True)
     

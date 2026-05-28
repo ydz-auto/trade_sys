@@ -6,7 +6,6 @@
 import sys
 import os
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
 import numpy as np
 
@@ -14,6 +13,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 backend_path = os.path.abspath(os.path.join(script_dir, '..', 'backend'))
 sys.path.insert(0, backend_path)
 
+from infrastructure.acceleration import CPUExecutor, get_default_workers
 from infrastructure.storage.parquet_reader import read_parquet_safe
 from engines.compute.strategy.registry import get_strategy, get_strategy_info, list_strategies
 
@@ -382,21 +382,17 @@ def main():
         tasks.append((strategy_id, params, bars_2023))
         tasks.append((strategy_id, params, bars_2024))
     
+    max_workers = min(get_default_workers(), 16)
     print(f"\n准备运行 {len(tasks)} 个任务（每个策略2022/2023/2024各一年）")
-    print(f"使用 {min(multiprocessing.cpu_count(), 16)} 个CPU核心\n")
-    
+    print(f"使用 {max_workers} 个CPU核心\n")
+
+    executor = CPUExecutor(executor_type="process", max_workers=max_workers)
+    wrapped_tasks = [(task,) for task in tasks]
+    results_raw = executor.execute(run_single_backtest, wrapped_tasks)
     results = []
-    with ProcessPoolExecutor(max_workers=min(multiprocessing.cpu_count(), 16)) as executor:
-        futures = {executor.submit(run_single_backtest, task): task for task in tasks}
-        
-        completed = 0
-        for future in as_completed(futures):
-            completed += 1
-            if completed % 10 == 0:
-                print(f"进度: {completed}/{len(tasks)}")
-            
-            result = future.result()
-            results.append(result)
+    for r in results_raw:
+        if r.error is None:
+            results.append(r.result)
     
     # 整理结果
     results_by_year = {}

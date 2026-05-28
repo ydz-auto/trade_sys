@@ -65,7 +65,7 @@ except ImportError:
 
 
 from .device_manager import DeviceManager, DeviceInfo
-from .cpu_executor import CPUExecutor, ExecutionResult
+from .cpu_executor import CPUExecutor, ExecutionResult, SubmitResult, get_default_workers
 from .gpu_executor import GPUExecutor, GPUResult
 from .acceleration_service import AccelerationService, AccelerationConfig
 
@@ -217,11 +217,12 @@ __all__ = [
     "DeviceInfo",
     "CPUExecutor",
     "ExecutionResult",
+    "SubmitResult",
+    "get_default_workers",
     "GPUExecutor",
     "GPUResult",
     "AccelerationService",
     "AccelerationConfig",
-    # PyTorch 相关
     "torch",
     "device",
     "is_gpu",
