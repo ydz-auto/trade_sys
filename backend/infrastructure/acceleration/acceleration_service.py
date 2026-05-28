@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from .device_manager import DeviceManager, DeviceInfo
 from .cpu_executor import CPUExecutor, SubmitResult, get_default_workers
 from .gpu_executor import GPUExecutor
+from .resource_scheduler import ResourceScheduler, TaskProfile, ExecutionPlan
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,7 @@ class AccelerationService:
             executor_type="process" if self.config.enable_multiprocess else "sequential",
             max_workers=self.config.max_workers
         )
+        self._scheduler = ResourceScheduler()
         self._thread_executor: Optional[CPUExecutor] = None
         self._gpu_executor = GPUExecutor(
             cpu_fallback_workers=self.config.max_workers
@@ -174,6 +176,38 @@ class AccelerationService:
             List[SubmitResult]: 结果列表
         """
         cpu_exec = self.get_cpu_executor(executor_type=executor_type)
+        return cpu_exec.submit_map(func, kwargs_list, keys, progress_callback)
+
+    def parallel_map_with_plan(
+        self,
+        func: Callable,
+        tasks: List[tuple],
+        task_profile: TaskProfile,
+        progress_callback: Optional[Callable[[int, int], None]] = None
+    ) -> List[Any]:
+        plan = self._scheduler.plan_execution(task_profile)
+        cpu_exec = CPUExecutor(
+            executor_type=plan.executor_type,
+            max_workers=plan.max_workers,
+            memory_budget=plan.memory_budget_per_worker * plan.max_workers if plan.memory_budget_per_worker > 0 else None
+        )
+        results = cpu_exec.execute(func, tasks, progress_callback)
+        return [r.result if r.error is None else None for r in results]
+
+    def submit_map_with_plan(
+        self,
+        func: Callable,
+        kwargs_list: List[Dict[str, Any]],
+        task_profile: TaskProfile,
+        keys: Optional[List[Any]] = None,
+        progress_callback: Optional[Callable[[int, int], None]] = None
+    ) -> List[SubmitResult]:
+        plan = self._scheduler.plan_execution(task_profile)
+        cpu_exec = CPUExecutor(
+            executor_type=plan.executor_type,
+            max_workers=plan.max_workers,
+            memory_budget=plan.memory_budget_per_worker * plan.max_workers if plan.memory_budget_per_worker > 0 else None
+        )
         return cpu_exec.submit_map(func, kwargs_list, keys, progress_callback)
 
     def compute_features(

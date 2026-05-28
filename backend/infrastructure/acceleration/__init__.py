@@ -67,6 +67,9 @@ except ImportError:
 from .device_manager import DeviceManager, DeviceInfo
 from .cpu_executor import CPUExecutor, ExecutionResult, SubmitResult, get_default_workers
 from .gpu_executor import GPUExecutor, GPUResult
+from .memory_optimizer import MemoryOptimizer
+from .resource_scheduler import ResourceScheduler, TaskProfile, ExecutionPlan
+from .gpu_matrix_ops import GPUMatrixOps
 from .acceleration_service import AccelerationService, AccelerationConfig
 
 
@@ -221,6 +224,11 @@ __all__ = [
     "get_default_workers",
     "GPUExecutor",
     "GPUResult",
+    "MemoryOptimizer",
+    "ResourceScheduler",
+    "TaskProfile",
+    "ExecutionPlan",
+    "GPUMatrixOps",
     "AccelerationService",
     "AccelerationConfig",
     "torch",

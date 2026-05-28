@@ -179,28 +179,27 @@ class LeakageAudit:
     def _check_no_future_data_in_timeline(self, result: LeakageAuditResult) -> None:
         sorted_events = self._timeline.sort_by_time()
 
-        for i in range(len(sorted_events)):
-            for j in range(i + 1, len(sorted_events)):
-                earlier = sorted_events[i]
-                later = sorted_events[j]
+        for i in range(len(sorted_events) - 1):
+            earlier = sorted_events[i]
+            later = sorted_events[i + 1]
 
-                if earlier.timestamp_ms > later.timestamp_ms:
-                    issue = LeakageIssue(
-                        category=LeakageCategory.FUTURE_DATA,
-                        description=(
-                            f"Timeline ordering issue: {earlier.event_type} at {earlier.timestamp_ms} "
-                            f"appears after {later.event_type} at {later.timestamp_ms}"
-                        ),
-                        event_id=earlier.event_id,
-                        event_type=earlier.event_type,
-                        timestamp_ms=earlier.timestamp_ms,
-                        affected_symbol=earlier.symbol,
-                        metadata={
-                            "earlier_type": earlier.event_type.value,
-                            "earlier_ts": earlier.timestamp_ms,
-                            "later_type": later.event_type.value,
-                            "later_ts": later.timestamp_ms,
-                        },
-                        severity="warning",
-                    )
-                    result.add_issue(issue)
+            if earlier.timestamp_ms > later.timestamp_ms:
+                issue = LeakageIssue(
+                    category=LeakageCategory.FUTURE_DATA,
+                    description=(
+                        f"Timeline ordering issue: {earlier.event_type} at {earlier.timestamp_ms} "
+                        f"appears after {later.event_type} at {later.timestamp_ms}"
+                    ),
+                    event_id=earlier.event_id,
+                    event_type=earlier.event_type,
+                    timestamp_ms=earlier.timestamp_ms,
+                    affected_symbol=earlier.symbol,
+                    metadata={
+                        "earlier_type": earlier.event_type.value,
+                        "earlier_ts": earlier.timestamp_ms,
+                        "later_type": later.event_type.value,
+                        "later_ts": later.timestamp_ms,
+                    },
+                    severity="warning",
+                )
+                result.add_issue(issue)

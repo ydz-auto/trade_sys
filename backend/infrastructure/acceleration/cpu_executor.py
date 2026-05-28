@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_MEM_PER_TASK = 100 * 1024 * 1024
+
 
 @dataclass
 class ExecutionResult:
@@ -77,16 +79,26 @@ class CPUExecutor:
     def __init__(
         self,
         executor_type: str = "process",
-        max_workers: Optional[int] = None
+        max_workers: Optional[int] = None,
+        memory_budget: Optional[int] = None
     ):
         self.executor_type = executor_type
+        self.memory_budget = memory_budget
 
         if max_workers is None:
             self.max_workers = get_default_workers()
         else:
             self.max_workers = max_workers
 
+        if self.memory_budget is not None:
+            self.max_workers = min(self.max_workers, max(1, self.memory_budget // _DEFAULT_MEM_PER_TASK))
+
         logger.info(f"CPUExecutor initialized: type={executor_type}, max_workers={self.max_workers}")
+
+    def set_memory_budget(self, budget: int) -> None:
+        self.memory_budget = budget
+        self.max_workers = min(self.max_workers, max(1, self.memory_budget // _DEFAULT_MEM_PER_TASK))
+        logger.info(f"Memory budget set: budget={budget}, max_workers={self.max_workers}")
 
     def execute(
         self,
@@ -186,6 +198,8 @@ class CPUExecutor:
     ) -> List[SubmitResult]:
         """并行执行 submit_map"""
         max_workers = min(self.max_workers, len(kwargs_list))
+        if self.memory_budget is not None:
+            max_workers = min(max_workers, max(1, self.memory_budget // _DEFAULT_MEM_PER_TASK))
         logger.info(f"Parallel submit_map: {len(kwargs_list)} tasks, workers={max_workers}")
 
         if self.executor_type == "process":
@@ -256,6 +270,8 @@ class CPUExecutor:
     ) -> List[ExecutionResult]:
         """并行执行"""
         max_workers = min(self.max_workers, len(tasks))
+        if self.memory_budget is not None:
+            max_workers = min(max_workers, max(1, self.memory_budget // _DEFAULT_MEM_PER_TASK))
         logger.info(f"Parallel execution: {len(tasks)} tasks, workers={max_workers}")
 
         if self.executor_type == "process":

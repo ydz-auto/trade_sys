@@ -24,6 +24,7 @@ import pandas as pd
 from scipy import stats
 
 from infrastructure.acceleration import CPUExecutor, get_default_workers
+from infrastructure.acceleration.gpu_matrix_ops import GPUMatrixOps
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
@@ -50,6 +51,8 @@ DEFAULT_LABELS = [
     "future_ret_5",
     "future_ret_10",
 ]
+
+_GPU_BATCH_MIN_ROWS = 1000
 
 
 def _get_features_by_family(family_name: str) -> List[str]:
@@ -177,19 +180,77 @@ def compute_ic_table(
         return result
 
     rows = []
-    if max_workers is None:
-        max_workers = get_default_workers()
+    _gpu_ops = GPUMatrixOps()
 
-    executor = CPUExecutor(executor_type="thread", max_workers=max_workers)
-    submit_results = executor.submit_map(
-        func=_worker,
-        kwargs_list=[{"feat": feat, "lab": lab} for feat, lab in tasks],
-        keys=[(feat, lab) for feat, lab in tasks],
-    )
-    for sr in submit_results:
-        if sr.error is not None:
-            continue
-        rows.append(sr.result)
+    if _gpu_ops._gpu_available and len(common_idx) > _GPU_BATCH_MIN_ROWS and len(tasks) > 0:
+        label_to_features = {}
+        for feat, lab in tasks:
+            label_to_features.setdefault(lab, []).append(feat)
+
+        for lab, feat_names in label_to_features.items():
+            l_vals = lb[lab].values.astype(np.float32)
+            feat_cols = [f for f in feat_names if f in fm.columns]
+            if not feat_cols:
+                continue
+            feat_matrix = fm[feat_cols].values.astype(np.float32)
+            ic_values = _gpu_ops.compute_ic(feat_matrix, l_vals)
+            rank_ic_values = _gpu_ops.compute_rank_ic(feat_matrix, l_vals)
+
+            for i, feat in enumerate(feat_cols):
+                f_vals_raw = fm[feat].values.astype(float)
+                l_vals_raw = lb[lab].values.astype(float)
+                mask = ~(np.isnan(f_vals_raw) | np.isnan(l_vals_raw))
+                n = int(mask.sum())
+                ic_val = float(ic_values[i])
+                rank_ic_val = float(rank_ic_values[i])
+
+                if n < 30:
+                    rows.append({
+                        "ic": np.nan, "rank_ic": np.nan,
+                        "p_value": np.nan, "rank_p_value": np.nan,
+                        "sample_count": n,
+                        "feature": feat,
+                        "alpha_family": _get_family_for_feature(feat),
+                        "label": lab,
+                        "horizon": int(lab.replace("future_ret_", "")) if "future_ret_" in lab else 0,
+                    })
+                    continue
+
+                p_val = np.nan
+                if not np.isnan(ic_val) and abs(ic_val) <= 1.0:
+                    t_stat = ic_val * np.sqrt((n - 2) / max(1 - ic_val ** 2, 1e-12))
+                    p_val = float(2 * (1 - stats.t.cdf(abs(t_stat), df=n - 2)))
+
+                rank_p = np.nan
+                if not np.isnan(rank_ic_val) and abs(rank_ic_val) <= 1.0:
+                    t_stat = rank_ic_val * np.sqrt((n - 2) / max(1 - rank_ic_val ** 2, 1e-12))
+                    rank_p = float(2 * (1 - stats.t.cdf(abs(t_stat), df=n - 2)))
+
+                rows.append({
+                    "ic": ic_val,
+                    "rank_ic": rank_ic_val,
+                    "p_value": p_val,
+                    "rank_p_value": rank_p,
+                    "sample_count": n,
+                    "feature": feat,
+                    "alpha_family": _get_family_for_feature(feat),
+                    "label": lab,
+                    "horizon": int(lab.replace("future_ret_", "")) if "future_ret_" in lab else 0,
+                })
+    else:
+        if max_workers is None:
+            max_workers = get_default_workers()
+
+        executor = CPUExecutor(executor_type="thread", max_workers=max_workers)
+        submit_results = executor.submit_map(
+            func=_worker,
+            kwargs_list=[{"feat": feat, "lab": lab} for feat, lab in tasks],
+            keys=[(feat, lab) for feat, lab in tasks],
+        )
+        for sr in submit_results:
+            if sr.error is not None:
+                continue
+            rows.append(sr.result)
 
     result_df = pd.DataFrame(rows)
     if len(result_df) > 0:
@@ -324,8 +385,12 @@ def main():
                         help="趋势判定阈值 (默认: 0.01, 1min bar 建议 0.001~0.003)")
     parser.add_argument("--family", type=str, default=None,
                         help="按 Alpha Family 扫描 (order_flow, liquidity, open_interest, event_driven, regime, cross_sectional, price_action, volatility, funding, volume)")
+    parser.add_argument("--families", type=str, default=None,
+                        help="按多个 Alpha Families 扫描，逗号分隔 (price_action,volatility,volume,funding,order_flow)")
     parser.add_argument("--all-families", action="store_true",
                         help="扫描所有 Alpha Family 的所有 features")
+    parser.add_argument("--exclude-sources", type=str, default=None,
+                        help="Comma-separated data sources to exclude (oi,liquidation,orderbook)")
 
     args = parser.parse_args()
 
@@ -336,6 +401,10 @@ def main():
         print(f"  Mode: All Alpha Families")
     print("=" * 50)
 
+    exclude_sources = None
+    if args.exclude_sources:
+        exclude_sources = [s.strip() for s in args.exclude_sources.split(",")]
+
     print("Loading feature matrix...")
     from research.alpha.feature_matrix import build_feature_matrix
     fm = build_feature_matrix(
@@ -343,6 +412,7 @@ def main():
         exchange=args.exchange,
         days=args.days,
         timeframe=args.timeframe,
+        exclude_sources=exclude_sources,
     )
     print(f"  Features: {len(fm)} bars, {len(fm.columns)} columns")
 
@@ -356,6 +426,15 @@ def main():
         available = [c for c in all_alpha_features if c in fm.columns]
         print(f"\nAll Alpha Features: {len(all_alpha_features)} registered, {len(available)} available in matrix")
         ic_df = compute_ic_table(fm, labels, features=available, max_workers=args.workers)
+    elif args.families:
+        families_list = [f.strip() for f in args.families.split(",")]
+        all_features = []
+        for family in families_list:
+            family_features = _get_features_by_family(family)
+            available_family = [c for c in family_features if c in fm.columns]
+            all_features.extend(available_family)
+            print(f"  Family {family}: {len(available_family)} features available")
+        ic_df = compute_ic_table(fm, labels, features=list(set(all_features)), max_workers=args.workers)
     elif args.family:
         ic_df = compute_ic_table(fm, labels, alpha_family=args.family, max_workers=args.workers)
     else:

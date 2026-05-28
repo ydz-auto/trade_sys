@@ -18,6 +18,8 @@ Device Manager - 设备管理器
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 import os
+import ctypes
+import platform
 import logging
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,7 @@ class DeviceInfo:
     device_name: str
     is_gpu: bool
     memory_gb: Optional[float] = None
+    system_memory_gb: Optional[float] = None
     cores: Optional[int] = None
     extra_info: Optional[Dict[str, Any]] = None
 
@@ -49,6 +52,72 @@ class DeviceManager:
             cls._instance = super().__new__(cls)
         return cls._instance
     
+    @classmethod
+    def get_system_memory(cls) -> int:
+        try:
+            import psutil
+            return psutil.virtual_memory().total
+        except ImportError:
+            pass
+
+        try:
+            if platform.system() == "Windows":
+                kernel32 = ctypes.windll.kernel32
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [
+                        ("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                    ]
+                stat = MEMORYSTATUSEX()
+                stat.dwLength = ctypes.sizeof(stat)
+                kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+                return stat.ullTotalPhys
+            else:
+                return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+        except (OSError, AttributeError):
+            pass
+
+        return 0
+
+    @classmethod
+    def get_available_memory(cls) -> int:
+        try:
+            import psutil
+            return psutil.virtual_memory().available
+        except ImportError:
+            pass
+
+        try:
+            if platform.system() == "Windows":
+                kernel32 = ctypes.windll.kernel32
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [
+                        ("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                    ]
+                stat = MEMORYSTATUSEX()
+                stat.dwLength = ctypes.sizeof(stat)
+                kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+                return stat.ullAvailPhys
+        except (OSError, AttributeError):
+            pass
+
+        return 0
+
     @classmethod
     def detect(cls) -> DeviceInfo:
         """
@@ -77,10 +146,12 @@ class DeviceManager:
     @classmethod
     def _detect_cpu(cls) -> DeviceInfo:
         """强制使用 CPU"""
+        total_bytes = cls.get_system_memory()
         return DeviceInfo(
             device_type="cpu",
             device_name="CPU",
-            is_gpu=False
+            is_gpu=False,
+            system_memory_gb=total_bytes / (1024 ** 3) if total_bytes else None
         )
     
     @classmethod
@@ -128,6 +199,9 @@ class DeviceManager:
     @classmethod
     def _auto_detect(cls) -> DeviceInfo:
         """自动检测最佳设备"""
+        total_bytes = cls.get_system_memory()
+        system_memory_gb = total_bytes / (1024 ** 3) if total_bytes else None
+
         try:
             import torch
             
@@ -138,14 +212,16 @@ class DeviceManager:
                     device_name=props.name,
                     is_gpu=True,
                     memory_gb=props.total_memory / (1024**3),
-                    cores=props.multi_processor_count
+                    cores=props.multi_processor_count,
+                    system_memory_gb=system_memory_gb
                 )
             
             if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                 return DeviceInfo(
                     device_type="mps",
                     device_name="Apple Silicon GPU",
-                    is_gpu=True
+                    is_gpu=True,
+                    system_memory_gb=system_memory_gb
                 )
         
         except Exception as e:

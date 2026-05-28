@@ -18,9 +18,42 @@ from typing import List, Dict, Any, Optional, Set, Tuple
 import ast
 import re
 
+from infrastructure.acceleration import AccelerationService
+
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
+
+
+def _scan_single_file(args):
+    py_file, root_dir, forbidden_patterns = args
+    issues = []
+    if py_file.name == "leakage_audit.py":
+        return issues
+
+    with open(py_file, "r", encoding="utf-8") as f:
+        content = f.read()
+        lines = content.split("\n")
+
+    for pattern, issue_type, desc in forbidden_patterns:
+        for idx, line in enumerate(lines, 1):
+            if "#" in line:
+                code_part = line.split("#")[0]
+            else:
+                code_part = line
+
+            if re.search(pattern, code_part):
+                if py_file.name == "labels.py" and issue_type == "future_shift":
+                    continue
+                issues.append({
+                    "file": str(py_file.relative_to(root_dir)),
+                    "line": idx,
+                    "severity": "critical",
+                    "issue_type": issue_type,
+                    "description": desc,
+                    "code_snippet": line.strip(),
+                })
+    return issues
 
 
 @dataclass
@@ -240,35 +273,20 @@ class LeakageAuditor:
             (r"fillna\(.*method.*bfill", "bfill_method", "bfill method in fillna = future data leakage"),
         ]
 
-        for py_file in py_files:
-            if py_file.name == "leakage_audit.py":
-                continue
+        tasks = [(py_file, self.root_dir, forbidden_patterns) for py_file in py_files]
+        service = AccelerationService()
+        file_results = service.parallel_map(_scan_single_file, tasks, executor="thread")
 
-            with open(py_file, "r", encoding="utf-8") as f:
-                content = f.read()
-                lines = content.split("\n")
-
-            for pattern, issue_type, desc in forbidden_patterns:
-                for idx, line in enumerate(lines, 1):
-                    # Skip comments
-                    if "#" in line:
-                        code_part = line.split("#")[0]
-                    else:
-                        code_part = line
-
-                    if re.search(pattern, code_part):
-                        # Special case: labels.py can use future logic
-                        if py_file.name == "labels.py" and issue_type == "future_shift":
-                            continue
-
-                        self.result.add_issue(LeakageIssue(
-                            file=str(py_file.relative_to(self.root_dir)),
-                            line=idx,
-                            severity="critical",
-                            issue_type=issue_type,
-                            description=desc,
-                            code_snippet=line.strip(),
-                        ))
+        for issues_list in file_results:
+            for issue_dict in issues_list:
+                self.result.add_issue(LeakageIssue(
+                    file=issue_dict["file"],
+                    line=issue_dict["line"],
+                    severity=issue_dict["severity"],
+                    issue_type=issue_dict["issue_type"],
+                    description=issue_dict["description"],
+                    code_snippet=issue_dict.get("code_snippet", ""),
+                ))
 
         self.result.add_pass("all_files_pattern_check")
         print("  ✓ Pattern check complete")

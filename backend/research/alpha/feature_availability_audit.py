@@ -29,6 +29,9 @@ from typing import List, Dict, Optional
 import numpy as np
 import pandas as pd
 
+from infrastructure.acceleration import AccelerationService
+from infrastructure.acceleration.memory_optimizer import MemoryOptimizer
+
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
@@ -45,62 +48,54 @@ class FeatureStatus:
 
 # ---------- 数据湖可用性检查 ----------
 
+def _load_single_source(args):
+    source_name, exchange, symbol, exclude_set = args
+    from infrastructure.storage.data_lake.file_reader import FileDataLakeReader
+    reader = FileDataLakeReader()
+    if source_name in exclude_set:
+        return (source_name, False)
+    try:
+        if source_name == "kline":
+            data = reader.load_klines(exchange=exchange, symbol=symbol, timeframe="1m")
+        elif source_name == "funding":
+            data = reader.load_funding(exchange=exchange, symbol=symbol)
+        elif source_name == "oi":
+            data = reader.load_oi(exchange=exchange, symbol=symbol)
+        elif source_name == "trades":
+            data = reader.load_trades(exchange=exchange, symbol=symbol)
+        else:
+            return (source_name, False)
+        return (source_name, data is not None and len(data) > 0)
+    except Exception:
+        return (source_name, False)
+
+
 def check_data_source_availability(
     symbol: str,
     exchange: str,
+    exclude_sources: Optional[List[str]] = None,
 ) -> Dict[str, bool]:
     """
     检查当前数据湖有哪些数据源可用。
 
+    Args:
+        exclude_sources: 要排除的数据源列表，设置为 False
+
     Returns:
         {kline: True, funding: True, trades: False, liquidation: False, orderbook: False, oi: False}
     """
-    from infrastructure.storage.data_lake.file_reader import FileDataLakeReader
+    exclude_sources = exclude_sources or []
+    exclude_set = {s.lower().strip() for s in exclude_sources}
 
-    reader = FileDataLakeReader()
-    availability = {
-        "kline": False,
-        "funding": False,
-        "trades": False,
-        "liquidation": False,
-        "orderbook": False,
-        "oi": False,
-        "cross_market": False,
-    }
+    service = AccelerationService()
+    sources = ["kline", "funding", "oi", "trades", "liquidation", "orderbook"]
+    tasks = [(s, exchange, symbol, exclude_set) for s in sources]
+    results = service.parallel_map(_load_single_source, tasks, executor="thread")
 
-    # Kline
-    try:
-        klines = reader.load_klines(exchange=exchange, symbol=symbol, timeframe="1m")
-        availability["kline"] = klines is not None and len(klines) > 0
-    except Exception:
-        availability["kline"] = False
-
-    # Funding
-    try:
-        funding = reader.load_funding(exchange=exchange, symbol=symbol)
-        availability["funding"] = funding is not None and len(funding) > 0
-    except Exception:
-        availability["funding"] = False
-
-    # OI
-    try:
-        oi = reader.load_oi(exchange=exchange, symbol=symbol)
-        availability["oi"] = oi is not None and len(oi) > 0
-    except Exception:
-        availability["oi"] = False
-
-    # Trades
-    try:
-        trades = reader.load_trades(exchange=exchange, symbol=symbol)
-        availability["trades"] = trades is not None and len(trades) > 0
-    except Exception:
-        availability["trades"] = False
-
-    # Liquidation / Orderbook - 暂设为 False (需要看实际 data lake reader API)
-    availability["liquidation"] = False
-    availability["orderbook"] = False
+    availability = {s: False for s in sources}
     availability["cross_market"] = False
-
+    for source_name, available in results:
+        availability[source_name] = available
     return availability
 
 
@@ -171,6 +166,7 @@ def run_availability_audit(
     exchange: str = "binance",
     timeframe: str = "1h",
     days: int = 90,
+    exclude_sources: Optional[List[str]] = None,
 ) -> pd.DataFrame:
     """
     运行特征可用性审计。
@@ -186,7 +182,7 @@ def run_availability_audit(
 
     # 1. 检查数据源可用性
     print("\n[1/5] Checking data source availability...")
-    data_avail = check_data_source_availability(symbol, exchange)
+    data_avail = check_data_source_availability(symbol, exchange, exclude_sources)
     print(f"  Data sources available:")
     for src, avail in data_avail.items():
         status = "✅" if avail else "❌"
@@ -200,7 +196,9 @@ def run_availability_audit(
             exchange=exchange,
             days=days,
             timeframe=timeframe,
+            exclude_sources=exclude_sources,
         )
+        fm = MemoryOptimizer.optimize_dtypes(fm)
         matrix_available = True
         matrix_cols = set(fm.columns)
         total_bars = len(fm)
@@ -216,6 +214,13 @@ def run_availability_audit(
     print("\n[3/5] Auditing features...")
     results = []
 
+    non_null_counts = {}
+    non_null_ratios = {}
+    if fm is not None and total_bars > 0:
+        counts = fm.notna().sum()
+        non_null_counts = counts.to_dict()
+        non_null_ratios = (counts / total_bars).to_dict()
+
     for feature_name, fdef in FEATURE_REGISTRY.items():
         row = {
             "feature": feature_name,
@@ -230,12 +235,9 @@ def run_availability_audit(
             "status": FeatureStatus.REGISTERED_ONLY,
         }
 
-        # 计算非空率
-        if fm is not None and feature_name in fm.columns:
-            non_null_count = fm[feature_name].notna().sum()
-            row["sample_count"] = non_null_count
-            if total_bars > 0:
-                row["sample_non_null_ratio"] = non_null_count / total_bars
+        if feature_name in non_null_counts:
+            row["sample_count"] = int(non_null_counts[feature_name])
+            row["sample_non_null_ratio"] = non_null_ratios.get(feature_name, 0.0)
 
         # 状态判定
         if fm is not None and feature_name in fm.columns:
@@ -264,6 +266,8 @@ def run_availability_audit(
 
     print("\n[5/5] Audit complete.")
     print("=" * 70)
+
+    audit_df = MemoryOptimizer.downcast_float(audit_df)
 
     return audit_df
 
@@ -362,14 +366,21 @@ def main():
     parser.add_argument("--days", type=int, default=90)
     parser.add_argument("--output", type=str, default=None, help="Output CSV path")
     parser.add_argument("--show-ready", action="store_true", help="Only show READY features")
+    parser.add_argument("--exclude-sources", type=str, default=None,
+                        help="Comma-separated list of data sources to exclude (oi, liquidation, orderbook)")
 
     args = parser.parse_args()
+
+    exclude_sources = None
+    if args.exclude_sources:
+        exclude_sources = [s.strip() for s in args.exclude_sources.split(",")]
 
     audit_df = run_availability_audit(
         symbol=args.symbol,
         exchange=args.exchange,
         timeframe=args.timeframe,
         days=args.days,
+        exclude_sources=exclude_sources,
     )
 
     if args.show_ready:
