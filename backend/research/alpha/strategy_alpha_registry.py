@@ -196,6 +196,96 @@ AlphaRegistry.register(AlphaDefinition(
 ))
 
 # ============================================================
+# Tier 1 空头：Crowded Long Reversal
+# ============================================================
+
+AlphaRegistry.register(AlphaDefinition(
+    name="crowded_long_reversal",
+    features=["ret_5_percentile", "funding_zscore", "volume_spike_up"],
+    mode="crowded_reversal",
+    direction="short",
+    primary_feature="ret_5_percentile",
+    signal_direction_map={
+        "ret_5_percentile": "positive_means_short",
+        "funding_zscore": "positive_means_short",
+        "volume_spike_up": "positive_means_short",
+    },
+    combo_logic="all_must_trigger",
+))
+
+AlphaRegistry.register(AlphaDefinition(
+    name="parabolic_blowoff",
+    features=["parabolic_ret_zscore", "volume_zscore", "volatility_spike"],
+    mode="blowoff_top",
+    direction="short",
+    primary_feature="parabolic_ret_zscore",
+    signal_direction_map={
+        "parabolic_ret_zscore": "positive_means_short",
+        "volume_zscore": "positive_means_short",
+        "volatility_spike": "positive_means_short",
+    },
+    combo_logic="all_must_trigger",
+))
+
+# ============================================================
+# Tier 2 空头：Failed Breakout / Trend Exhaustion
+# ============================================================
+
+AlphaRegistry.register(AlphaDefinition(
+    name="failed_breakout",
+    features=["new_high_60", "breakout_volume_decay", "upper_wick_pct"],
+    mode="failed_breakout",
+    direction="short",
+    primary_feature="breakout_volume_decay",
+    signal_direction_map={
+        "new_high_60": "positive_means_short",
+        "breakout_volume_decay": "positive_means_short",
+        "upper_wick_pct": "positive_means_short",
+    },
+    combo_logic="all_must_trigger",
+))
+
+AlphaRegistry.register(AlphaDefinition(
+    name="trend_exhaustion",
+    features=["consecutive_green", "momentum_overheat", "distance_from_ma"],
+    mode="exhaustion_short",
+    direction="short",
+    primary_feature="consecutive_green",
+    signal_direction_map={
+        "consecutive_green": "positive_means_short",
+        "momentum_overheat": "positive_means_short",
+        "distance_from_ma": "positive_means_short",
+    },
+    combo_logic="all_must_trigger",
+))
+
+# ============================================================
+# Tier 1 空头单因子：Funding Trap
+# ============================================================
+
+AlphaRegistry.register(AlphaDefinition(
+    name="funding_trap_short",
+    features=["funding_zscore"],
+    mode="funding_trap",
+    direction="short",
+    primary_feature="funding_zscore",
+    signal_direction_map={
+        "funding_zscore": "positive_means_short",
+    },
+))
+
+AlphaRegistry.register(AlphaDefinition(
+    name="distance_from_high_short",
+    features=["distance_from_high"],
+    mode="overbought_short",
+    direction="short",
+    primary_feature="distance_from_high",
+    signal_direction_map={
+        "distance_from_high": "positive_means_short",
+    },
+))
+
+# ============================================================
 # 第三梯队：blocked (待数据)
 # ============================================================
 

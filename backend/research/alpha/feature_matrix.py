@@ -258,6 +258,17 @@ def build_feature_matrix_from_df(
 
     df["funding_extreme_positive"] = (df["funding_zscore"] > 2).astype(float)
 
+    df["ret_5_percentile"] = df["ret_5"].rolling(100, min_periods=20).apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1], raw=False)
+    df["volume_spike_up"] = ((df["ret_1"] > 0) & (df["volume_zscore"] > 1.5)).astype(float)
+    df["momentum_overheat"] = 0.0
+    if "rsi_14" in df.columns:
+        df["momentum_overheat"] = (df["rsi_14"] > 80).astype(float)
+    df["breakout_volume_decay"] = 0.0
+    if "new_high_60" in df.columns and "volume_ratio" in df.columns:
+        vol_ratio_ma = df["volume_ratio"].rolling(5).mean()
+        df["breakout_volume_decay"] = ((df["new_high_60"] > 0) & (vol_ratio_ma < 0.8)).astype(float)
+    df["distance_from_ma"] = df["trend_20"]
+
     # OI
     if oi is not None and len(oi) > 0:
         df = _merge_oi(df, oi)

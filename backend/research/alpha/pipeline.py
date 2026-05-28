@@ -389,6 +389,12 @@ class AlphaPipeline:
             elif direction == "positive_means_long":
                 threshold = feat_vals.quantile(0.95)
                 mask &= (feat_vals > threshold)
+            elif direction == "positive_means_short":
+                threshold = feat_vals.quantile(0.95)
+                mask &= (feat_vals > threshold)
+            elif direction == "negative_means_short":
+                threshold = feat_vals.quantile(0.05)
+                mask &= (feat_vals < threshold)
 
         combo_feature = fm[defn.primary_feature].copy()
         combo_feature[~mask] = np.nan
@@ -700,22 +706,108 @@ class AlphaPipeline:
             )
             return result.get("sharpe", 0.0) if not np.isnan(result.get("sharpe", 0.0)) else 0.0
 
-        sweep = analyzer.analyze_1d("threshold", threshold_range, metric_fn)
+        sweep_1d = analyzer.analyze_1d("threshold", threshold_range, metric_fn)
 
-        if sweep.is_flat:
-            return StageResult(
-                stage_name="parameter_stability",
-                passed=True,
-                data={"sweep": sweep.to_dict()},
-                message=f"Stable: std={sweep.std_metric:.4f}, is_flat=True",
+        holding_bars_range = list(range(
+            max(1, holding_bars - 5),
+            holding_bars + 6,
+        ))
+
+        def metric_2d_fn(thresh: float, hb: float) -> float:
+            result = run_signal_test(
+                close, feature_vals, regime_labels,
+                feature_threshold=thresh,
+                holding_bars=int(hb),
+                direction=direction,
+                taker_fee=self.taker_fee,
             )
+            return result.get("sharpe", 0.0) if not np.isnan(result.get("sharpe", 0.0)) else 0.0
+
+        sweep_2d = analyzer.analyze_2d(
+            "threshold", "holding_bars",
+            threshold_range, holding_bars_range,
+            metric_2d_fn,
+        )
+
+        regime_metrics = self._compute_regime_metrics(
+            close, feature_vals, regime_labels,
+            base_threshold, holding_bars, direction,
+        )
+        cross_regime = analyzer.analyze_cross_regime(regime_metrics)
+
+        is_1d_stable = sweep_1d.is_flat
+        is_2d_stable = sweep_2d.is_stable
+        is_cross_regime_stable = cross_regime.is_regime_diversified
+
+        overall_stable = (
+            is_1d_stable
+            and is_2d_stable
+            and (is_cross_regime_stable or len(cross_regime.profitable_regimes) >= 1)
+        )
+
+        stability_score = sweep_2d.overall_stability_score
 
         return StageResult(
             stage_name="parameter_stability",
-            passed=False,
-            data={"sweep": sweep.to_dict()},
-            message=f"Unstable: std={sweep.std_metric:.4f}, is_flat=False",
+            passed=overall_stable,
+            data={
+                "sweep_1d": sweep_1d.to_dict(),
+                "sweep_2d": sweep_2d.to_dict(),
+                "cross_regime": cross_regime.to_dict(),
+                "is_1d_stable": is_1d_stable,
+                "is_2d_stable": is_2d_stable,
+                "is_cross_regime_stable": is_cross_regime_stable,
+                "stability_score": stability_score,
+                "profitable_regimes": cross_regime.profitable_regimes,
+                "losing_regimes": cross_regime.losing_regimes,
+                "regime_concentration": cross_regime.regime_concentration,
+            },
+            message=(
+                f"1d={'stable' if is_1d_stable else 'unstable'}, "
+                f"2d={'stable' if is_2d_stable else 'unstable'}, "
+                f"cross_regime={'diversified' if is_cross_regime_stable else 'concentrated'}, "
+                f"score={stability_score:.3f}, "
+                f"regimes={len(cross_regime.profitable_regimes)}profit/{len(cross_regime.losing_regimes)}loss"
+            ),
         )
+
+    def _compute_regime_metrics(
+        self,
+        close: np.ndarray,
+        feature_vals: np.ndarray,
+        regime_labels: np.ndarray,
+        threshold: float,
+        holding_bars: int,
+        direction: str,
+    ) -> Dict[str, Dict[str, float]]:
+        unique_regimes = np.unique(regime_labels[~pd.isna(regime_labels)])
+        regime_metrics = {}
+
+        for regime in unique_regimes:
+            regime_str = str(regime)
+            regime_mask = regime_labels == regime
+            if regime_mask.sum() < 10:
+                continue
+
+            result = run_signal_test(
+                close, feature_vals, regime_labels,
+                feature_threshold=threshold,
+                holding_bars=holding_bars,
+                direction=direction,
+                target_regimes=[regime_str],
+                taker_fee=self.taker_fee,
+            )
+
+            regime_metrics[regime_str] = {
+                "sharpe": result.get("sharpe", 0.0) if not np.isnan(result.get("sharpe", 0.0)) else 0.0,
+                "win_rate": result.get("win_rate", 0.0) if not np.isnan(result.get("win_rate", 0.0)) else 0.0,
+                "total_trades": result.get("trades", 0),
+                "pnl": result.get("total_ret", 0.0) if not np.isnan(result.get("total_ret", 0.0)) else 0.0,
+                "max_drawdown": 0.0,
+                "avg_holding_hours": holding_bars,
+            }
+
+        return regime_metrics
 
     def _stage_walk_forward(
         self,
@@ -738,9 +830,6 @@ class AlphaPipeline:
         train_bars = 30 * bars_per_day
         test_bars = 7 * bars_per_day
 
-        # For walk-forward, we use TRAIN-ONLY thresholds to avoid leakage
-        # Use the same percentile that gave us the best_params in signal testing
-        # Default to 90th percentile if not specified
         percentile = 90.0
         if self.percentile_thresholds:
             percentile = self.percentile_thresholds[0]
@@ -755,7 +844,7 @@ class AlphaPipeline:
             taker_fee=self.taker_fee,
             train_bars=train_bars,
             test_bars=test_bars,
-            use_train_only_threshold=True,  # IMPORTANT: No leakage!
+            use_train_only_threshold=True,
             percentile=percentile,
         )
 
@@ -767,9 +856,24 @@ class AlphaPipeline:
                 message="No valid walk-forward windows",
             )
 
+        window_details = [
+            {
+                "window_idx": wr.window_idx,
+                "trades": wr.trades,
+                "win_rate": wr.win_rate,
+                "avg_ret": wr.avg_ret,
+                "sharpe": wr.sharpe,
+                "profit_factor": wr.profit_factor,
+                "train_threshold": wr.train_threshold,
+            }
+            for wr in wf_result.window_results
+        ]
+
         passed = (
             wf_result.avg_return > 0
             and wf_result.win_rate_consistency > 0.5
+            and wf_result.profitable_window_ratio >= 0.5
+            and wf_result.decay_rate > -0.5
         )
 
         return StageResult(
@@ -781,12 +885,19 @@ class AlphaPipeline:
                 "avg_sharpe": wf_result.avg_sharpe,
                 "win_rate_consistency": wf_result.win_rate_consistency,
                 "profit_factor": wf_result.profit_factor,
+                "decay_rate": wf_result.decay_rate,
+                "profitable_window_ratio": wf_result.profitable_window_ratio,
+                "sharpe_std": wf_result.sharpe_std,
+                "regime_stability_score": wf_result.regime_stability_score,
+                "window_details": window_details,
             },
             message=(
                 f"WF: {wf_result.total_windows} windows, "
                 f"avg_ret={wf_result.avg_return:.5f}, "
                 f"avg_sharpe={wf_result.avg_sharpe:.3f}, "
-                f"wr_consistency={wf_result.win_rate_consistency:.3f}"
+                f"wr_consistency={wf_result.win_rate_consistency:.3f}, "
+                f"decay={wf_result.decay_rate:.3f}, "
+                f"profitable_windows={wf_result.profitable_window_ratio:.2f}"
             ),
         )
 
@@ -890,6 +1001,12 @@ def main():
     lb.save_json(str(output_path / "leaderboard.json"))
 
     print(f"\nLeaderboard saved to {output_path}")
+
+    from research.alpha.per_symbol_leaderboard import generate_from_pipeline_result
+    generate_from_pipeline_result(result)
+
+    from research.alpha.paper_trading_config import generate_paper_trading_configs
+    generate_paper_trading_configs(result, tiers=["A", "B"])
 
 
 if __name__ == "__main__":
