@@ -41,6 +41,9 @@ class Leaderboard:
             stages_passed = sum(1 for s in r.stages if s.passed)
             total_stages = len(r.stages)
 
+            stage_passed_list = [s.stage_name for s in r.stages if s.passed]
+            fail_reason_list = [f"{s.stage_name}: {s.message}" for s in r.stages if not s.passed and not s.skipped]
+
             metrics = r.best_metrics or {}
             row = {
                 "alpha": r.strategy,
@@ -55,6 +58,8 @@ class Leaderboard:
                 "avg_ret": metrics.get("avg_ret", np.nan),
                 "stages_passed": stages_passed,
                 "total_stages": total_stages,
+                "stage_passed": ",".join(stage_passed_list) if stage_passed_list else "",
+                "fail_reason": "; ".join(fail_reason_list) if fail_reason_list else "",
                 "status": self._compute_status(r),
             }
             rows.append(row)

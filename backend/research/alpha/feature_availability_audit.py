@@ -48,21 +48,23 @@ class FeatureStatus:
 
 # ---------- 数据湖可用性检查 ----------
 
-def _load_single_source(args):
-    source_name, exchange, symbol, exclude_set = args
+def _load_single_source(source_name, exchange, symbol, exclude_set):
     from infrastructure.storage.data_lake.file_reader import FileDataLakeReader
     reader = FileDataLakeReader()
     if source_name in exclude_set:
         return (source_name, False)
     try:
         if source_name == "kline":
-            data = reader.load_klines(exchange=exchange, symbol=symbol, timeframe="1m")
+            data = reader.load_klines(exchange=exchange, symbol=symbol, timeframe="1h")
         elif source_name == "funding":
             data = reader.load_funding(exchange=exchange, symbol=symbol)
         elif source_name == "oi":
             data = reader.load_oi(exchange=exchange, symbol=symbol)
         elif source_name == "trades":
-            data = reader.load_trades(exchange=exchange, symbol=symbol)
+            from infrastructure.storage.data_lake.trade_flow_writer import TradeFlowWriter
+            tf = TradeFlowWriter()
+            tf_data = tf.load(exchange, symbol, "1h")
+            return (source_name, tf_data is not None and len(tf_data) > 0)
         else:
             return (source_name, False)
         return (source_name, data is not None and len(data) > 0)

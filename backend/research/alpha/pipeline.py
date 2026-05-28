@@ -16,6 +16,7 @@ CLI:
 
 import sys
 import argparse
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -114,6 +115,9 @@ class AlphaPipeline:
         multi_symbol_min: int = 2,
         maker_fee: float = 0.0002,
         taker_fee: float = 0.0005,
+        exclude_sources: Optional[List[str]] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
     ):
         self.symbols = symbols
         self.timeframes = timeframes
@@ -133,8 +137,14 @@ class AlphaPipeline:
         self.multi_symbol_min = multi_symbol_min
         self.maker_fee = maker_fee
         self.taker_fee = taker_fee
+        self.exclude_sources = exclude_sources
+        self.start_date = start_date
+        self.end_date = end_date
+        self._fm_cache: Dict[str, pd.DataFrame] = {}
+        self._fm_cache_lock = threading.Lock()
 
     def run(self, strategy_names: List[str]) -> AlphaPipelineResult:
+        self._fm_cache.clear()
         results = []
         config = {
             "symbols": self.symbols,
@@ -188,18 +198,35 @@ class AlphaPipeline:
         all_results = []
         multi_symbol_data = {}
 
-        for symbol in self.symbols:
+        if len(self.symbols) > 1:
+            print(f"\n{'='*60}")
+            print(f"Alpha Pipeline: {defn.name} | {self.symbols} | {timeframe} | {self.days}d")
+            print(f"  Running {len(self.symbols)} symbols in parallel...")
+            print(f"{'='*60}")
+
+            from infrastructure.acceleration import AccelerationService
+            service = AccelerationService()
+
+            def _run_symbol(symbol: str) -> AlphaValidationResult:
+                return self._run_single(defn, symbol, timeframe)
+
+            results = service.parallel_map(
+                _run_symbol, self.symbols, executor="thread"
+            )
+            all_results = list(results)
+        else:
+            symbol = self.symbols[0]
             print(f"\n{'='*60}")
             print(f"Alpha Pipeline: {defn.name} | {symbol} | {timeframe} | {self.days}d")
             print(f"{'='*60}")
-
             result = self._run_single(defn, symbol, timeframe)
-            all_results.append(result)
+            all_results = [result]
 
-            if result.best_params is not None:
-                multi_symbol_data[symbol] = {
-                    "best_params": result.best_params,
-                    "best_metrics": result.best_metrics,
+        for r in all_results:
+            if r.best_params is not None:
+                multi_symbol_data[r.symbol] = {
+                    "best_params": r.best_params,
+                    "best_metrics": r.best_metrics,
                 }
 
         if len(self.symbols) > 1 and multi_symbol_data:
@@ -218,6 +245,25 @@ class AlphaPipeline:
 
         return all_results
 
+    def _get_feature_matrix(self, symbol: str, timeframe: str) -> pd.DataFrame:
+        cache_key = f"{symbol}_{timeframe}"
+        with self._fm_cache_lock:
+            if cache_key in self._fm_cache:
+                print(f"  [Cache hit] Feature matrix for {cache_key}")
+                return self._fm_cache[cache_key].copy()
+
+        print(f"  [Cache miss] Building feature matrix for {cache_key}...")
+        fm = build_feature_matrix(
+            symbol=symbol,
+            exchange=self.exchange,
+            days=self.days,
+            timeframe=timeframe,
+            exclude_sources=self.exclude_sources,
+        )
+        with self._fm_cache_lock:
+            self._fm_cache[cache_key] = fm
+        return fm.copy()
+
     def _run_single(
         self, defn: AlphaDefinition, symbol: str, timeframe: str
     ) -> AlphaValidationResult:
@@ -226,12 +272,7 @@ class AlphaPipeline:
         best_metrics = None
 
         try:
-            fm = build_feature_matrix(
-                symbol=symbol,
-                exchange=self.exchange,
-                days=self.days,
-                timeframe=timeframe,
-            )
+            fm = self._get_feature_matrix(symbol, timeframe)
         except Exception as e:
             return AlphaValidationResult(
                 strategy=defn.name,
@@ -241,6 +282,15 @@ class AlphaPipeline:
                 final_status="error",
                 blocked_reason=str(e),
             )
+
+        if self.start_date or self.end_date:
+            if "timestamp" in fm.columns:
+                fm_ts = pd.to_datetime(fm["timestamp"])
+                if self.start_date:
+                    fm = fm[fm_ts >= pd.Timestamp(self.start_date)]
+                if self.end_date:
+                    fm = fm[fm_ts <= pd.Timestamp(self.end_date)]
+                fm = fm.reset_index(drop=True)
 
         fm = classify_regime(fm)
         labels = compute_labels_from_df(fm)
@@ -788,6 +838,12 @@ def main():
                         help="Output directory for leaderboard files")
     parser.add_argument("--exchange", type=str, default="binance",
                         help="Exchange name")
+    parser.add_argument("--exclude-sources", type=str, default=None,
+                        help="Comma-separated data sources to exclude (oi,liquidation,orderbook)")
+    parser.add_argument("--start", type=str, default=None,
+                        help="Start date string (YYYY-MM-DD)")
+    parser.add_argument("--end", type=str, default=None,
+                        help="End date string (YYYY-MM-DD)")
 
     args = parser.parse_args()
 
@@ -795,6 +851,10 @@ def main():
     timeframes = [t.strip() for t in args.timeframes.split(",")]
     holding_bars_list = [int(x) for x in args.holding_bars.split(",")]
     percentile_thresholds = [int(x) for x in args.thresholds.split(",")]
+
+    exclude_sources = None
+    if args.exclude_sources:
+        exclude_sources = [s.strip() for s in args.exclude_sources.split(",")]
 
     if args.strategy == "all":
         strategy_names = [d.name for d in AlphaRegistry.get_active()]
@@ -812,6 +872,9 @@ def main():
         skip_stability=args.skip_stability,
         output_dir=args.output_dir,
         exchange=args.exchange,
+        exclude_sources=exclude_sources,
+        start_date=args.start,
+        end_date=args.end,
     )
 
     result = pipeline.run(strategy_names)
