@@ -36,6 +36,7 @@ from engines.compute.context.schema import (
 from engines.compute.strategy_v2.base import StrategyV2, Signal, SignalType
 from engines.compute.strategy_v2.metadata import StrategyMeta
 from research.alpha.funding_regime_signal import run_signal_test
+from infrastructure.acceleration.acceleration_service import AccelerationService
 
 
 class AlphaSignalStrategy(StrategyV2):
@@ -211,6 +212,7 @@ class WalkForwardWindowResult:
     total_ret: float
     sharpe: float
     profit_factor: float
+    train_threshold: float = 0.0
 
 
 @dataclass
@@ -223,6 +225,75 @@ class WalkForwardFeatureResult:
     avg_sharpe: float
     win_rate_consistency: float
     profit_factor: float
+    decay_rate: float = 0.0
+    profitable_window_ratio: float = 0.0
+    sharpe_std: float = 0.0
+    regime_stability_score: float = 0.0
+
+
+def _walk_forward_window_task(
+    idx: int,
+    window_idx: int,
+    close: np.ndarray,
+    feature_vals: np.ndarray,
+    regime_labels: np.ndarray,
+    threshold: float,
+    holding_bars: int,
+    direction: str,
+    taker_fee: float,
+    train_bars: int,
+    test_bars: int,
+    gap_bars: int,
+    use_train_only_threshold: bool,
+    percentile: float,
+) -> WalkForwardWindowResult:
+    """单个 Walk-Forward 窗口的任务（可并行执行）"""
+    train_end = idx + train_bars
+    test_start = train_end + gap_bars
+    test_end = test_start + test_bars
+
+    # Get TRAIN data for threshold calculation
+    train_feature = feature_vals[idx:train_end]
+    
+    # Get TEST data
+    test_close = close[test_start:test_end]
+    test_feature = feature_vals[test_start:test_end]
+    test_regime = regime_labels[test_start:test_end]
+
+    # Calculate threshold from TRAIN set only if enabled
+    window_threshold = threshold
+    if use_train_only_threshold and len(train_feature) > 0:
+        valid_train = train_feature[~np.isnan(train_feature)]
+        if len(valid_train) > 0:
+            if direction == "long":
+                window_threshold = float(np.nanpercentile(np.abs(valid_train), percentile))
+            elif direction == "short":
+                window_threshold = float(np.nanpercentile(np.abs(valid_train), percentile))
+            else:
+                window_threshold = float(np.nanpercentile(np.abs(valid_train), percentile))
+
+    result = run_signal_test(
+        close=test_close,
+        feature_vals=test_feature,
+        regime_labels=test_regime,
+        feature_threshold=window_threshold,
+        holding_bars=holding_bars,
+        direction=direction,
+        taker_fee=taker_fee,
+    )
+
+    return WalkForwardWindowResult(
+        window_idx=window_idx,
+        test_start=test_start,
+        test_end=test_end,
+        trades=result.get("trades", 0),
+        win_rate=result.get("win_rate", 0.0),
+        avg_ret=result.get("avg_ret", 0.0),
+        total_ret=result.get("total_ret", 0.0),
+        sharpe=result.get("sharpe", 0.0),
+        profit_factor=result.get("profit_factor", 0.0),
+        train_threshold=window_threshold,
+    )
 
 
 def run_feature_walk_forward(
@@ -238,6 +309,7 @@ def run_feature_walk_forward(
     gap_bars: int = 0,
     use_train_only_threshold: bool = True,
     percentile: float = 90.0,
+    enable_parallel: bool = True,
 ) -> WalkForwardFeatureResult:
     """
     Walk-forward validation for feature signals.
@@ -245,61 +317,53 @@ def run_feature_walk_forward(
     IMPORTANT: To avoid leakage, thresholds should be computed from TRAIN set only!
     """
     n = len(close)
-    window_results = []
     idx = 0
     window_idx = 0
+    tasks = []
 
+    # 收集所有任务
     while idx + train_bars + gap_bars + test_bars <= n:
-        train_end = idx + train_bars
-        test_start = train_end + gap_bars
-        test_end = test_start + test_bars
-
-        # Get TRAIN data for threshold calculation
-        train_feature = feature_vals[idx:train_end]
-        
-        # Get TEST data
-        test_close = close[test_start:test_end]
-        test_feature = feature_vals[test_start:test_end]
-        test_regime = regime_labels[test_start:test_end]
-
-        # Calculate threshold from TRAIN set only if enabled
-        window_threshold = threshold
-        if use_train_only_threshold and len(train_feature) > 0:
-            valid_train = train_feature[~np.isnan(train_feature)]
-            if len(valid_train) > 0:
-                if direction == "long":
-                    # For long, we use lower tail (negative side)
-                    window_threshold = float(np.nanpercentile(np.abs(valid_train), percentile))
-                elif direction == "short":
-                    # For short, we use upper tail
-                    window_threshold = float(np.nanpercentile(np.abs(valid_train), percentile))
-                else:  # both
-                    window_threshold = float(np.nanpercentile(np.abs(valid_train), percentile))
-
-        result = run_signal_test(
-            close=test_close,
-            feature_vals=test_feature,
-            regime_labels=test_regime,
-            feature_threshold=window_threshold,
-            holding_bars=holding_bars,
-            direction=direction,
-            taker_fee=taker_fee,
-        )
-
-        window_results.append(WalkForwardWindowResult(
-            window_idx=window_idx,
-            test_start=test_start,
-            test_end=test_end,
-            trades=result.get("trades", 0),
-            win_rate=result.get("win_rate", 0.0),
-            avg_ret=result.get("avg_ret", 0.0),
-            total_ret=result.get("total_ret", 0.0),
-            sharpe=result.get("sharpe", 0.0),
-            profit_factor=result.get("profit_factor", 0.0),
-        ))
-
+        tasks.append({
+            "idx": idx,
+            "window_idx": window_idx,
+            "close": close,
+            "feature_vals": feature_vals,
+            "regime_labels": regime_labels,
+            "threshold": threshold,
+            "holding_bars": holding_bars,
+            "direction": direction,
+            "taker_fee": taker_fee,
+            "train_bars": train_bars,
+            "test_bars": test_bars,
+            "gap_bars": gap_bars,
+            "use_train_only_threshold": use_train_only_threshold,
+            "percentile": percentile,
+        })
         idx += test_bars
         window_idx += 1
+
+    # 执行任务（并行或串行）
+    window_results: List[WalkForwardWindowResult] = []
+    if enable_parallel and len(tasks) > 1:
+        # 用 AccelerationService 并行执行
+        service = AccelerationService()
+        
+        def wrap_task(kwargs):
+            return _walk_forward_window_task(**kwargs)
+        
+        results = service.parallel_map(
+            func=wrap_task,
+            tasks=[(task,) for task in tasks],
+            executor="thread"
+        )
+        window_results = [r for r in results if r is not None]
+        # 按窗口索引重排序
+        window_results.sort(key=lambda x: x.window_idx)
+    else:
+        # 串行执行
+        for task in tasks:
+            result = _walk_forward_window_task(**task)
+            window_results.append(result)
 
     if not window_results:
         return WalkForwardFeatureResult(
@@ -311,6 +375,10 @@ def run_feature_walk_forward(
             avg_sharpe=0.0,
             win_rate_consistency=0.0,
             profit_factor=0.0,
+            decay_rate=0.0,
+            profitable_window_ratio=0.0,
+            sharpe_std=0.0,
+            regime_stability_score=0.0,
         )
 
     all_rets = []
@@ -332,6 +400,11 @@ def run_feature_walk_forward(
     else:
         pf = 0.0
 
+    decay_rate = _compute_decay_rate(active_windows)
+    profitable_window_ratio = _compute_profitable_window_ratio(active_windows)
+    sharpe_std = float(np.std([wr.sharpe for wr in active_windows])) if len(active_windows) > 1 else 0.0
+    regime_stability_score = _compute_regime_stability_score(active_windows)
+
     return WalkForwardFeatureResult(
         total_windows=len(window_results),
         train_bars=train_bars,
@@ -341,4 +414,42 @@ def run_feature_walk_forward(
         avg_sharpe=avg_sharpe,
         win_rate_consistency=win_rate_consistency,
         profit_factor=pf,
+        decay_rate=decay_rate,
+        profitable_window_ratio=profitable_window_ratio,
+        sharpe_std=sharpe_std,
+        regime_stability_score=regime_stability_score,
     )
+
+
+def _compute_decay_rate(active_windows: List[WalkForwardWindowResult]) -> float:
+    if len(active_windows) < 3:
+        return 0.0
+    sharpes = [wr.sharpe for wr in active_windows]
+    if not sharpes or sharpes[0] == 0:
+        return 0.0
+    first_half = sharpes[:len(sharpes) // 2]
+    second_half = sharpes[len(sharpes) // 2:]
+    mean_first = float(np.mean(first_half))
+    mean_second = float(np.mean(second_half))
+    if mean_first == 0:
+        return 0.0
+    return (mean_second - mean_first) / abs(mean_first)
+
+
+def _compute_profitable_window_ratio(active_windows: List[WalkForwardWindowResult]) -> float:
+    if not active_windows:
+        return 0.0
+    profitable = sum(1 for wr in active_windows if wr.avg_ret > 0)
+    return profitable / len(active_windows)
+
+
+def _compute_regime_stability_score(active_windows: List[WalkForwardWindowResult]) -> float:
+    if len(active_windows) < 2:
+        return 1.0
+    sharpes = [wr.sharpe for wr in active_windows]
+    std = float(np.std(sharpes))
+    mean = abs(float(np.mean(sharpes)))
+    if mean == 0:
+        return 0.0
+    cv = std / mean
+    return max(0.0, 1.0 - cv)

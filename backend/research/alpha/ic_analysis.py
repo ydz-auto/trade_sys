@@ -294,22 +294,27 @@ def compute_conditional_ic(
         result["label"] = label
         return result
 
-    if max_workers is None:
-        max_workers = get_default_workers()
-
-    executor = CPUExecutor(executor_type="thread", max_workers=max_workers)
-    submit_results = executor.submit_map(
-        func=_worker,
-        kwargs_list=[{"regime": r} for r in regimes],
-        keys=list(regimes),
-    )
     rows = []
-    for sr in submit_results:
-        if sr.error is not None:
+    for regime in regimes:
+        try:
+            r = _worker(regime=regime)
+            rows.append(r)
+        except Exception:
             continue
-        rows.append(sr.result)
 
-    return pd.DataFrame(rows).sort_values("regime").reset_index(drop=True)
+    if not rows:
+        return pd.DataFrame()
+
+    data = {k: [] for k in rows[0].keys()}
+    for row in rows:
+        for k, v in row.items():
+            data[k].append(v)
+
+    df = pd.DataFrame(data)
+    for col in ["regime", "feature", "label"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str)
+    return df.sort_values("regime").reset_index(drop=True)
 
 
 # ---------- 打印 ----------

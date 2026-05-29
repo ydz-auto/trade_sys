@@ -171,145 +171,159 @@ def build_feature_matrix_from_df(
 ) -> pd.DataFrame:
     """从DataFrame手动构建特征矩阵"""
 
-    df = klines[["timestamp", "open", "high", "low", "close", "volume"]].copy()
-    df = df.sort_values("timestamp").reset_index(drop=True)
+    base = klines[["timestamp", "open", "high", "low", "close", "volume"]].copy()
+    base = base.sort_values("timestamp").reset_index(drop=True)
 
     for col in ["open", "high", "low", "close", "volume"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+        base[col] = pd.to_numeric(base[col], errors="coerce")
 
-    close = df["close"]
+    close = base["close"]
+    idx = base.index
+
+    c = {}
 
     # 基础收益
-    df["ret_1"] = close.pct_change(1)
-    df["ret_3"] = close.pct_change(3)
-    df["ret_5"] = close.pct_change(5)
-    df["ret_10"] = close.pct_change(10)
-    df["ret_15"] = close.pct_change(15)
-    df["ret_20"] = close.pct_change(20)
-    df["ret_30"] = close.pct_change(30)
-    df["ret_60"] = close.pct_change(60)
-    df["change_pct"] = df["ret_1"]
+    c["ret_1"] = close.pct_change(1)
+    c["ret_3"] = close.pct_change(3)
+    c["ret_5"] = close.pct_change(5)
+    c["ret_10"] = close.pct_change(10)
+    c["ret_15"] = close.pct_change(15)
+    c["ret_20"] = close.pct_change(20)
+    c["ret_30"] = close.pct_change(30)
+    c["ret_60"] = close.pct_change(60)
+    c["change_pct"] = c["ret_1"]
 
     # 波动率
     bars_per_day = _timeframe_to_bars_per_day(timeframe)
-    df["vol_20"] = df["ret_1"].rolling(20).std() * np.sqrt(bars_per_day * 252)
-    df["vol_60"] = df["ret_1"].rolling(60).std() * np.sqrt(bars_per_day * 252)
-    df["realized_vol"] = df["vol_60"]
-    df["atr_14"] = (df["high"] - df["low"]).rolling(14).mean()
-    df["atr"] = df["atr_14"]
-    df["atr_pct"] = df["atr_14"] / close
-    df["atr_expansion"] = df["atr_14"] / df["atr_14"].rolling(60).mean()
+    c["vol_20"] = c["ret_1"].rolling(20).std() * np.sqrt(bars_per_day * 252)
+    c["vol_60"] = c["ret_1"].rolling(60).std() * np.sqrt(bars_per_day * 252)
+    c["realized_vol"] = c["vol_60"]
+    c["atr_14"] = (base["high"] - base["low"]).rolling(14).mean()
+    c["atr"] = c["atr_14"]
+    c["atr_pct"] = c["atr_14"] / close
+    c["atr_expansion"] = c["atr_14"] / c["atr_14"].rolling(60).mean()
 
-    # ZScore
-    _gpu_ops = GPUMatrixOps()
-    df["volatility_zscore"] = _gpu_ops.rolling_zscore(df["vol_20"].values.astype(np.float32), 100)
-    df["realized_vol_zscore"] = df["volatility_zscore"]
+    # ZScore (CPU only to avoid GPU memory leak in multi-symbol loop)
+    df_vol_20 = c["vol_20"]
+    c["volatility_zscore"] = (df_vol_20 - df_vol_20.rolling(100).mean()) / df_vol_20.rolling(100).std().replace(0, np.nan)
+    c["realized_vol_zscore"] = c["volatility_zscore"]
 
-    df["volume_zscore"] = _gpu_ops.rolling_zscore(df["volume"].values.astype(np.float32), 100)
-    vol_ma = df["volume"].rolling(100).mean()
-    df["volume_ma"] = vol_ma
-    df["volume_ratio"] = df["volume"] / vol_ma
+    vol_series = base["volume"]
+    c["volume_zscore"] = (vol_series - vol_series.rolling(100).mean()) / vol_series.rolling(100).std().replace(0, np.nan)
+    vol_ma = base["volume"].rolling(100).mean()
+    c["volume_ma"] = vol_ma
+    c["volume_ratio"] = base["volume"] / vol_ma
 
     # 趋势
-    df["trend_20"] = (close - close.rolling(20).mean()) / close.rolling(20).mean()
-    df["trend_60"] = (close - close.rolling(60).mean()) / close.rolling(60).mean()
-    df["slope"] = df["trend_20"]
+    c["trend_20"] = (close - close.rolling(20).mean()) / close.rolling(20).mean()
+    c["trend_60"] = (close - close.rolling(60).mean()) / close.rolling(60).mean()
+    c["slope"] = c["trend_20"]
 
     # 回撤与结构
-    df["drawdown_from_high"] = (close - close.rolling(60).max()) / close.rolling(60).max()
-    df["distance_from_high"] = df["drawdown_from_high"]
-    df["new_high_60"] = (close >= close.rolling(60).max()).astype(float)
-    df["new_high_20"] = (close >= close.rolling(20).max()).astype(float)
-    df["new_low_60"] = (close <= close.rolling(60).min()).astype(float)
+    c["drawdown_from_high"] = (close - close.rolling(60).max()) / close.rolling(60).max()
+    c["distance_from_high"] = c["drawdown_from_high"]
+    c["new_high_60"] = (close >= close.rolling(60).max()).astype(float)
+    c["new_high_20"] = (close >= close.rolling(20).max()).astype(float)
+    c["new_low_60"] = (close <= close.rolling(60).min()).astype(float)
 
     # 抛物线
-    df["parabolic_ret_10"] = np.exp(np.log(1 + df["ret_1"]).rolling(10).sum()) - 1
-    p_ma = df["parabolic_ret_10"].rolling(100).mean()
-    p_std = df["parabolic_ret_10"].rolling(100).std()
-    df["parabolic_ret_zscore"] = (df["parabolic_ret_10"] - p_ma) / p_std.replace(0, np.nan)
+    c["parabolic_ret_10"] = np.exp(np.log(1 + c["ret_1"]).rolling(10).sum()) - 1
+    p_ma = c["parabolic_ret_10"].rolling(100).mean()
+    p_std = c["parabolic_ret_10"].rolling(100).std()
+    c["parabolic_ret_zscore"] = (c["parabolic_ret_10"] - p_ma) / p_std.replace(0, np.nan)
 
     # K线形态
-    df["range_pct"] = (df["high"] - df["low"]) / df["low"].replace(0, np.nan)
-    df["upper_wick_pct"] = (df["high"] - np.maximum(df["open"], close)) / df["low"].replace(0, np.nan)
-    df["lower_wick_pct"] = (np.minimum(df["open"], close) - df["low"]) / df["low"].replace(0, np.nan)
-    df["body_pct"] = (close - df["open"]) / df["low"].replace(0, np.nan)
+    c["range_pct"] = (base["high"] - base["low"]) / base["low"].replace(0, np.nan)
+    c["upper_wick_pct"] = (base["high"] - np.maximum(base["open"], close)) / base["low"].replace(0, np.nan)
+    c["lower_wick_pct"] = (np.minimum(base["open"], close) - base["low"]) / base["low"].replace(0, np.nan)
+    c["body_pct"] = (close - base["open"]) / base["low"].replace(0, np.nan)
 
     # 连续涨跌
-    df["is_up"] = (close > df["open"]).astype(float)
-    df["is_down"] = (close < df["open"]).astype(float)
-    df["consecutive_green"] = df["is_up"].groupby((~df["is_up"].astype(bool)).cumsum()).cumsum()
-    df["consecutive_red"] = df["is_down"].groupby((~df["is_down"].astype(bool)).cumsum()).cumsum()
+    c["is_up"] = (close > base["open"]).astype(float)
+    c["is_down"] = (close < base["open"]).astype(float)
+    c["consecutive_green"] = c["is_up"].groupby((~c["is_up"].astype(bool)).cumsum()).cumsum()
+    c["consecutive_red"] = c["is_down"].groupby((~c["is_down"].astype(bool)).cumsum()).cumsum()
 
     # 波动率spike
-    df["volatility_spike"] = df["volatility_zscore"]
+    c["volatility_spike"] = c["volatility_zscore"]
 
     # 大量下跌
-    df["high_volume_decline"] = ((df["ret_1"] < 0) & (df["volume_zscore"] > 1.5)).astype(float)
+    c["high_volume_decline"] = ((c["ret_1"] < 0) & (c["volume_zscore"] > 1.5)).astype(float)
 
     # 附加特征用于可用性审计
-    df["return_1h"] = df["ret_60"] if timeframe == "1m" else df["ret_1"]
+    c["return_1h"] = c["ret_60"] if timeframe == "1m" else c["ret_1"]
+
+    # 一次性合并基础特征，消除碎片化
+    feat_df = pd.concat([base, pd.DataFrame(c, index=idx)], axis=1)
+    feat_df = feat_df.copy()
+
+    # CPU 技术指标 (先算，因为后面 momentum_overheat 需要 rsi_14)
+    feat_df = _compute_tech_indicators_cpu(feat_df)
+    feat_df = feat_df.copy()
 
     # Funding
     if funding is not None and len(funding) > 0:
-        df = _merge_funding(df, funding)
+        feat_df = _merge_funding(feat_df, funding)
     else:
-        df["funding_rate"] = np.nan
-        df["funding_zscore"] = np.nan
+        feat_df["funding_rate"] = np.nan
+        feat_df["funding_zscore"] = np.nan
 
-    df["funding_extreme_positive"] = (df["funding_zscore"] > 2).astype(float)
+    feat_df["funding_extreme_positive"] = (feat_df["funding_zscore"] > 2).astype(float)
 
-    df["ret_5_percentile"] = df["ret_5"].rolling(100, min_periods=20).apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1], raw=False)
-    df["volume_spike_up"] = ((df["ret_1"] > 0) & (df["volume_zscore"] > 1.5)).astype(float)
-    df["momentum_overheat"] = 0.0
-    if "rsi_14" in df.columns:
-        df["momentum_overheat"] = (df["rsi_14"] > 80).astype(float)
-    df["breakout_volume_decay"] = 0.0
-    if "new_high_60" in df.columns and "volume_ratio" in df.columns:
-        vol_ratio_ma = df["volume_ratio"].rolling(5).mean()
-        df["breakout_volume_decay"] = ((df["new_high_60"] > 0) & (vol_ratio_ma < 0.8)).astype(float)
-    df["distance_from_ma"] = df["trend_20"]
+    feat_df["ret_5_percentile"] = feat_df["ret_5"].rolling(100, min_periods=20).apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1], raw=False)
+    feat_df["volume_spike_up"] = ((feat_df["ret_1"] > 0) & (feat_df["volume_zscore"] > 1.5)).astype(float)
+    feat_df["momentum_overheat"] = 0.0
+    if "rsi_14" in feat_df.columns:
+        feat_df["momentum_overheat"] = (feat_df["rsi_14"] > 80).astype(float)
+    feat_df["breakout_volume_decay"] = 0.0
+    if "new_high_60" in feat_df.columns and "volume_ratio" in feat_df.columns:
+        vol_ratio_ma = feat_df["volume_ratio"].rolling(5).mean()
+        feat_df["breakout_volume_decay"] = ((feat_df["new_high_60"] > 0) & (vol_ratio_ma < 0.8)).astype(float)
+    feat_df["distance_from_ma"] = feat_df["trend_20"]
 
     # OI
     if oi is not None and len(oi) > 0:
-        df = _merge_oi(df, oi)
+        feat_df = _merge_oi(feat_df, oi)
     else:
-        df["oi"] = np.nan
-        df["oi_change_pct"] = np.nan
-        df["oi_zscore"] = np.nan
+        feat_df["oi"] = np.nan
+        feat_df["oi_change_pct"] = np.nan
+        feat_df["oi_zscore"] = np.nan
+
+    feat_df = feat_df.copy()
 
     # Order Flow (Trades)
     if trades is not None and len(trades) > 0:
         if is_materialized_trades:
-            df = _merge_materialized_trades(df, trades)
+            feat_df = _merge_materialized_trades(feat_df, trades)
         else:
-            df = _merge_trades(df, trades, timeframe)
+            feat_df = _merge_trades(feat_df, trades, timeframe)
     else:
-        _add_nan_order_flow_cols(df)
-
-    # GPU/CPU 加速技术指标
-    df = _compute_tech_indicators(df)
+        _add_nan_order_flow_cols(feat_df)
 
     # Liquidity 估计特征（从 trades 合成）
     if trades is not None and len(trades) > 0 and not is_materialized_trades:
-        df = _compute_liquidity_estimates(df, trades, timeframe)
+        feat_df = _compute_liquidity_estimates(feat_df, trades, timeframe)
     else:
-        _add_nan_liquidity_cols(df)
+        _add_nan_liquidity_cols(feat_df)
+
+    feat_df = feat_df.copy()
 
     # OI-Funding 关联特征
     if oi is not None and len(oi) > 0 and funding is not None and len(funding) > 0:
-        df = _compute_oi_funding_features(df)
+        feat_df = _compute_oi_funding_features(feat_df)
     else:
-        _add_nan_oi_funding_cols(df)
+        _add_nan_oi_funding_cols(feat_df)
 
     # Regime 特征
-    df = _compute_regime_features(df)
+    feat_df = _compute_regime_features(feat_df)
 
     # Event-driven 特征
-    df = _compute_event_features(df)
+    feat_df = _compute_event_features(df=feat_df)
 
-    df = MemoryOptimizer.optimize_dtypes(df)
+    feat_df = feat_df.copy()
+    feat_df = MemoryOptimizer.optimize_dtypes(feat_df)
 
-    return df
+    return feat_df
 
 
 # ========== 辅助函数 ==========
@@ -375,9 +389,16 @@ def _merge_funding(df: pd.DataFrame, funding: pd.DataFrame) -> pd.DataFrame:
         df_sorted, fund_sorted, left_on="_ts", right_on="ts", direction="backward"
     )
 
-    df["funding_rate"] = merged["rate"].values
-    fr = df["funding_rate"]
-    df["funding_zscore"] = (fr - fr.rolling(100).mean()) / fr.rolling(100).std().replace(0, np.nan)
+    fr = merged["rate"].values
+    fr_series = pd.Series(fr, index=df.index)
+    fr_zscore = (fr_series - fr_series.rolling(100).mean()) / fr_series.rolling(100).std().replace(0, np.nan)
+
+    new_cols = pd.DataFrame({
+        "funding_rate": fr,
+        "funding_zscore": fr_zscore.values,
+    }, index=df.index)
+    df.drop(columns=["funding_rate", "funding_zscore"], inplace=True, errors="ignore")
+    df = pd.concat([df, new_cols], axis=1)
 
     return df
 
@@ -414,10 +435,18 @@ def _merge_oi(df: pd.DataFrame, oi: pd.DataFrame) -> pd.DataFrame:
         df_sorted, oi_sorted, left_on="_ts", right_on="ts", direction="backward"
     )
 
-    df["oi"] = merged["value"].values
-    df["oi_change_pct"] = df["oi"].pct_change()
-    oi_val = df["oi"]
-    df["oi_zscore"] = (oi_val - oi_val.rolling(100).mean()) / oi_val.rolling(100).std().replace(0, np.nan)
+    oi_val = merged["value"].values
+    oi_series = pd.Series(oi_val, index=df.index)
+    oi_change = oi_series.pct_change()
+    oi_zscore = (oi_series - oi_series.rolling(100).mean()) / oi_series.rolling(100).std().replace(0, np.nan)
+
+    new_cols = pd.DataFrame({
+        "oi": oi_val,
+        "oi_change_pct": oi_change.values,
+        "oi_zscore": oi_zscore.values,
+    }, index=df.index)
+    df.drop(columns=["oi", "oi_change_pct", "oi_zscore"], inplace=True, errors="ignore")
+    df = pd.concat([df, new_cols], axis=1)
 
     return df
 
@@ -440,8 +469,12 @@ ORDER_FLOW_COLUMNS = [
 
 
 def _add_nan_order_flow_cols(df: pd.DataFrame):
-    for col in ORDER_FLOW_COLUMNS:
-        df[col] = np.nan
+    nan_cols = pd.DataFrame(
+        {col: np.nan for col in ORDER_FLOW_COLUMNS}, index=df.index
+    )
+    df.drop(columns=[c for c in ORDER_FLOW_COLUMNS if c in df.columns], inplace=True, errors="ignore")
+    result = pd.concat([df, nan_cols], axis=1)
+    df.update(result[ORDER_FLOW_COLUMNS])
 
 
 def _merge_trades(
@@ -614,11 +647,15 @@ def _merge_trades(
         direction="backward",
     )
 
+    of_data = {}
     for col in ORDER_FLOW_COLUMNS:
         if col in merged.columns:
-            df[col] = merged[col].values
+            of_data[col] = merged[col].values
         else:
-            df[col] = np.nan
+            of_data[col] = np.nan
+
+    df.drop(columns=[c for c in ORDER_FLOW_COLUMNS if c in df.columns], inplace=True, errors="ignore")
+    df = pd.concat([df, pd.DataFrame(of_data, index=df.index)], axis=1)
 
     non_null = df[ORDER_FLOW_COLUMNS[0]].notna().sum()
     print(f"  order_flow 特征: {non_null}/{len(df)} 行有数据")
@@ -690,11 +727,15 @@ def _merge_materialized_trades(
         direction="backward",
     )
 
+    of_data = {}
     for col in ORDER_FLOW_COLUMNS:
         if col in merged.columns:
-            df[col] = merged[col].values
+            of_data[col] = merged[col].values
         else:
-            df[col] = np.nan
+            of_data[col] = np.nan
+
+    df.drop(columns=[c for c in ORDER_FLOW_COLUMNS if c in df.columns], inplace=True, errors="ignore")
+    df = pd.concat([df, pd.DataFrame(of_data, index=df.index)], axis=1)
 
     non_null = df[ORDER_FLOW_COLUMNS[0]].notna().sum()
     print(f"  order_flow 特征 (materialized): {non_null}/{len(df)} 行有数据")
@@ -726,13 +767,21 @@ OI_FUNDING_COLUMNS = [
 
 
 def _add_nan_liquidity_cols(df: pd.DataFrame):
-    for col in LIQUIDITY_ESTIMATE_COLUMNS:
-        df[col] = np.nan
+    nan_cols = pd.DataFrame(
+        {col: np.nan for col in LIQUIDITY_ESTIMATE_COLUMNS}, index=df.index
+    )
+    df.drop(columns=[c for c in LIQUIDITY_ESTIMATE_COLUMNS if c in df.columns], inplace=True, errors="ignore")
+    result = pd.concat([df, nan_cols], axis=1)
+    df.update(result[LIQUIDITY_ESTIMATE_COLUMNS])
 
 
 def _add_nan_oi_funding_cols(df: pd.DataFrame):
-    for col in OI_FUNDING_COLUMNS:
-        df[col] = np.nan
+    nan_cols = pd.DataFrame(
+        {col: np.nan for col in OI_FUNDING_COLUMNS}, index=df.index
+    )
+    df.drop(columns=[c for c in OI_FUNDING_COLUMNS if c in df.columns], inplace=True, errors="ignore")
+    result = pd.concat([df, nan_cols], axis=1)
+    df.update(result[OI_FUNDING_COLUMNS])
 
 
 def _compute_tech_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -848,6 +897,46 @@ def _compute_tech_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _compute_tech_indicators_cpu(df: pd.DataFrame) -> pd.DataFrame:
+    close = df["close"]
+
+    c = {}
+    for period in [7, 14, 21]:
+        delta = close.diff()
+        gain = delta.where(delta > 0, 0.0)
+        loss = (-delta).where(delta < 0, 0.0)
+        avg_gain = gain.rolling(period).mean()
+        avg_loss = loss.rolling(period).mean()
+        rs = avg_gain / avg_loss.replace(0, np.nan)
+        c[f"rsi_{period}"] = 100 - (100 / (1 + rs))
+
+    for window in [10, 20, 50, 100]:
+        c[f"sma_{window}"] = close.rolling(window).mean()
+
+    for span in [10, 20, 50]:
+        c[f"ema_{span}"] = close.ewm(span=span, adjust=False).mean()
+
+    ema_fast = close.ewm(span=12, adjust=False).mean()
+    ema_slow = close.ewm(span=26, adjust=False).mean()
+    c["macd"] = ema_fast - ema_slow
+    c["macd_signal"] = c["macd"].ewm(span=9, adjust=False).mean()
+    c["macd_hist"] = c["macd"] - c["macd_signal"]
+
+    sma_20 = close.rolling(20).mean()
+    std_20 = close.rolling(20).std()
+    c["bb_upper"] = sma_20 + 2 * std_20
+    c["bb_lower"] = sma_20 - 2 * std_20
+    c["bb_width"] = 4 * std_20 / sma_20.replace(0, np.nan)
+
+    tech_cols = list(c.keys())
+    new_cols = pd.DataFrame(c, index=df.index)
+    df.drop(columns=[col for col in tech_cols if col in df.columns], inplace=True, errors="ignore")
+    df = pd.concat([df, new_cols], axis=1)
+
+    print(f"  技术指标: CPU 完成")
+    return df
+
+
 def _torch_ema(data, span: int):
     from infrastructure.acceleration import torch, get_device
     alpha = 2.0 / (span + 1)
@@ -920,17 +1009,20 @@ def _compute_liquidity_estimates(
         df_sorted, feat_sorted, left_on="_ts", right_on="timestamp", direction="backward"
     )
 
+    liq_data = {}
     for col in LIQUIDITY_ESTIMATE_COLUMNS:
         if col in merged.columns:
-            df[col] = merged[col].values
+            liq_data[col] = merged[col].values
         else:
-            df[col] = np.nan
+            liq_data[col] = np.nan
+
+    df.drop(columns=[c for c in LIQUIDITY_ESTIMATE_COLUMNS if c in df.columns], inplace=True, errors="ignore")
+    df = pd.concat([df, pd.DataFrame(liq_data, index=df.index)], axis=1)
 
     return df
 
 
 def _compute_oi_funding_features(df: pd.DataFrame) -> pd.DataFrame:
-    """计算 OI-Funding 关联特征"""
     oi = df["oi"]
     fr = df["funding_rate"]
 
@@ -947,7 +1039,6 @@ def _compute_oi_funding_features(df: pd.DataFrame) -> pd.DataFrame:
         np.abs(oi_chg) * np.abs(fr),
         0.0,
     )
-    df["oi_funding_divergence"] = pd.Series(divergence, index=df.index)
 
     oi_z = df.get("oi_zscore", pd.Series(0.0, index=df.index))
     fr_z = df.get("funding_zscore", pd.Series(0.0, index=df.index))
@@ -957,111 +1048,130 @@ def _compute_oi_funding_features(df: pd.DataFrame) -> pd.DataFrame:
         np.minimum(1.0, (oi_z.abs() + fr_z.abs()) / 6.0),
         0.0,
     )
-    df["oi_squeeze_probability"] = pd.Series(squeeze_prob, index=df.index)
-
-    df["oi_liq_pressure"] = oi * fr.abs()
 
     reversal = np.where(
         fr_z.abs() > 2.5,
         -np.sign(fr) * fr_z.abs() / 3.0,
         0.0,
     )
-    df["funding_extreme_reversal"] = pd.Series(reversal, index=df.index)
 
     leverage_crowd = np.where(
         (oi_z > 1.5) & (fr_z > 1.5),
         (oi_z + fr_z) / 3.0,
         0.0,
     )
-    df["leverage_crowdedness"] = pd.Series(leverage_crowd, index=df.index)
+
+    new_cols = pd.DataFrame({
+        "oi_funding_divergence": divergence,
+        "oi_squeeze_probability": squeeze_prob,
+        "oi_liq_pressure": oi * fr.abs(),
+        "funding_extreme_reversal": reversal,
+        "leverage_crowdedness": leverage_crowd,
+    }, index=df.index)
+
+    df.drop(columns=[c for c in OI_FUNDING_COLUMNS if c in df.columns], inplace=True, errors="ignore")
+    df = pd.concat([df, new_cols], axis=1)
 
     return df
 
 
 def _compute_regime_features(df: pd.DataFrame) -> pd.DataFrame:
-    """计算 Regime 特征（从已有特征派生）"""
     vol_z = df.get("volatility_zscore", pd.Series(0.0, index=df.index))
     vol_z = vol_z.fillna(0)
 
-    df["high_volatility"] = (vol_z > 1.5).astype(float)
-    df["low_liquidity"] = 0.0
+    c = {}
+    c["high_volatility"] = (vol_z > 1.5).astype(float)
+    c["low_liquidity"] = 0.0
     if "volume_zscore" in df.columns:
-        df["low_liquidity"] = (df["volume_zscore"].fillna(0) < -1.5).astype(float)
+        c["low_liquidity"] = (df["volume_zscore"].fillna(0) < -1.5).astype(float)
 
     if "trend_20" in df.columns:
         trend = df["trend_20"].fillna(0)
-        df["trend_regime"] = np.where(
+        c["trend_regime"] = np.where(
             trend > 0.01, "trend",
             np.where(trend < -0.01, "trend", "chop"),
         )
 
     if "volatility_zscore" in df.columns:
         vz = df["volatility_zscore"].fillna(0)
-        df["volatility_regime"] = np.where(
+        c["volatility_regime"] = np.where(
             vz > 2.0, "extreme",
             np.where(vz > 1.0, "high",
                      np.where(vz < -1.0, "low", "normal")),
         )
 
-    df["extreme_move"] = 0.0
+    c["extreme_move"] = 0.0
     if "ret_1" in df.columns:
         ret = df["ret_1"].fillna(0)
         ret_std = ret.rolling(100).std().fillna(0)
-        df["extreme_move"] = (ret.abs() > 3 * ret_std).astype(float)
+        c["extreme_move"] = (ret.abs() > 3 * ret_std).astype(float)
 
-    df["regime_change"] = 0.0
-    if "trend_regime" in df.columns:
-        df["regime_change"] = (df["trend_regime"] != df["trend_regime"].shift(1)).astype(float)
+    c["regime_change"] = 0.0
+    if "trend_regime" in c:
+        c["regime_change"] = (c["trend_regime"] != pd.Series(c["trend_regime"]).shift(1)).astype(float)
+    elif "trend_regime" in df.columns:
+        c["regime_change"] = (df["trend_regime"] != df["trend_regime"].shift(1)).astype(float)
 
-    df["risk_multiplier"] = 1.0
-    if "high_volatility" in df.columns:
-        df["risk_multiplier"] = np.where(df["high_volatility"] > 0, 0.5, 1.0)
+    c["risk_multiplier"] = 1.0
+    if "high_volatility" in c:
+        c["risk_multiplier"] = np.where(c["high_volatility"] > 0, 0.5, 1.0)
 
-    df["risk_on_off"] = 0.0
+    c["risk_on_off"] = 0.0
     if "trend_20" in df.columns and "volatility_zscore" in df.columns:
-        df["risk_on_off"] = (
+        c["risk_on_off"] = (
             np.sign(df["trend_20"].fillna(0))
             * (1 - df["volatility_zscore"].fillna(0).clip(-3, 3) / 3.0)
         )
 
-    df["primary_regime"] = "neutral"
-    if "trend_regime" in df.columns and "volatility_regime" in df.columns:
-        tr = df["trend_regime"].fillna("chop")
-        vr = df["volatility_regime"].fillna("normal")
-        df["primary_regime"] = np.where(
-            vr == "extreme", "panic",
+    c["primary_regime"] = "neutral"
+    tr = c.get("trend_regime", df.get("trend_regime", pd.Series("chop", index=df.index)))
+    vr = c.get("volatility_regime", df.get("volatility_regime", pd.Series("normal", index=df.index)))
+    tr = pd.Series(tr).fillna("chop") if not isinstance(tr, pd.Series) else tr.fillna("chop")
+    vr = pd.Series(vr).fillna("normal") if not isinstance(vr, pd.Series) else vr.fillna("normal")
+    c["primary_regime"] = np.where(
+        vr == "extreme", "panic",
+        np.where(
+            (tr == "trend") & (vr == "high"), "squeeze",
             np.where(
-                (tr == "trend") & (vr == "high"), "squeeze",
-                np.where(
-                    tr == "trend", "trend",
-                    np.where(vr == "high", "high_leverage", "neutral"),
-                ),
+                tr == "trend", "trend",
+                np.where(vr == "high", "high_leverage", "neutral"),
             ),
-        )
+        ),
+    )
 
-    df["regime_risk_level"] = 0.5
+    c["regime_risk_level"] = 0.5
     if "volatility_zscore" in df.columns:
-        df["regime_risk_level"] = df["volatility_zscore"].fillna(0).clip(-3, 3).abs() / 3.0
+        c["regime_risk_level"] = df["volatility_zscore"].fillna(0).clip(-3, 3).abs() / 3.0
 
-    df["position_sizing_multiplier"] = 1.0 - df.get("regime_risk_level", 0.5) * 0.5
+    c["position_sizing_multiplier"] = 1.0 - c["regime_risk_level"] * 0.5
+
+    regime_cols = list(c.keys())
+    new_cols = pd.DataFrame(c, index=df.index)
+    df.drop(columns=[col for col in regime_cols if col in df.columns], inplace=True, errors="ignore")
+    df = pd.concat([df, new_cols], axis=1)
 
     return df
 
 
 def _compute_event_features(df: pd.DataFrame) -> pd.DataFrame:
-    """计算 Event-driven 特征（从已有特征派生）"""
+    c = {}
     if "funding_zscore" in df.columns:
         fr_z = df["funding_zscore"].fillna(0)
-        df["funding_explosion"] = (fr_z.abs() > 3).astype(float)
+        c["funding_explosion"] = (fr_z.abs() > 3).astype(float)
     else:
-        df["funding_explosion"] = 0.0
+        c["funding_explosion"] = 0.0
 
     if "volume_zscore" in df.columns:
-        df["volume_vacuum_event"] = (df["volume_zscore"].fillna(0) < -2).astype(float)
+        c["volume_vacuum_event"] = (df["volume_zscore"].fillna(0) < -2).astype(float)
     else:
-        df["volume_vacuum_event"] = 0.0
+        c["volume_vacuum_event"] = 0.0
 
-    df["news_event"] = 0.0
+    c["news_event"] = 0.0
+
+    event_cols = list(c.keys())
+    new_cols = pd.DataFrame(c, index=df.index)
+    df.drop(columns=[col for col in event_cols if col in df.columns], inplace=True, errors="ignore")
+    df = pd.concat([df, new_cols], axis=1)
 
     return df
 

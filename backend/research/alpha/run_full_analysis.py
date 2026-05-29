@@ -40,8 +40,8 @@ def run_full_analysis(
     timeframe: str = "1h",
     days: int = 90,
     output_dir: str = "reports/alpha",
-    skip_walk_forward: bool = True,
-    skip_stability: bool = True,
+    skip_walk_forward: bool = False,
+    skip_stability: bool = False,
 ):
     """运行完整分析流程"""
 
@@ -236,9 +236,9 @@ def main():
                         help="回溯天数")
     parser.add_argument("--output-dir", type=str, default="reports/alpha",
                         help="输出目录")
-    parser.add_argument("--skip-walk-forward", action="store_true", default=True,
+    parser.add_argument("--skip-walk-forward", action="store_true", default=False,
                         help="跳过Walk-Forward测试")
-    parser.add_argument("--skip-stability", action="store_true", default=True,
+    parser.add_argument("--skip-stability", action="store_true", default=False,
                         help="跳过参数稳定性测试")
 
     args = parser.parse_args()

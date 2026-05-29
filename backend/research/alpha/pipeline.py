@@ -39,6 +39,14 @@ from research.alpha.regime_analysis import classify_regime
 from research.stability.analyzer import StabilityAnalyzer
 
 
+def _torch_available() -> bool:
+    try:
+        import torch
+        return True
+    except ImportError:
+        return False
+
+
 @dataclass
 class StageResult:
     stage_name: str
@@ -198,29 +206,14 @@ class AlphaPipeline:
         all_results = []
         multi_symbol_data = {}
 
-        if len(self.symbols) > 1:
-            print(f"\n{'='*60}")
-            print(f"Alpha Pipeline: {defn.name} | {self.symbols} | {timeframe} | {self.days}d")
-            print(f"  Running {len(self.symbols)} symbols in parallel...")
-            print(f"{'='*60}")
+        print(f"\n{'='*60}")
+        print(f"Alpha Pipeline: {defn.name} | {self.symbols} | {timeframe} | {self.days}d")
+        print(f"  Running {len(self.symbols)} symbols sequentially...")
+        print(f"{'='*60}")
 
-            from infrastructure.acceleration import AccelerationService
-            service = AccelerationService()
-
-            def _run_symbol(symbol: str) -> AlphaValidationResult:
-                return self._run_single(defn, symbol, timeframe)
-
-            results = service.parallel_map(
-                _run_symbol, self.symbols, executor="thread"
-            )
-            all_results = list(results)
-        else:
-            symbol = self.symbols[0]
-            print(f"\n{'='*60}")
-            print(f"Alpha Pipeline: {defn.name} | {symbol} | {timeframe} | {self.days}d")
-            print(f"{'='*60}")
+        for symbol in self.symbols:
             result = self._run_single(defn, symbol, timeframe)
-            all_results = [result]
+            all_results.append(result)
 
         for r in all_results:
             if r.best_params is not None:
@@ -295,6 +288,16 @@ class AlphaPipeline:
         fm = classify_regime(fm)
         labels = compute_labels_from_df(fm)
         close = fm["close"].values.astype(float)
+
+        try:
+            import gc
+            gc.collect()
+            if _torch_available():
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+        except Exception:
+            pass
 
         if defn.combo_logic == "all_must_trigger" and len(defn.features) > 1:
             fm = self._build_combo_feature(fm, defn)
@@ -727,6 +730,7 @@ class AlphaPipeline:
             "threshold", "holding_bars",
             threshold_range, holding_bars_range,
             metric_2d_fn,
+            enable_parallel=False,
         )
 
         regime_metrics = self._compute_regime_metrics(
@@ -846,6 +850,7 @@ class AlphaPipeline:
             test_bars=test_bars,
             use_train_only_threshold=True,
             percentile=percentile,
+            enable_parallel=False,
         )
 
         if wf_result.total_windows == 0:
@@ -955,6 +960,9 @@ def main():
                         help="Start date string (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, default=None,
                         help="End date string (YYYY-MM-DD)")
+    parser.add_argument("--direction", type=str, default=None,
+                        choices=["long", "short"],
+                        help="Filter strategies by direction (long/short)")
 
     args = parser.parse_args()
 
@@ -968,7 +976,10 @@ def main():
         exclude_sources = [s.strip() for s in args.exclude_sources.split(",")]
 
     if args.strategy == "all":
-        strategy_names = [d.name for d in AlphaRegistry.get_active()]
+        strategy_defs = AlphaRegistry.get_active()
+        if args.direction:
+            strategy_defs = [d for d in strategy_defs if d.direction == args.direction]
+        strategy_names = [d.name for d in strategy_defs]
     else:
         strategy_names = [s.strip() for s in args.strategy.split(",")]
 

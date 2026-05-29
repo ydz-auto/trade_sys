@@ -26,6 +26,12 @@ _STATUS_ICONS = {
     "unknown": "?",
 }
 
+_TIER_ICONS = {
+    "A": "\U0001f7e2",
+    "B": "\U0001f7e1",
+    "C": "\U0001f534",
+}
+
 
 class Leaderboard:
     def __init__(self, pipeline_result: AlphaPipelineResult):
@@ -38,34 +44,65 @@ class Leaderboard:
 
         rows = []
         for r in self.pipeline_result.results:
-            stages_passed = sum(1 for s in r.stages if s.passed)
-            total_stages = len(r.stages)
-
-            stage_passed_list = [s.stage_name for s in r.stages if s.passed]
-            fail_reason_list = [f"{s.stage_name}: {s.message}" for s in r.stages if not s.passed and not s.skipped]
-
-            metrics = r.best_metrics or {}
-            row = {
-                "alpha": r.strategy,
-                "symbol": r.symbol,
-                "tf": r.timeframe,
-                "fee_mode": self.pipeline_result.config.get("fee_mode", ""),
-                "profit_factor": metrics.get("profit_factor", np.nan),
-                "sharpe": metrics.get("sharpe", np.nan),
-                "trades": metrics.get("trades", 0),
-                "win_rate": metrics.get("win_rate", np.nan),
-                "total_return": metrics.get("total_ret", np.nan),
-                "avg_ret": metrics.get("avg_ret", np.nan),
-                "stages_passed": stages_passed,
-                "total_stages": total_stages,
-                "stage_passed": ",".join(stage_passed_list) if stage_passed_list else "",
-                "fail_reason": "; ".join(fail_reason_list) if fail_reason_list else "",
-                "status": self._compute_status(r),
-            }
+            row = self._extract_row(r)
             rows.append(row)
 
         self._df = pd.DataFrame(rows)
         return self._df
+
+    def _extract_row(self, r: AlphaValidationResult) -> Dict:
+        stages_passed = sum(1 for s in r.stages if s.passed)
+        total_stages = len(r.stages)
+
+        stage_passed_list = [s.stage_name for s in r.stages if s.passed]
+        fail_reason_list = [f"{s.stage_name}: {s.message}" for s in r.stages if not s.passed and not s.skipped]
+
+        metrics = r.best_metrics or {}
+        status = self._compute_status(r)
+
+        wf_data = self._extract_stage_data(r, "walk_forward")
+        stab_data = self._extract_stage_data(r, "parameter_stability")
+
+        row = {
+            "alpha": r.strategy,
+            "symbol": r.symbol,
+            "tf": r.timeframe,
+            "fee_mode": self.pipeline_result.config.get("fee_mode", ""),
+            "profit_factor": metrics.get("profit_factor", np.nan),
+            "sharpe": metrics.get("sharpe", np.nan),
+            "trades": metrics.get("trades", 0),
+            "win_rate": metrics.get("win_rate", np.nan),
+            "total_return": metrics.get("total_ret", np.nan),
+            "avg_ret": metrics.get("avg_ret", np.nan),
+            "stages_passed": stages_passed,
+            "total_stages": total_stages,
+            "stage_passed": ",".join(stage_passed_list) if stage_passed_list else "",
+            "fail_reason": "; ".join(fail_reason_list) if fail_reason_list else "",
+            "status": status,
+            "wf_windows": wf_data.get("total_windows", 0),
+            "wf_avg_sharpe": wf_data.get("avg_sharpe", np.nan),
+            "wf_decay_rate": wf_data.get("decay_rate", np.nan),
+            "wf_profitable_ratio": wf_data.get("profitable_window_ratio", np.nan),
+            "wf_regime_stability": wf_data.get("regime_stability_score", np.nan),
+            "wf_passed": wf_data.get("_passed", False),
+            "stab_score": stab_data.get("stability_score", np.nan),
+            "stab_1d": stab_data.get("is_1d_stable", False),
+            "stab_2d": stab_data.get("is_2d_stable", False),
+            "stab_cross_regime": stab_data.get("is_cross_regime_stable", False),
+            "stab_passed": stab_data.get("_passed", False),
+        }
+
+        row["tier"] = self._classify_tier(row)
+
+        return row
+
+    def _extract_stage_data(self, r: AlphaValidationResult, stage_name: str) -> Dict:
+        for s in r.stages:
+            if s.stage_name == stage_name:
+                data = dict(s.data) if s.data else {}
+                data["_passed"] = s.passed
+                return data
+        return {}
 
     def _compute_status(self, r: AlphaValidationResult) -> str:
         if r.final_status in ("blocked", "unknown", "error"):
@@ -84,6 +121,35 @@ class Leaderboard:
         if pf > 1.0 and trades >= 30:
             return "warning"
         return "fail"
+
+    def _classify_tier(self, row: Dict) -> str:
+        pf = row.get("profit_factor", 0)
+        if pd.isna(pf):
+            pf = 0
+        sharpe = row.get("sharpe", 0)
+        if pd.isna(sharpe):
+            sharpe = 0
+        status = row.get("status", "fail")
+        wf_passed = row.get("wf_passed", False)
+        stab_passed = row.get("stab_passed", False)
+        wf_skipped = row.get("wf_windows", 0) == 0
+
+        if status not in ("pass", "warning"):
+            return "C"
+
+        if pf > 1.5 and sharpe > 1.5:
+            if wf_skipped or wf_passed:
+                if wf_skipped or stab_passed:
+                    return "A"
+                return "B"
+            return "B"
+
+        if pf > 1.2 and sharpe > 1.0:
+            if wf_skipped or wf_passed:
+                return "B"
+            return "C"
+
+        return "C"
 
     def save_csv(self, path: str) -> None:
         df = self.generate()
@@ -111,35 +177,42 @@ class Leaderboard:
             print("No results to display.")
             return
 
-        print(f"\n{'='*120}")
+        print(f"\n{'='*140}")
         print(f"Alpha Leaderboard | {self.pipeline_result.timestamp}")
-        print(f"{'='*120}")
+        print(f"{'='*140}")
         print(
             f"{'alpha':<25} {'symbol':<10} {'tf':<5} "
             f"{'PF':>8} {'sharpe':>8} {'trades':>7} "
-            f"{'WR':>7} {'avg_ret':>10} {'total_ret':>10} "
-            f"{'stages':>7} {'status':>8}"
+            f"{'WF':>5} {'Stab':>5} "
+            f"{'decay':>7} {'pf_ratio':>8} "
+            f"{'tier':>5} {'status':>8}"
         )
-        print(f"{'-'*118}")
+        print(f"{'-'*138}")
 
         for _, row in df.iterrows():
             pf_str = f"{row['profit_factor']:.3f}" if pd.notna(row["profit_factor"]) else "nan"
             sh_str = f"{row['sharpe']:.3f}" if pd.notna(row["sharpe"]) else "nan"
-            wr_str = f"{row['win_rate']:.3f}" if pd.notna(row["win_rate"]) else "nan"
-            ar_str = f"{row['avg_ret']:.5f}" if pd.notna(row["avg_ret"]) else "nan"
-            tr_str = f"{row['total_return']:.4f}" if pd.notna(row["total_return"]) else "nan"
+
+            wf_str = "Y" if row.get("wf_passed", False) else ("-" if row.get("wf_windows", 0) == 0 else "N")
+            stab_str = "Y" if row.get("stab_passed", False) else ("-" if pd.isna(row.get("stab_score", np.nan)) else "N")
+
+            decay_str = f"{row['wf_decay_rate']:.2f}" if pd.notna(row.get("wf_decay_rate", np.nan)) else "-"
+            pf_ratio_str = f"{row['wf_profitable_ratio']:.2f}" if pd.notna(row.get("wf_profitable_ratio", np.nan)) else "-"
+
+            tier = row.get("tier", "C")
+            tier_icon = _TIER_ICONS.get(tier, "?")
 
             icon = _STATUS_ICONS.get(row["status"], "?")
-            stages_str = f"{row['stages_passed']}/{row['total_stages']}"
 
             print(
                 f"{row['alpha']:<25} {row['symbol']:<10} {row['tf']:<5} "
                 f"{pf_str:>8} {sh_str:>8} {int(row['trades']):>7} "
-                f"{wr_str:>7} {ar_str:>10} {tr_str:>10} "
-                f"{stages_str:>7} {icon} {row['status']}"
+                f"{wf_str:>5} {stab_str:>5} "
+                f"{decay_str:>7} {pf_ratio_str:>8} "
+                f"{tier_icon}{tier:>4} {icon} {row['status']}"
             )
 
-        print(f"{'='*120}")
+        print(f"{'='*140}")
 
     def print_summary(self) -> None:
         df = self.generate()
@@ -156,6 +229,14 @@ class Leaderboard:
             icon = _STATUS_ICONS.get(status, "?")
             print(f"  {icon} {status}: {count}")
 
+        if "tier" in df.columns:
+            tier_counts = df["tier"].value_counts()
+            print(f"\n  Tier Distribution:")
+            for tier in ["A", "B", "C"]:
+                count = tier_counts.get(tier, 0)
+                tier_icon = _TIER_ICONS.get(tier, "?")
+                print(f"    {tier_icon} Tier {tier}: {count}")
+
         active = df[df["status"].isin(["pass", "warning"])]
         if len(active) > 0:
             print(f"\n  Active alphas: {len(active)}")
@@ -168,6 +249,13 @@ class Leaderboard:
                     f"  Best alpha: {best['alpha']} on {best['symbol']} "
                     f"(PF={best['profit_factor']:.3f})"
                 )
+
+            if "tier" in active.columns:
+                tier_a = active[active["tier"] == "A"]
+                if len(tier_a) > 0:
+                    print(f"\n  Paper Trading Candidates (Tier A):")
+                    for _, row in tier_a.iterrows():
+                        print(f"    {row['alpha']} on {row['symbol']} (PF={row['profit_factor']:.2f})")
         else:
             print(f"\n  No active alphas found.")
 
@@ -175,9 +263,12 @@ class Leaderboard:
 
     def _build_summary(self) -> dict:
         df = self.generate()
-        return {
+        summary = {
             "total_results": len(df),
             "by_status": df["status"].value_counts().to_dict(),
             "unique_alphas": list(df["alpha"].unique()),
             "unique_symbols": list(df["symbol"].unique()),
         }
+        if "tier" in df.columns:
+            summary["by_tier"] = df["tier"].value_counts().to_dict()
+        return summary

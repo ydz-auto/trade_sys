@@ -4,6 +4,7 @@ from typing import Callable, Dict, Any, List, Optional, Tuple
 import statistics
 
 from infrastructure.logging import get_logger
+from infrastructure.acceleration.acceleration_service import AccelerationService
 
 logger = get_logger("research.stability")
 
@@ -100,7 +101,7 @@ class CrossRegimeStabilityResult:
     regime_performance: Dict[str, RegimePerformance] = field(default_factory=dict)
     sharpe_by_regime: Dict[str, float] = field(default_factory=dict)
     profitable_regimes: List[str] = field(default_factory=list)
-    losing_regimes: List[str] = field(default_factory=dict)
+    losing_regimes: List[str] = field(default_factory=list)
     regime_concentration: float = 0.0
     is_regime_diversified: bool = False
     
@@ -198,21 +199,56 @@ class StabilityAnalyzer:
         x_values: List[float],
         y_values: List[float],
         metric_fn: Callable[[float, float], float],
+        enable_parallel: bool = True,
     ) -> StabilityResult:
         heatmap = []
         all_metrics = []
 
-        for y in y_values:
-            row = []
-            for x in x_values:
+        # 准备任务列表
+        tasks = []
+        for j, y in enumerate(y_values):
+            for i, x in enumerate(x_values):
+                tasks.append({"i": i, "j": j, "x": x, "y": y})
+
+        # 执行任务（并行或串行）
+        if enable_parallel and len(tasks) > 1:
+            service = AccelerationService()
+            
+            def wrap_task(kwargs):
+                i, j, x, y = kwargs["i"], kwargs["j"], kwargs["x"], kwargs["y"]
                 try:
                     metric = metric_fn(x, y)
-                    row.append(metric)
-                    all_metrics.append(metric)
+                    return {"i": i, "j": j, "x": x, "y": y, "metric": metric, "error": None}
                 except Exception as e:
                     logger.warning(f"Failed for {x_param}={x}, {y_param}={y}: {e}")
-                    row.append(float("nan"))
-            heatmap.append(row)
+                    return {"i": i, "j": j, "x": x, "y": y, "metric": float("nan"), "error": str(e)}
+            
+            results = service.parallel_map(
+                func=wrap_task,
+                tasks=[(task,) for task in tasks],
+                executor="thread"
+            )
+            
+            # 重新组装 heatmap
+            heatmap = [[float("nan") for _ in x_values] for _ in y_values]
+            for res in results:
+                if res:
+                    heatmap[res["j"]][res["i"]] = res["metric"]
+                    if res["metric"] == res["metric"]:
+                        all_metrics.append(res["metric"])
+        else:
+            # 串行执行
+            for y in y_values:
+                row = []
+                for x in x_values:
+                    try:
+                        metric = metric_fn(x, y)
+                        row.append(metric)
+                        all_metrics.append(metric)
+                    except Exception as e:
+                        logger.warning(f"Failed for {x_param}={x}, {y_param}={y}: {e}")
+                        row.append(float("nan"))
+                heatmap.append(row)
 
         valid_metrics = [m for m in all_metrics if m == m]
         mean_metric = statistics.mean(valid_metrics) if valid_metrics else 0.0
