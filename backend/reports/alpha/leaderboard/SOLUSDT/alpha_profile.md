@@ -3,37 +3,27 @@
 ## Summary
 
 - **Dominant Alpha**: drawdown_dip_buying
-- **IS Pass**: 3
-- **IS Warning**: 1
-- **OOS Pass**: 2
-- **OOS Warning**: 1
+- **IS Pass**: 0
+- **IS Warning**: 9
+- **Tier A**: 0
+- **Tier B**: 2
 
 ## Best In-Sample
 
 - **Alpha**: drawdown_dip_buying
 - **PF**: 2.02
 
-## Best Out-of-Sample
+## Best Walk-Forward
 
-- **Alpha**: ret_5_reversal
-- **PF**: 1.79
+- **Alpha**: drawdown_dip_buying
+- **WF Sharpe**: 3.452
 
-## Active Alphas
+## Tier A Candidates
 
-### IS (Pass/Warning)
+## Tier B Candidates
 
-| Alpha | PF | Sharpe | Trades | Status |
-|-------|----|--------|--------|--------|
-| volatility_panic_reversal | 2.00 | 3.68 | 260 | pass |
-| drawdown_dip_buying | 2.02 | 4.16 | 262 | pass |
-| drawdown_ret5_combo | 1.26 | 1.75 | 438 | pass |
-| ret_3_reversal | 1.14 | 0.96 | 438 | warning |
-
-### OOS (Pass/Warning)
-
-| Alpha | PF | Sharpe | Trades | Status |
-|-------|----|--------|--------|--------|
-| ret_5_reversal | 1.79 | 1.83 | 87 | pass |
-| volatility_panic_reversal | 1.40 | 1.57 | 144 | pass |
-| drawdown_dip_buying | 1.09 | 0.32 | 87 | warning |
+| Alpha | PF | Sharpe | WF Passed | Stab Passed |
+|-------|----|--------|-----------|-------------|
+| volatility_panic_reversal | 2.00 | 3.68 | True | False |
+| drawdown_dip_buying | 2.02 | 4.16 | True | False |
 
