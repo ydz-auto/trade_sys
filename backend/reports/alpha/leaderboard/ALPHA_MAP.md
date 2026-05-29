@@ -4,10 +4,10 @@
 
 | Symbol | Dominant Alpha | Best IS PF | Best WF Sharpe | Tier A | Tier B |
 |--------|----------------|------------|----------------|--------|--------|
-| BTCUSDT | drawdown_dip_buying | 1.72 | 1.766 | 0 | 2 |
-| ETCUSDT | drawdown_ret5_combo | 6.57 | 5.592 | 1 | 6 |
-| SOLUSDT | drawdown_dip_buying | 2.02 | 3.452 | 0 | 2 |
-| ZECUSDT | drawdown_dip_buying | 5.28 | 4.576 | 5 | 1 |
+| BTCUSDT | parabolic_runup | 1.19 | 0.311 | 0 | 0 |
+| ETCUSDT | parabolic_runup | 1.19 | 0.702 | 0 | 0 |
+| SOLUSDT | None | N/A | N/A | 0 | 0 |
+| ZECUSDT | None | N/A | N/A | 0 | 0 |
 
 ## Tier Classification
 

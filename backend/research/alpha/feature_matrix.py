@@ -281,6 +281,12 @@ def build_feature_matrix_from_df(
         feat_df["breakout_volume_decay"] = ((feat_df["new_high_60"] > 0) & (vol_ratio_ma < 0.8)).astype(float)
     feat_df["distance_from_ma"] = feat_df["trend_20"]
 
+    feat_df = _compute_short_overextension_features(feat_df)
+    feat_df = _compute_short_parabolic_features(feat_df)
+    feat_df = _compute_short_exhaustion_features(feat_df)
+    feat_df = _compute_short_breakfail_features(feat_df)
+    feat_df = _compute_short_crowded_features(feat_df)
+
     # OI
     if oi is not None and len(oi) > 0:
         feat_df = _merge_oi(feat_df, oi)
@@ -1213,6 +1219,262 @@ def _timeframe_to_bars_per_day(tf: str) -> int:
         "2h": 12, "4h": 6, "1d": 1
     }
     return bars_map.get(tf, 24)
+
+
+def _compute_short_overextension_features(df: pd.DataFrame) -> pd.DataFrame:
+    c = {}
+    close = df["close"]
+
+    if "sma_20" in df.columns:
+        c["distance_from_ma20"] = (close - df["sma_20"]) / df["sma_20"].replace(0, np.nan)
+    else:
+        ma20 = close.rolling(20).mean()
+        c["distance_from_ma20"] = (close - ma20) / ma20.replace(0, np.nan)
+
+    if "sma_60" in df.columns:
+        c["distance_from_ma60"] = (close - df["sma_60"]) / df["sma_60"].replace(0, np.nan)
+    else:
+        ma60 = close.rolling(60).mean()
+        c["distance_from_ma60"] = (close - ma60) / ma60.replace(0, np.nan)
+
+    if "vwap" in df.columns:
+        c["distance_from_vwap"] = (close - df["vwap"]) / df["vwap"].replace(0, np.nan)
+    else:
+        typical = (df["high"] + df["low"] + close) / 3
+        vwap = (typical * df["volume"]).cumsum() / df["volume"].cumsum()
+        c["distance_from_vwap"] = (close - vwap) / vwap.replace(0, np.nan)
+
+    price_ma100 = close.rolling(100).mean()
+    price_std100 = close.rolling(100).std()
+    c["zscore_price"] = (close - price_ma100) / price_std100.replace(0, np.nan)
+
+    ma20 = close.rolling(20).mean()
+    ma20_slope = ma20.diff() / ma20.shift(1)
+    c["ma20_slope_zscore"] = (ma20_slope - ma20_slope.rolling(100).mean()) / ma20_slope.rolling(100).std().replace(0, np.nan)
+
+    if "bb_upper" in df.columns:
+        c["price_deviation_band"] = (close - df["bb_upper"]) / df["bb_upper"].replace(0, np.nan)
+    else:
+        c["price_deviation_band"] = np.nan
+
+    new_cols = pd.DataFrame(c, index=df.index)
+    for col in new_cols.columns:
+        if col not in df.columns:
+            df[col] = new_cols[col].values
+
+    return df
+
+
+def _compute_short_parabolic_features(df: pd.DataFrame) -> pd.DataFrame:
+    c = {}
+
+    ret_3 = df["ret_3"] if "ret_3" in df.columns else df["close"].pct_change(3)
+    ret_5 = df["ret_5"] if "ret_5" in df.columns else df["close"].pct_change(5)
+    ret_10 = df["ret_10"] if "ret_10" in df.columns else df["close"].pct_change(10)
+
+    c["ret_3_acceleration"] = ret_3 - ret_3.shift(1)
+    c["ret_5_acceleration"] = ret_5 - ret_5.shift(1)
+    c["ret_10_acceleration"] = ret_10 - ret_10.shift(1)
+
+    slope = df["slope"] if "slope" in df.columns else (df["close"] - df["close"].rolling(20).mean()) / df["close"].rolling(20).mean()
+    c["slope_acceleration"] = slope - slope.shift(1)
+
+    second_derivative = ret_3.diff().diff()
+    c["curvature"] = second_derivative
+
+    ret_1 = df["ret_1"] if "ret_1" in df.columns else df["close"].pct_change(1)
+    ret_1_ma5 = ret_1.rolling(5).mean()
+    c["velocity_increase"] = ret_1 - ret_1_ma5
+
+    if "rsi_14" in df.columns and "new_high_60" in df.columns:
+        c["momentum_divergence"] = np.where(
+            (df["new_high_60"] > 0) & (df["rsi_14"].shift(1) > df["rsi_14"]),
+            df["rsi_14"].shift(1) - df["rsi_14"],
+            0.0
+        )
+    else:
+        c["momentum_divergence"] = 0.0
+
+    new_cols = pd.DataFrame(c, index=df.index)
+    for col in new_cols.columns:
+        if col not in df.columns:
+            df[col] = new_cols[col].values
+
+    return df
+
+
+def _compute_short_exhaustion_features(df: pd.DataFrame) -> pd.DataFrame:
+    c = {}
+    close = df["close"]
+    high = df["high"]
+    low = df["low"]
+
+    if "upper_wick_pct" not in df.columns:
+        c["upper_shadow_ratio"] = (high - np.maximum(df["open"], close)) / (high - low).replace(0, np.nan)
+    else:
+        c["upper_shadow_ratio"] = df["upper_wick_pct"]
+
+    is_up = close > df["open"]
+    c["consecutive_green"] = is_up.groupby((~is_up).cumsum()).cumsum()
+
+    range_pct = high - low
+    c["close_position_in_range"] = (close - low) / range_pct.replace(0, np.nan)
+
+    ret_1 = df["ret_1"] if "ret_1" in df.columns else df["close"].pct_change(1)
+    vol_z = df["volume_zscore"] if "volume_zscore" in df.columns else pd.Series(0.0, index=df.index)
+    c["volume_climax"] = np.where(
+        (vol_z.fillna(0) > 1.5) & (ret_1.abs() > 2 * ret_1.abs().rolling(100).mean().fillna(0.001)),
+        vol_z.fillna(0) * ret_1.abs(),
+        0.0
+    )
+
+    if "taker_buy_ratio" in df.columns and "range_pct" in df.columns:
+        vol_z = df["volume_zscore"].fillna(0) if "volume_zscore" in df.columns else pd.Series(0.0, index=df.index)
+        c["taker_buy_climax"] = np.where(
+            (df["taker_buy_ratio"] > 0.55) & (vol_z > 1.5) & (df["range_pct"] > df["range_pct"].rolling(100).mean()),
+            df["taker_buy_ratio"] * vol_z,
+            0.0
+        )
+    else:
+        c["taker_buy_climax"] = 0.0
+
+    if "new_high_60" not in df.columns:
+        c["new_high_60"] = (close >= close.rolling(60).max()).astype(float)
+    if "new_high_20" not in df.columns:
+        c["new_high_20"] = (close >= close.rolling(20).max()).astype(float)
+    if "new_high_120" not in df.columns:
+        c["new_high_120"] = (close >= close.rolling(120).max()).astype(float)
+
+    new_cols = pd.DataFrame(c, index=df.index)
+    for col in new_cols.columns:
+        if col not in df.columns:
+            df[col] = new_cols[col].values
+
+    return df
+
+
+def _compute_short_breakfail_features(df: pd.DataFrame) -> pd.DataFrame:
+    c = {}
+    close = df["close"]
+
+    if "new_high_20" not in df.columns:
+        c["new_high_20"] = (close >= close.rolling(20).max()).astype(float)
+    if "new_high_60" not in df.columns:
+        c["new_high_60"] = (close >= close.rolling(60).max()).astype(float)
+    if "new_high_120" not in df.columns:
+        c["new_high_120"] = (close >= close.rolling(120).max()).astype(float)
+
+    atr = df["atr_14"] if "atr_14" in df.columns else (df["high"] - df["low"]).rolling(14).mean()
+    rolling_high_60 = close.rolling(60).max().shift(1)
+    breakout_amount = close - rolling_high_60
+    c["breakout_strength"] = breakout_amount / atr.replace(0, np.nan)
+
+    ret_1 = df["ret_1"] if "ret_1" in df.columns else df["close"].pct_change(1)
+    c["breakout_failure"] = np.where(
+        (df.get("new_high_60", pd.Series(0.0, index=df.index)) > 0) & (ret_1 < 0),
+        -ret_1,
+        0.0
+    )
+
+    c["breakout_retraction"] = np.where(
+        c["breakout_strength"].abs() > 0,
+        -ret_1 / c["breakout_strength"].replace(0, np.nan),
+        0.0
+    )
+
+    rolling_max = close.rolling(60).max()
+    rolling_min = close.rolling(60).min()
+    range_60 = rolling_max - rolling_min
+    dist_from_high = (close - rolling_max) / range_60.replace(0, np.nan)
+    c["double_top_probability"] = np.where(
+        (dist_from_high.shift(1) > -0.05) & (dist_from_high < -0.1),
+        (dist_from_high.shift(1) - dist_from_high).abs(),
+        0.0
+    )
+
+    c["failed_rebound_strength"] = np.where(
+        (close.shift(3) < close.shift(5)) & (close < close.shift(1)) & (close > close.shift(5)),
+        (close.shift(5) - close) / close.shift(5),
+        0.0
+    )
+
+    new_cols = pd.DataFrame(c, index=df.index)
+    for col in new_cols.columns:
+        if col not in df.columns:
+            df[col] = new_cols[col].values
+
+    return df
+
+
+def _compute_short_crowded_features(df: pd.DataFrame) -> pd.DataFrame:
+    c = {}
+
+    c["funding_zscore_long"] = df["funding_zscore"] if "funding_zscore" in df.columns else np.nan
+
+    c["oi_zscore_long"] = df["oi_zscore"] if "oi_zscore" in df.columns else np.nan
+
+    if "basis" in df.columns:
+        basis_series = df["basis"]
+        c["basis_zscore"] = (basis_series - basis_series.rolling(100).mean()) / basis_series.rolling(100).std().replace(0, np.nan)
+    else:
+        c["basis_zscore"] = np.nan
+
+    if "oi" in df.columns and df["oi"].notna().any():
+        oi_change = df["oi"].pct_change()
+        oi_up = oi_change > 0
+        c["long_short_ratio"] = np.where(
+            oi_up,
+            1.0 + oi_change.abs(),
+            1.0 / (1.0 + oi_change.abs())
+        )
+    else:
+        c["long_short_ratio"] = np.nan
+
+    c["leverage_ratio_long"] = np.nan
+    if "oi" in df.columns and "funding_rate" in df.columns:
+        oi_z = df["oi_zscore"].fillna(0) if "oi_zscore" in df.columns else pd.Series(0.0, index=df.index)
+        fr = df["funding_rate"].fillna(0)
+        c["leverage_ratio_long"] = np.where(
+            fr > 0,
+            oi_z + (fr / 0.0001),
+            oi_z
+        )
+
+    if "funding_zscore" in df.columns and "oi_zscore" in df.columns:
+        fr_z = df["funding_zscore"].fillna(0)
+        oi_z = df["oi_zscore"].fillna(0)
+        c["funding_oi_combined"] = np.where(
+            (fr_z > 0) & (oi_z > 0),
+            fr_z * oi_z,
+            0.0
+        )
+    else:
+        c["funding_oi_combined"] = 0.0
+
+    fr_z = df.get("funding_zscore", pd.Series(0.0, index=df.index)).fillna(0)
+    oi_z = df.get("oi_zscore", pd.Series(0.0, index=df.index)).fillna(0)
+    vol_z = df.get("volume_zscore", pd.Series(0.0, index=df.index)).fillna(0)
+    c["crowded_long_score"] = (fr_z + oi_z + vol_z) / 3.0
+
+    c["liquidation_risk_long"] = 0.0
+    c["short_squeeze_prob"] = 0.0
+    if "oi_zscore" in df.columns and "funding_rate" in df.columns:
+        oi_z = df["oi_zscore"].fillna(0)
+        fr = df["funding_rate"].fillna(0)
+        c["short_squeeze_prob"] = np.where(
+            (oi_z < -1) & (fr < 0),
+            (-oi_z * fr.abs()) / 2,
+            0.0
+        )
+
+    c["margin_usage_long"] = np.nan
+
+    new_cols = pd.DataFrame(c, index=df.index)
+    for col in new_cols.columns:
+        if col not in df.columns:
+            df[col] = new_cols[col].values
+
+    return df
 
 
 __all__ = ["build_feature_matrix", "build_feature_matrix_from_df"]

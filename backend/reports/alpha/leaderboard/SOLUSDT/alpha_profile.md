@@ -2,28 +2,17 @@
 
 ## Summary
 
-- **Dominant Alpha**: drawdown_dip_buying
+- **Dominant Alpha**: None
 - **IS Pass**: 0
-- **IS Warning**: 9
+- **IS Warning**: 1
 - **Tier A**: 0
-- **Tier B**: 2
+- **Tier B**: 0
 
 ## Best In-Sample
 
-- **Alpha**: drawdown_dip_buying
-- **PF**: 2.02
-
 ## Best Walk-Forward
-
-- **Alpha**: drawdown_dip_buying
-- **WF Sharpe**: 3.452
 
 ## Tier A Candidates
 
 ## Tier B Candidates
-
-| Alpha | PF | Sharpe | WF Passed | Stab Passed |
-|-------|----|--------|-----------|-------------|
-| volatility_panic_reversal | 2.00 | 3.68 | True | False |
-| drawdown_dip_buying | 2.02 | 4.16 | True | False |
 

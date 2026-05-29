@@ -196,7 +196,141 @@ AlphaRegistry.register(AlphaDefinition(
 ))
 
 # ============================================================
-# Tier 1 空头：Crowded Long Reversal
+# SHORT_EXHAUSTION 家族 - 第一梯队：单因子镜像
+# ============================================================
+
+AlphaRegistry.register(AlphaDefinition(
+    name="ret_5_positive_reversal",
+    features=["ret_5"],
+    mode="reversal",
+    direction="short",
+    primary_feature="ret_5",
+    signal_direction_map={"ret_5": "positive_means_short"},
+))
+
+AlphaRegistry.register(AlphaDefinition(
+    name="distance_from_high_short",
+    features=["distance_from_high"],
+    mode="overbought_short",
+    direction="short",
+    primary_feature="distance_from_high",
+    signal_direction_map={
+        "distance_from_high": "positive_means_short",
+    },
+))
+
+# ============================================================
+# SHORT_EXHAUSTION 家族 - 第二梯队：Parabolic & Volume Climax
+# ============================================================
+
+AlphaRegistry.register(AlphaDefinition(
+    name="parabolic_runup",
+    features=["parabolic_ret_zscore", "ret_5"],
+    mode="parabolic_short",
+    direction="short",
+    primary_feature="parabolic_ret_zscore",
+    signal_direction_map={
+        "parabolic_ret_zscore": "positive_means_short",
+        "ret_5": "positive_means_short",
+    },
+    combo_logic="primary_with_confirm",
+))
+
+# ============================================================
+# SHORT_EXHAUSTION 家族 - Parabolic with Filters
+# ============================================================
+
+AlphaRegistry.register(AlphaDefinition(
+    name="parabolic_runup_vol_filter",
+    features=["parabolic_ret_zscore", "ret_5", "volume_zscore"],
+    mode="parabolic_short_vol_filter",
+    direction="short",
+    primary_feature="parabolic_ret_zscore",
+    signal_direction_map={
+        "parabolic_ret_zscore": "positive_means_short",
+        "ret_5": "positive_means_short",
+        "volume_zscore": "positive_means_short",
+    },
+    combo_logic="primary_with_confirm",
+))
+
+AlphaRegistry.register(AlphaDefinition(
+    name="parabolic_runup_ma_filter",
+    features=["parabolic_ret_zscore", "ret_5", "trend_20"],
+    mode="parabolic_short_ma_filter",
+    direction="short",
+    primary_feature="parabolic_ret_zscore",
+    signal_direction_map={
+        "parabolic_ret_zscore": "positive_means_short",
+        "ret_5": "positive_means_short",
+        "trend_20": "positive_means_short",
+    },
+    combo_logic="all_must_trigger",
+))
+
+AlphaRegistry.register(AlphaDefinition(
+    name="parabolic_runup_breakout_filter",
+    features=["parabolic_ret_zscore", "ret_5", "new_high_60", "breakout_volume_decay"],
+    mode="parabolic_short_breakout_filter",
+    direction="short",
+    primary_feature="parabolic_ret_zscore",
+    signal_direction_map={
+        "parabolic_ret_zscore": "positive_means_short",
+        "ret_5": "positive_means_short",
+        "new_high_60": "positive_means_short",
+        "breakout_volume_decay": "positive_means_short",
+    },
+    combo_logic="all_must_trigger",
+))
+
+AlphaRegistry.register(AlphaDefinition(
+    name="parabolic_runup_combined",
+    features=["parabolic_ret_zscore", "ret_5", "volume_zscore", "trend_20", "new_high_60"],
+    mode="parabolic_short_combined",
+    direction="short",
+    primary_feature="parabolic_ret_zscore",
+    signal_direction_map={
+        "parabolic_ret_zscore": "positive_means_short",
+        "ret_5": "positive_means_short",
+        "volume_zscore": "positive_means_short",
+        "trend_20": "positive_means_short",
+        "new_high_60": "positive_means_short",
+    },
+    combo_logic="all_must_trigger",
+))
+
+AlphaRegistry.register(AlphaDefinition(
+    name="volume_climax_short",
+    features=["volume_zscore", "volume_spike_up"],
+    mode="climax_short",
+    direction="short",
+    primary_feature="volume_zscore",
+    signal_direction_map={
+        "volume_zscore": "positive_means_short",
+        "volume_spike_up": "positive_means_short",
+    },
+    combo_logic="all_must_trigger",
+))
+
+# ============================================================
+# SHORT_EXHAUSTION 家族 - 第三梯队：Failed Breakout
+# ============================================================
+
+AlphaRegistry.register(AlphaDefinition(
+    name="breakout_failure",
+    features=["new_high_60", "breakout_volume_decay"],
+    mode="failed_breakout_short",
+    direction="short",
+    primary_feature="new_high_60",
+    signal_direction_map={
+        "new_high_60": "positive_means_short",
+        "breakout_volume_decay": "positive_means_short",
+    },
+    combo_logic="all_must_trigger",
+))
+
+# ============================================================
+# SHORT_EXHAUSTION 家族 - 原空头策略（保留）
 # ============================================================
 
 AlphaRegistry.register(AlphaDefinition(
@@ -227,10 +361,6 @@ AlphaRegistry.register(AlphaDefinition(
     combo_logic="all_must_trigger",
 ))
 
-# ============================================================
-# Tier 2 空头：Failed Breakout / Trend Exhaustion
-# ============================================================
-
 AlphaRegistry.register(AlphaDefinition(
     name="failed_breakout",
     features=["new_high_60", "breakout_volume_decay", "upper_wick_pct"],
@@ -259,10 +389,6 @@ AlphaRegistry.register(AlphaDefinition(
     combo_logic="all_must_trigger",
 ))
 
-# ============================================================
-# Tier 1 空头单因子：Funding Trap
-# ============================================================
-
 AlphaRegistry.register(AlphaDefinition(
     name="funding_trap_short",
     features=["funding_zscore"],
@@ -271,17 +397,6 @@ AlphaRegistry.register(AlphaDefinition(
     primary_feature="funding_zscore",
     signal_direction_map={
         "funding_zscore": "positive_means_short",
-    },
-))
-
-AlphaRegistry.register(AlphaDefinition(
-    name="distance_from_high_short",
-    features=["distance_from_high"],
-    mode="overbought_short",
-    direction="short",
-    primary_feature="distance_from_high",
-    signal_direction_map={
-        "distance_from_high": "positive_means_short",
     },
 ))
 

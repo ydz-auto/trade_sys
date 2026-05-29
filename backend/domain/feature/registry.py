@@ -1436,7 +1436,140 @@ _regime_features = [
 
 
 # =====================================================================
-# SHORT_EXHAUSTION Family (做空衰竭 / 爆顶反转)
+# SHORT_OVEREXTENSION Family (价格偏离度 - 涨得太离谱)
+# =====================================================================
+
+_short_overextension_features = [
+    FeatureDef(
+        name="distance_from_ma20",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="价格偏离 MA20 百分比 (做多超买信号)",
+        alpha_family=AlphaFamily.SHORT_OVEREXTENSION,
+    ),
+    FeatureDef(
+        name="distance_from_ma60",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="价格偏离 MA60 百分比 (中长期超买)",
+        alpha_family=AlphaFamily.SHORT_OVEREXTENSION,
+    ),
+    FeatureDef(
+        name="distance_from_vwap",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="价格偏离 VWAP 百分比",
+        alpha_family=AlphaFamily.SHORT_OVEREXTENSION,
+    ),
+    FeatureDef(
+        name="zscore_price",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="价格 Z-Score (相对100周期均值)",
+        alpha_family=AlphaFamily.SHORT_OVEREXTENSION,
+    ),
+    FeatureDef(
+        name="ma20_slope_zscore",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="MA20 斜率 Z-Score",
+        alpha_family=AlphaFamily.SHORT_OVEREXTENSION,
+    ),
+    FeatureDef(
+        name="price_deviation_band",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="价格偏离布林带上轨程度",
+        alpha_family=AlphaFamily.SHORT_OVEREXTENSION,
+    ),
+]
+
+
+# =====================================================================
+# SHORT_PARABOLIC Family (抛物线阶段 - 加速上涨)
+# =====================================================================
+
+_short_parabolic_features = [
+    FeatureDef(
+        name="ret_3_acceleration",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="ret_3 加速指标 (ret_3 - ret_3.shift)",
+        alpha_family=AlphaFamily.SHORT_PARABOLIC,
+    ),
+    FeatureDef(
+        name="ret_5_acceleration",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="ret_5 加速指标 (ret_5 - ret_5.shift)",
+        alpha_family=AlphaFamily.SHORT_PARABOLIC,
+    ),
+    FeatureDef(
+        name="ret_10_acceleration",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="ret_10 加速指标",
+        alpha_family=AlphaFamily.SHORT_PARABOLIC,
+    ),
+    FeatureDef(
+        name="slope_acceleration",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="斜率变化率 (趋势加速)",
+        alpha_family=AlphaFamily.SHORT_PARABOLIC,
+    ),
+    FeatureDef(
+        name="curvature",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="价格曲率 (二阶导数)",
+        alpha_family=AlphaFamily.SHORT_PARABOLIC,
+    ),
+    FeatureDef(
+        name="velocity_increase",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="速度增量 (ret_1 - ret_1.rolling(5).mean())",
+        alpha_family=AlphaFamily.SHORT_PARABOLIC,
+    ),
+    FeatureDef(
+        name="momentum_divergence",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="动量背离 (价格创新高但RSI下降)",
+        alpha_family=AlphaFamily.SHORT_PARABOLIC,
+    ),
+]
+
+
+# =====================================================================
+# SHORT_EXHAUSTION Family (做空衰竭 - 买盘衰竭)
 # =====================================================================
 
 _short_exhaustion_features = [
@@ -1446,7 +1579,7 @@ _short_exhaustion_features = [
         value_type=FeatureValueType.FLOAT,
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
-        description="距离高点的百分比",
+        description="距离高点的百分比 (正值=从高点下跌)",
         alpha_family=AlphaFamily.SHORT_EXHAUSTION,
     ),
     FeatureDef(
@@ -1477,12 +1610,12 @@ _short_exhaustion_features = [
         alpha_family=AlphaFamily.SHORT_EXHAUSTION,
     ),
     FeatureDef(
-        name="upper_wick_pct",
+        name="upper_shadow_ratio",
         category=FeatureCategory.TECHNICAL,
         value_type=FeatureValueType.FLOAT,
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
-        description="上影线百分比（相对于低）",
+        description="上影线占比 (上影/(高-低))",
         alpha_family=AlphaFamily.SHORT_EXHAUSTION,
     ),
     FeatureDef(
@@ -1492,6 +1625,33 @@ _short_exhaustion_features = [
         default_timeframes=["1m", "5m", "15m", "1h", "4h"],
         required_sources=["kline"],
         description="连续阳线数量",
+        alpha_family=AlphaFamily.SHORT_EXHAUSTION,
+    ),
+    FeatureDef(
+        name="close_position_in_range",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="收盘价在 K 线范围内位置 (0=低,1=高)",
+        alpha_family=AlphaFamily.SHORT_EXHAUSTION,
+    ),
+    FeatureDef(
+        name="volume_climax",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="成交量高潮指标 (放量且波幅大)",
+        alpha_family=AlphaFamily.SHORT_EXHAUSTION,
+    ),
+    FeatureDef(
+        name="taker_buy_climax",
+        category=FeatureCategory.FLOW,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["trade"],
+        description="Taker 买入高潮 (高买入率+高波动)",
         alpha_family=AlphaFamily.SHORT_EXHAUSTION,
     ),
     FeatureDef(
@@ -1565,6 +1725,184 @@ _short_exhaustion_features = [
         required_sources=["kline"],
         description="价格偏离MA20百分比",
         alpha_family=AlphaFamily.SHORT_EXHAUSTION,
+    ),
+]
+
+
+# =====================================================================
+# SHORT_BREAKFAIL Family (失败突破 - 创新高后回落)
+# =====================================================================
+
+_short_breakfail_features = [
+    FeatureDef(
+        name="new_high_20",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.INT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="20周期新高标记 (0/1)",
+        alpha_family=AlphaFamily.SHORT_BREAKFAIL,
+    ),
+    FeatureDef(
+        name="new_high_60",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.INT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="60周期新高标记 (0/1)",
+        alpha_family=AlphaFamily.SHORT_BREAKFAIL,
+    ),
+    FeatureDef(
+        name="new_high_120",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.INT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="120周期新高标记 (0/1)",
+        alpha_family=AlphaFamily.SHORT_BREAKFAIL,
+    ),
+    FeatureDef(
+        name="breakout_strength",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="突破强度 (突破幅度/ATR)",
+        alpha_family=AlphaFamily.SHORT_BREAKFAIL,
+    ),
+    FeatureDef(
+        name="breakout_failure",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="突破失败信号 (创新高后回落幅度)",
+        alpha_family=AlphaFamily.SHORT_BREAKFAIL,
+    ),
+    FeatureDef(
+        name="breakout_retraction",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="突破回撤比率 (回落/突破幅度)",
+        alpha_family=AlphaFamily.SHORT_BREAKFAIL,
+    ),
+    FeatureDef(
+        name="double_top_probability",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="双顶形态概率",
+        alpha_family=AlphaFamily.SHORT_BREAKFAIL,
+    ),
+    FeatureDef(
+        name="failed_rebound_strength",
+        category=FeatureCategory.TECHNICAL,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["kline"],
+        description="反弹失败强度",
+        alpha_family=AlphaFamily.SHORT_BREAKFAIL,
+    ),
+]
+
+
+# =====================================================================
+# SHORT_CROWDED Family (多头拥挤 - 杠杆/资金费率极端)
+# =====================================================================
+
+_short_crowded_features = [
+    FeatureDef(
+        name="funding_zscore_long",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["funding"],
+        description="资金费率 Z-Score (多头极端信号)",
+        alpha_family=AlphaFamily.SHORT_CROWDED,
+    ),
+    FeatureDef(
+        name="oi_zscore_long",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["open_interest"],
+        description="持仓量 Z-Score (多头拥挤信号)",
+        alpha_family=AlphaFamily.SHORT_CROWDED,
+    ),
+    FeatureDef(
+        name="basis_zscore",
+        category=FeatureCategory.CROSS_MARKET,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["cross_market"],
+        description="基差 Z-Score (正向基差极端)",
+        alpha_family=AlphaFamily.SHORT_CROWDED,
+    ),
+    FeatureDef(
+        name="long_short_ratio",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["open_interest"],
+        description="多空持仓比率",
+        alpha_family=AlphaFamily.SHORT_CROWDED,
+    ),
+    FeatureDef(
+        name="leverage_ratio_long",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["open_interest"],
+        description="多头杠杆率",
+        alpha_family=AlphaFamily.SHORT_CROWDED,
+    ),
+    FeatureDef(
+        name="funding_oi_combined",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["funding", "open_interest"],
+        description="Funding×OI 综合拥挤度",
+        alpha_family=AlphaFamily.SHORT_CROWDED,
+    ),
+    FeatureDef(
+        name="crowded_long_score",
+        category=FeatureCategory.COMPOSITE,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=["1m", "5m", "15m", "1h", "4h"],
+        required_sources=["composite"],
+        description="多头拥挤综合评分",
+        alpha_family=AlphaFamily.SHORT_CROWDED,
+    ),
+    FeatureDef(
+        name="liquidation_risk_long",
+        category=FeatureCategory.LIQUIDATION,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["liquidation"],
+        description="多头爆仓风险指标",
+        alpha_family=AlphaFamily.SHORT_CROWDED,
+    ),
+    FeatureDef(
+        name="short_squeeze_prob",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["open_interest", "funding"],
+        description="逼空概率 (低OI+负Funding)",
+        alpha_family=AlphaFamily.SHORT_CROWDED,
+    ),
+    FeatureDef(
+        name="margin_usage_long",
+        category=FeatureCategory.DERIVATIVES,
+        value_type=FeatureValueType.FLOAT,
+        default_timeframes=[],
+        required_sources=["open_interest"],
+        description="多头保证金使用率",
+        alpha_family=AlphaFamily.SHORT_CROWDED,
     ),
 ]
 
@@ -1812,7 +2150,11 @@ _ALL_FEATURE_GROUPS = [
     _liquidity_features,
     _cross_sectional_features,
     _regime_features,
+    _short_overextension_features,
+    _short_parabolic_features,
     _short_exhaustion_features,
+    _short_breakfail_features,
+    _short_crowded_features,
     _event_driven_features,
     _risk_execution_features,
 ]

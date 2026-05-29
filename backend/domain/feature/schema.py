@@ -31,17 +31,21 @@ class AlphaFamily(str, Enum):
     """Alpha Family（alpha 研究视角的分类）
 
     Taxonomy:
-    - PRICE_ACTION:  价格收益、回撤、结构
-    - VOLATILITY:    波动率相关
-    - FUNDING:       资金费率情绪
-    - VOLUME:        成交量参与度
-    - OPEN_INTEREST: 持仓量 / 杠杆结构
-    - ORDER_FLOW:    主动买卖流 / taker flow
-    - LIQUIDITY:     盘口深度 / 价差 / 流动性
+    - PRICE_ACTION:     价格收益、回撤、结构
+    - VOLATILITY:      波动率相关
+    - FUNDING:         资金费率情绪
+    - VOLUME:          成交量参与度
+    - OPEN_INTEREST:   持仓量 / 杠杆结构
+    - ORDER_FLOW:      主动买卖流 / taker flow
+    - LIQUIDITY:       盘口深度 / 价差 / 流动性
     - CROSS_SECTIONAL: 跨币种截面 alpha
-    - REGIME:        市场状态 / regime
-    - EVENT_DRIVEN:  事件驱动（爆仓、funding spike 等）
-    - SHORT_EXHAUSTION: 做空衰竭 / 爆顶反转
+    - REGIME:          市场状态 / regime
+    - EVENT_DRIVEN:    事件驱动（爆仓、funding spike 等）
+    - SHORT_OVEREXTENSION: 价格偏离度（涨得太离谱）
+    - SHORT_PARABOLIC: 抛物线阶段（加速上涨）
+    - SHORT_EXHAUSTION: 做空衰竭（买盘衰竭）
+    - SHORT_BREAKFAIL: 失败突破（创新高后回落）
+    - SHORT_CROWDED:   多头拥挤（杠杆/资金费率极端）
     """
     PRICE_ACTION = "price_action"
     VOLATILITY = "volatility"
@@ -53,7 +57,11 @@ class AlphaFamily(str, Enum):
     CROSS_SECTIONAL = "cross_sectional"
     REGIME = "regime"
     EVENT_DRIVEN = "event_driven"
+    SHORT_OVEREXTENSION = "short_overextension"
+    SHORT_PARABOLIC = "short_parabolic"
     SHORT_EXHAUSTION = "short_exhaustion"
+    SHORT_BREAKFAIL = "short_breakfail"
+    SHORT_CROWDED = "short_crowded"
 
 
 class FeatureValueType(str, Enum):
