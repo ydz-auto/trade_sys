@@ -104,43 +104,146 @@ def _register_default_features(registry: FeatureRegistry) -> None:
         RSI7Feature, RSI14Feature, RSI21Feature,
         EMA10Feature, EMA20Feature, EMA50Feature,
         SMA10Feature, SMA20Feature, SMA50Feature, SMA100Feature,
-        ATR14Feature,
-        MACDFeature, MACDSignalFeature, MACDHistFeature,
+        ATR14Feature, MACDFeature, MACDSignalFeature, MACDHistFeature,
         BBandsFeature, BBUpperFeature, BBMiddleFeature, BBLowerFeature, BBWidthFeature,
         Volatility20Feature, Volatility60Feature, RealizedVolatilityFeature, VolatilityZScoreFeature,
     )
+    from engines.compute.feature.market import (
+        FundingRateFeature, FundingZScoreFeature, FundingExtremePositiveFeature,
+        FundingExtremeReversalFeature, FundingExplosionFeature,
+        OpenInterestFeature, OIChangePctFeature, OIZScoreFeature,
+        OIFundingDivergenceFeature, OISqueezeProbabilityFeature,
+        OILiquidityPressureFeature, LeverageCrowdednessFeature,
+    )
+    from engines.compute.feature.microstructure import (
+        SpreadEstimateFeature, SpreadPctEstimateFeature, MicropriceEstimateFeature,
+        Imbalance1Feature, Imbalance10Feature, ImbalanceSlopeFeature,
+        DepthPressureFeature, DepthChangeFeature, LiquidityShiftFeature,
+        SpoofProbabilityFeature, WallDetectionFeature,
+    )
+    from engines.compute.feature.regime import (
+        HighVolatilityFeature, LowLiquidityFeature, TrendRegimeFeature,
+        VolatilityRegimeFeature, ExtremeMoveFeature, RegimeChangeFeature,
+        RiskMultiplierFeature, RiskOnOffFeature, PrimaryRegimeFeature,
+        RegimeRiskLevelFeature, PositionSizingMultiplierFeature,
+    )
+    from engines.compute.feature.alpha_factors import (
+        DistanceFromMA20Feature, DistanceFromMA60Feature, DistanceFromVWAPFeature,
+        ZScorePriceFeature, MA20SlopeZScoreFeature, PriceDeviationBandFeature,
+        Ret3AccelerationFeature, Ret5AccelerationFeature, Ret10AccelerationFeature,
+        SlopeAccelerationFeature, CurvatureFeature, VelocityIncreaseFeature,
+        MomentumDivergenceFeature, UpperShadowRatioFeature, LowerShadowRatioFeature,
+        BodyPctFeature, ConsecutiveGreenFeature, ConsecutiveRedFeature,
+        VolumeClimaxFeature, TakerBuyClimaxFeature, NewHigh120Feature,
+        BreakoutStrengthFeature, BreakoutFailureFeature, BreakoutRetractionFeature,
+        DoubleTopProbabilityFeature, FailedReboundStrengthFeature,
+        OIZScoreLongFeature, BasisZScoreFeature, LongShortRatioFeature,
+        LeverageRatioLongFeature, FundingOICombinedFeature, CrowdedLongScoreFeature,
+        LiquidationRiskLongFeature, ShortSqueezeProbFeature, MarginUsageLongFeature,
+    )
 
     default_features = [
-        # RSI
+        # Technical
         RSI7Feature(),
         RSI14Feature(),
         RSI21Feature(),
-        # EMA
         EMA10Feature(),
         EMA20Feature(),
         EMA50Feature(),
-        # SMA
         SMA10Feature(),
         SMA20Feature(),
         SMA50Feature(),
         SMA100Feature(),
-        # ATR
         ATR14Feature(),
-        # MACD
         MACDFeature(),
         MACDSignalFeature(),
         MACDHistFeature(),
-        # Bollinger Bands
         BBandsFeature(),
         BBUpperFeature(),
         BBMiddleFeature(),
         BBLowerFeature(),
         BBWidthFeature(),
-        # Volatility
         Volatility20Feature(),
         Volatility60Feature(),
         RealizedVolatilityFeature(),
         VolatilityZScoreFeature(),
+
+        # Market
+        FundingRateFeature(),
+        FundingZScoreFeature(),
+        FundingExtremePositiveFeature(),
+        FundingExtremeReversalFeature(),
+        FundingExplosionFeature(),
+        OpenInterestFeature(),
+        OIChangePctFeature(),
+        OIZScoreFeature(),
+        OIFundingDivergenceFeature(),
+        OISqueezeProbabilityFeature(),
+        OILiquidityPressureFeature(),
+        LeverageCrowdednessFeature(),
+
+        # Microstructure
+        SpreadEstimateFeature(),
+        SpreadPctEstimateFeature(),
+        MicropriceEstimateFeature(),
+        Imbalance1Feature(),
+        Imbalance10Feature(),
+        ImbalanceSlopeFeature(),
+        DepthPressureFeature(),
+        DepthChangeFeature(),
+        LiquidityShiftFeature(),
+        SpoofProbabilityFeature(),
+        WallDetectionFeature(),
+
+        # Regime
+        HighVolatilityFeature(),
+        LowLiquidityFeature(),
+        TrendRegimeFeature(),
+        VolatilityRegimeFeature(),
+        ExtremeMoveFeature(),
+        RegimeChangeFeature(),
+        RiskMultiplierFeature(),
+        RiskOnOffFeature(),
+        PrimaryRegimeFeature(),
+        RegimeRiskLevelFeature(),
+        PositionSizingMultiplierFeature(),
+
+        # Alpha Factors
+        DistanceFromMA20Feature(),
+        DistanceFromMA60Feature(),
+        DistanceFromVWAPFeature(),
+        ZScorePriceFeature(),
+        MA20SlopeZScoreFeature(),
+        PriceDeviationBandFeature(),
+        Ret3AccelerationFeature(),
+        Ret5AccelerationFeature(),
+        Ret10AccelerationFeature(),
+        SlopeAccelerationFeature(),
+        CurvatureFeature(),
+        VelocityIncreaseFeature(),
+        MomentumDivergenceFeature(),
+        UpperShadowRatioFeature(),
+        LowerShadowRatioFeature(),
+        BodyPctFeature(),
+        ConsecutiveGreenFeature(),
+        ConsecutiveRedFeature(),
+        VolumeClimaxFeature(),
+        TakerBuyClimaxFeature(),
+        NewHigh120Feature(),
+        BreakoutStrengthFeature(),
+        BreakoutFailureFeature(),
+        BreakoutRetractionFeature(),
+        DoubleTopProbabilityFeature(),
+        FailedReboundStrengthFeature(),
+        OIZScoreLongFeature(),
+        BasisZScoreFeature(),
+        LongShortRatioFeature(),
+        LeverageRatioLongFeature(),
+        FundingOICombinedFeature(),
+        CrowdedLongScoreFeature(),
+        LiquidationRiskLongFeature(),
+        ShortSqueezeProbFeature(),
+        MarginUsageLongFeature(),
     ]
 
     for feature in default_features:
