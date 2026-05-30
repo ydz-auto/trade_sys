@@ -1,0 +1,9 @@
+Registry Consistency Audit Report
+==================================================
+
+Total registered: 29
+Active: 27
+Blocked: 2
+
+MISSING FROM REGISTRY: ['short_exhaustion']
+SHORT FAMILY MISSING: ['short_exhaustion']
