@@ -14,8 +14,8 @@ from datetime import datetime
 import pandas as pd
 
 import logging
-from domain.feature.materializer.matrix_builder import UnifiedMatrixBuilder, UnifiedFeatureMatrix
-from domain.feature.materializer.schema_registry import get_schema_registry, FeatureCategory
+from engines.compute.feature.matrix_builder import UnifiedMatrixBuilder, UnifiedFeatureMatrix
+from domain.feature.schema_registry import get_schema_registry, FeatureCategory
 from domain.feature.trade.trade_feature import extract_trade_features_from_df
 from domain.feature.microstructure.microstructure_feature import extract_microstructure_features
 from domain.feature.oi.oi_funding_correlation import extract_oi_funding_features

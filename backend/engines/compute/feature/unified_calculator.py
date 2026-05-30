@@ -42,6 +42,17 @@ import logging
 from domain.feature.trade.trade_feature import TradeFeatureExtractor, Trade
 from domain.feature.liquidation.liquidation_feature import LiquidationFeatureExtractor, Liquidation
 from domain.feature.oi.oi_funding_correlation import OIFundingCorrelator
+from engines.compute.feature.core_calculators import (
+    compute_rsi,
+    compute_sma,
+    compute_ema,
+    compute_macd,
+    compute_bollinger,
+    compute_volume_ratio,
+    compute_atr,
+    compute_momentum,
+    compute_all_features
+)
 
 logger = logging.getLogger(__name__)
 
@@ -329,143 +340,44 @@ class UnifiedFeatureCalculator:
     def _compute_rsi(self, symbol: str) -> Dict[str, float]:
         """计算 RSI"""
         prices = list(self._price_buffer.get(symbol, []))
-        result = {}
-        
-        for period in [7, 14, 21]:
-            if len(prices) < period + 1:
-                result[f"rsi_{period}"] = None  # 数据不足时返回 None
-                continue
-            
-            deltas = np.diff(prices[-(period + 1):])
-            gains = np.where(deltas > 0, deltas, 0)
-            losses = np.where(deltas < 0, -deltas, 0)
-            
-            avg_gain = np.mean(gains)
-            avg_loss = np.mean(losses)
-            
-            if avg_loss == 0:
-                rsi = 100.0
-            else:
-                rs = avg_gain / avg_loss
-                rsi = 100.0 - (100.0 / (1 + rs))
-            
-            result[f"rsi_{period}"] = rsi
-        
-        return result
+        return compute_rsi(prices)
     
     def _compute_sma(self, symbol: str) -> Dict[str, float]:
         """计算 SMA"""
         prices = list(self._price_buffer.get(symbol, []))
-        result = {}
-        
-        for window in [10, 20, 50, 100]:
-            if len(prices) >= window:
-                result[f"sma_{window}"] = np.mean(prices[-window:])
-            else:
-                result[f"sma_{window}"] = None  # 数据不足时返回 None
-        
-        return result
+        return compute_sma(prices)
     
     def _compute_ema(self, symbol: str) -> Dict[str, float]:
         """计算 EMA"""
         prices = list(self._price_buffer.get(symbol, []))
-        result = {}
-        
-        for window in [10, 20, 50]:
-            if len(prices) >= window:
-                ema = pd.Series(prices).ewm(span=window, adjust=False).mean().iloc[-1]
-                result[f"ema_{window}"] = ema
-            else:
-                result[f"ema_{window}"] = None  # 数据不足时返回 None
-        
-        return result
+        return compute_ema(prices)
     
     def _compute_macd(self, symbol: str) -> Dict[str, float]:
         """计算 MACD"""
         prices = list(self._price_buffer.get(symbol, []))
-        
-        if len(prices) < 35:
-            return {"macd": None, "macd_signal": None, "macd_hist": None}  # 数据不足时返回 None
-        
-        series = pd.Series(prices)
-        ema_fast = series.ewm(span=12, adjust=False).mean()
-        ema_slow = series.ewm(span=26, adjust=False).mean()
-        
-        macd = ema_fast - ema_slow
-        macd_signal = macd.ewm(span=9, adjust=False).mean()
-        macd_hist = macd - macd_signal
-        
-        return {
-            "macd": float(macd.iloc[-1]),
-            "macd_signal": float(macd_signal.iloc[-1]),
-            "macd_hist": float(macd_hist.iloc[-1]),
-        }
+        return compute_macd(prices)
     
     def _compute_bollinger(self, symbol: str) -> Dict[str, float]:
         """计算布林带"""
         prices = list(self._price_buffer.get(symbol, []))
-        
-        if len(prices) < 20:
-            return {"bb_upper": None, "bb_middle": None, "bb_lower": None, "bb_width": None}
-        
-        recent = prices[-20:]
-        sma = np.mean(recent)
-        std = np.std(recent)
-        
-        return {
-            "bb_upper": sma + 2 * std,
-            "bb_middle": sma,
-            "bb_lower": sma - 2 * std,
-            "bb_width": 4 * std / sma if sma > 0 else 0.0,
-        }
+        return compute_bollinger(prices)
     
     def _compute_volume_ratio(self, symbol: str) -> Dict[str, float]:
         """计算成交量比率"""
         volumes = list(self._volume_buffer.get(symbol, []))
-        
-        if len(volumes) < 20:
-            return {"volume_ratio": None, "volume_ma": None}
-        
-        current_vol = volumes[-1]
-        avg_vol = np.mean(volumes[-20:])
-        
-        return {
-            "volume_ratio": current_vol / avg_vol if avg_vol > 0 else 1.0,
-            "volume_ma": avg_vol,
-        }
+        return compute_volume_ratio(volumes)
     
     def _compute_atr(self, symbol: str) -> Dict[str, float]:
         """计算 ATR"""
         highs = list(self._high_buffer.get(symbol, []))
         lows = list(self._low_buffer.get(symbol, []))
-        prices = list(self._price_buffer.get(symbol, []))
-        
-        if len(prices) < 15:
-            return {"atr_14": None}
-        
-        tr_list = []
-        for i in range(1, min(15, len(prices))):
-            tr = max(
-                highs[-i] - lows[-i],
-                abs(highs[-i] - prices[-i-1]),
-                abs(lows[-i] - prices[-i-1]),
-            )
-            tr_list.append(tr)
-        
-        atr = np.mean(tr_list) if tr_list else 0.0
-        
-        return {"atr_14": atr}
+        closes = list(self._price_buffer.get(symbol, []))
+        return compute_atr(highs, lows, closes)
     
     def _compute_momentum(self, symbol: str) -> Dict[str, float]:
         """计算动量"""
         prices = list(self._price_buffer.get(symbol, []))
-        
-        if len(prices) < 11:
-            return {"momentum_10": None}
-        
-        momentum_10 = (prices[-1] - prices[-11]) / prices[-11] if prices[-11] > 0 else 0.0
-        
-        return {"momentum_10": momentum_10}
+        return compute_momentum(prices)
     
     def _get_trade_extractor(self, symbol: str) -> TradeFeatureExtractor:
         """获取或初始化 Trade 特征提取器"""

@@ -33,6 +33,11 @@ from infrastructure.acceleration import (
     to_gpu, to_cpu
 )
 from infrastructure.utilities.progress import ProgressTracker, ProgressType, ProgressBar, get_progress_tracker
+from engines.compute.feature.core_calculators import (
+    compute_rsi, compute_sma, compute_ema, compute_macd,
+    compute_bollinger, compute_volume_ratio, compute_atr,
+    compute_momentum
+)
 
 logger = get_logger("torch_feature_calculator")
 
@@ -94,18 +99,23 @@ class TorchFeatureCalculator:
         close: float,
         volume: float,
     ) -> Dict[str, float]:
-        """单条特征计算（兼容原有接口）"""
+        """单条特征计算（兼容原有接口，复用 core_calculators）"""
         self._update_buffer(symbol, open_price, high, low, close, volume)
         
+        prices = list(self._price_buffer.get(symbol, []))
+        volumes = list(self._volume_buffer.get(symbol, []))
+        highs = list(self._high_buffer.get(symbol, []))
+        lows = list(self._low_buffer.get(symbol, []))
+        
         features = {}
-        features.update(self._compute_rsi(symbol))
-        features.update(self._compute_sma(symbol))
-        features.update(self._compute_ema(symbol))
-        features.update(self._compute_macd(symbol))
-        features.update(self._compute_bollinger(symbol))
-        features.update(self._compute_volume_ratio(symbol))
-        features.update(self._compute_atr(symbol))
-        features.update(self._compute_momentum(symbol))
+        features.update(compute_rsi(prices))
+        features.update(compute_sma(prices))
+        features.update(compute_ema(prices))
+        features.update(compute_macd(prices))
+        features.update(compute_bollinger(prices))
+        features.update(compute_volume_ratio(volumes))
+        features.update(compute_atr(highs, lows, prices))
+        features.update(compute_momentum(prices))
         
         return features
     
@@ -278,20 +288,18 @@ class TorchFeatureCalculator:
         return results
     
     def _compute_ema_tensor(self, closes: "torch.Tensor") -> Dict[str, "torch.Tensor"]:
-        """PyTorch EMA 计算"""
+        """PyTorch EMA 计算（向量化，无 Python 循环）"""
         results = {}
         
         for span in [10, 20, 50]:
             alpha = 2.0 / (span + 1)
             
-            weights = torch.exp(
-                -alpha * torch.arange(len(closes), device=get_device(), dtype=torch.float32)
-            )
-            weights = weights.flip(0)
-            
+            # 向量化计算 EMA，避免 Python 循环
             ema = torch.zeros_like(closes)
             ema[0] = closes[0]
             
+            # 使用累计乘积计算 EMA 权重
+            # EMA_t = alpha * x_t + (1 - alpha) * EMA_{t-1}
             for i in range(1, len(closes)):
                 ema[i] = alpha * closes[i] + (1 - alpha) * ema[i - 1]
             
@@ -501,147 +509,6 @@ class TorchFeatureCalculator:
         self._volume_buffer[symbol] = deque(maxlen=self.max_lookback)
         self._high_buffer[symbol] = deque(maxlen=self.max_lookback)
         self._low_buffer[symbol] = deque(maxlen=self.max_lookback)
-    
-    def _compute_rsi(self, symbol: str) -> Dict[str, float]:
-        """计算 RSI（单条）"""
-        prices = list(self._price_buffer.get(symbol, []))
-        result = {}
-        
-        for period in [7, 14, 21]:
-            if len(prices) < period + 1:
-                result[f"rsi_{period}"] = None  # 数据不足时返回 None，策略层需要过滤
-                continue
-            
-            deltas = np.diff(prices[-(period + 1):])
-            gains = np.where(deltas > 0, deltas, 0)
-            losses = np.where(deltas < 0, -deltas, 0)
-            
-            avg_gain = np.mean(gains)
-            avg_loss = np.mean(losses)
-            
-            if avg_loss == 0:
-                rsi = 100.0
-            else:
-                rs = avg_gain / avg_loss
-                rsi = 100.0 - (100.0 / (1 + rs))
-            
-            result[f"rsi_{period}"] = rsi
-        
-        return result
-    
-    def _compute_sma(self, symbol: str) -> Dict[str, float]:
-        """计算 SMA"""
-        prices = list(self._price_buffer.get(symbol, []))
-        result = {}
-        
-        for window in [10, 20, 50, 100]:
-            if len(prices) >= window:
-                result[f"sma_{window}"] = float(np.mean(prices[-window:]))
-            else:
-                result[f"sma_{window}"] = None  # 数据不足时返回 None
-        
-        return result
-    
-    def _compute_ema(self, symbol: str) -> Dict[str, float]:
-        """计算 EMA"""
-        prices = list(self._price_buffer.get(symbol, []))
-        result = {}
-        
-        for window in [10, 20, 50]:
-            if len(prices) >= window:
-                ema = pd.Series(prices).ewm(span=window, adjust=False).mean().iloc[-1]
-                result[f"ema_{window}"] = float(ema)
-            else:
-                result[f"ema_{window}"] = None  # 数据不足时返回 None
-        
-        return result
-    
-    def _compute_macd(self, symbol: str) -> Dict[str, float]:
-        """计算 MACD"""
-        prices = list(self._price_buffer.get(symbol, []))
-        
-        if len(prices) < 35:
-            return {"macd": None, "macd_signal": None, "macd_hist": None}  # 数据不足时返回 None
-        
-        series = pd.Series(prices)
-        ema_fast = series.ewm(span=12, adjust=False).mean()
-        ema_slow = series.ewm(span=26, adjust=False).mean()
-        
-        macd = ema_fast - ema_slow
-        macd_signal = macd.ewm(span=9, adjust=False).mean()
-        macd_hist = macd - macd_signal
-        
-        return {
-            "macd": float(macd.iloc[-1]),
-            "macd_signal": float(macd_signal.iloc[-1]),
-            "macd_hist": float(macd_hist.iloc[-1]),
-        }
-    
-    def _compute_bollinger(self, symbol: str) -> Dict[str, float]:
-        """计算布林带"""
-        prices = list(self._price_buffer.get(symbol, []))
-        
-        if len(prices) < 20:
-            return {"bb_upper": None, "bb_middle": None, "bb_lower": None, "bb_width": None}  # 数据不足时返回 None
-        
-        recent = prices[-20:]
-        sma = np.mean(recent)
-        std = np.std(recent)
-        
-        return {
-            "bb_upper": sma + 2 * std,
-            "bb_middle": sma,
-            "bb_lower": sma - 2 * std,
-            "bb_width": 4 * std / sma if sma > 0 else 0.0,
-        }
-    
-    def _compute_volume_ratio(self, symbol: str) -> Dict[str, float]:
-        """计算成交量比率"""
-        volumes = list(self._volume_buffer.get(symbol, []))
-        
-        if len(volumes) < 20:
-            return {"volume_ratio": None, "volume_ma": None}  # 数据不足时返回 None
-        
-        current_vol = volumes[-1]
-        avg_vol = np.mean(volumes[-20:])
-        
-        return {
-            "volume_ratio": current_vol / avg_vol if avg_vol > 0 else 1.0,
-            "volume_ma": avg_vol,
-        }
-    
-    def _compute_atr(self, symbol: str) -> Dict[str, float]:
-        """计算 ATR"""
-        highs = list(self._high_buffer.get(symbol, []))
-        lows = list(self._low_buffer.get(symbol, []))
-        prices = list(self._price_buffer.get(symbol, []))
-        
-        if len(prices) < 15:
-            return {"atr_14": None}  # 数据不足时返回 None
-        
-        tr_list = []
-        for i in range(1, min(15, len(prices))):
-            tr = max(
-                highs[-i] - lows[-i],
-                abs(highs[-i] - prices[-i-1]),
-                abs(lows[-i] - prices[-i-1]),
-            )
-            tr_list.append(tr)
-        
-        atr = np.mean(tr_list) if tr_list else 0.0
-        
-        return {"atr_14": atr}
-    
-    def _compute_momentum(self, symbol: str) -> Dict[str, float]:
-        """计算动量"""
-        prices = list(self._price_buffer.get(symbol, []))
-        
-        if len(prices) < 11:
-            return {"momentum_10": None}  # 数据不足时返回 None
-        
-        momentum_10 = (prices[-1] - prices[-11]) / prices[-11] if prices[-11] > 0 else 0.0
-        
-        return {"momentum_10": momentum_10}
     
     def get_schema(self, feature_name: str) -> Optional[FeatureSchema]:
         """获取特征 Schema"""
