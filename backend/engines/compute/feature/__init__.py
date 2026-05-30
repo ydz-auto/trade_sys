@@ -7,6 +7,11 @@ Feature Module - 统一特征计算
 - cache: 特征缓存
 - engine: 特征计算引擎
 - technical: 技术指标特征
+- basic: 基础特征
+- market: 市场特征
+- microstructure: 微观结构特征
+- regime: 市场状态特征
+- alpha_factors: Alpha因子
 """
 
 from engines.compute.feature.contracts import (

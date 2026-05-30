@@ -7,6 +7,7 @@ Feature Engine - 统一特征计算引擎
 3. 协调 AccelerationService 进行加速计算
 4. 管理缓存
 5. 返回计算结果
+6. 构建历史特征矩阵
 """
 
 from typing import List, Optional, Union
@@ -25,10 +26,12 @@ class FeatureEngine:
         registry: Optional[FeatureRegistry] = None,
         cache: Optional[FeatureCache] = None,
         use_cache: bool = True,
+        source: Optional[str] = None,
     ):
         self.registry = registry or get_registry()
         self.cache = cache or get_cache()
         self.use_cache = use_cache
+        self.source = source
 
     def compute(
         self,
@@ -150,6 +153,167 @@ class FeatureEngine:
     def invalidate_cache(self, feature_name: Optional[str] = None) -> None:
         """使缓存失效"""
         self.cache.invalidate(feature_name)
+
+
+    def build_historical_matrix(
+        self,
+        symbol: str = "BTCUSDT",
+        exchange: str = "binance",
+        days: int = 90,
+        timeframe: str = "1h",
+        exclude_sources: Optional[List[str]] = None,
+    ) -> pd.DataFrame:
+        """
+        构建历史特征矩阵
+
+        Args:
+            symbol: 交易对
+            exchange: 交易所
+            days: 回看天数
+            timeframe: K线周期
+            exclude_sources: 排除的数据源
+
+        Returns:
+            特征矩阵 DataFrame
+        """
+        try:
+            from infrastructure.storage.data_lake.file_reader import FileDataLakeReader
+            reader = FileDataLakeReader()
+
+            # 加载基础K线数据
+            klines = self._load_klines(reader, exchange, symbol, timeframe, days)
+            
+            # 加载资金费率
+            funding = self._load_funding(reader, exchange, symbol, timeframe, klines)
+            
+            # 加载持仓量
+            oi = self._load_oi(reader, exchange, symbol, timeframe, klines)
+            
+            # 加载订单簿
+            orderbook = self._load_orderbook(reader, exchange, symbol, timeframe, klines)
+            
+            # 加载清算数据
+            liquidations = self._load_liquidations(reader, exchange, symbol, timeframe, klines)
+            
+            # 合并所有数据源
+            df = self._merge_datasets(klines, funding, oi, orderbook, liquidations)
+            
+            # 计算所有特征
+            df = self._compute_all_features(df)
+            
+            return df
+
+        except Exception as e:
+            print(f"  FeatureEngine 构建矩阵失败: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+
+    def _load_klines(self, reader, exchange, symbol, timeframe, days):
+        """加载K线数据"""
+        try:
+            klines = reader.read_klines(exchange, symbol, timeframe, days=days)
+            if klines is not None and not klines.empty:
+                klines = klines.sort_values("timestamp").reset_index(drop=True)
+            return klines
+        except Exception as e:
+            print(f"  加载K线失败: {e}")
+            return None
+
+    def _load_funding(self, reader, exchange, symbol, timeframe, klines):
+        """加载资金费率数据"""
+        try:
+            return reader.read_funding(exchange, symbol, timeframe, klines)
+        except Exception as e:
+            print(f"  加载资金费率失败: {e}")
+            return None
+
+    def _load_oi(self, reader, exchange, symbol, timeframe, klines):
+        """加载持仓量数据"""
+        try:
+            return reader.read_open_interest(exchange, symbol, timeframe, klines)
+        except Exception as e:
+            print(f"  加载持仓量失败: {e}")
+            return None
+
+    def _load_orderbook(self, reader, exchange, symbol, timeframe, klines):
+        """加载订单簿数据"""
+        try:
+            return reader.read_orderbook(exchange, symbol, timeframe, klines)
+        except Exception as e:
+            print(f"  加载订单簿失败: {e}")
+            return None
+
+    def _load_liquidations(self, reader, exchange, symbol, timeframe, klines):
+        """加载清算数据"""
+        try:
+            return reader.read_liquidations(exchange, symbol, timeframe, klines)
+        except Exception as e:
+            print(f"  加载清算数据失败: {e}")
+            return None
+
+    def _merge_datasets(self, klines, funding, oi, orderbook, liquidations):
+        """合并所有数据集"""
+        if klines is None or klines.empty:
+            return pd.DataFrame()
+
+        df = klines.copy()
+        df = df.sort_values("timestamp").reset_index(drop=True)
+
+        # 合并资金费率
+        if funding is not None and not funding.empty:
+            df = df.merge(funding, on="timestamp", how="left")
+
+        # 合并持仓量
+        if oi is not None and not oi.empty:
+            df = df.merge(oi, on="timestamp", how="left")
+
+        # 合并订单簿
+        if orderbook is not None and not orderbook.empty:
+            df = df.merge(orderbook, on="timestamp", how="left")
+
+        # 合并清算数据
+        if liquidations is not None and not liquidations.empty:
+            df = df.merge(liquidations, on="timestamp", how="left")
+
+        return df
+
+    def _compute_all_features(self, df):
+        """计算所有特征"""
+        # 首先计算基础特征
+        base_features = [
+            "ret_1", "ret_3", "ret_5", "ret_10", "ret_20",
+            "atr_pct", "atr_expansion", "trend_20", "slope",
+            "volatility_zscore", "rsi_14", "macd",
+        ]
+        
+        # 计算基础特征
+        df = self.compute(df, base_features)
+        
+        # 计算其他技术指标
+        tech_features = [
+            "ema_20", "ema_50", "sma_20", "sma_50", "sma_100",
+            "bb_upper", "bb_middle", "bb_lower", "bb_width",
+        ]
+        
+        df = self.compute(df, tech_features)
+        
+        # 计算市场特征
+        market_features = [
+            "funding_zscore", "oi_zscore", "oi_funding_divergence",
+            "leverage_crowdedness",
+        ]
+        
+        df = self.compute(df, market_features)
+        
+        # 计算Alpha因子
+        alpha_features = [
+            "distance_from_ma20", "zscore_price", "breakout_strength",
+        ]
+        
+        df = self.compute(df, alpha_features)
+        
+        return df
 
 
 def get_engine() -> FeatureEngine:
