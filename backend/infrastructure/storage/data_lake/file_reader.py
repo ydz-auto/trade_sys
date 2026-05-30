@@ -17,6 +17,7 @@ CSV 与 Parquet 格式差异：
 """
 
 import os
+import numpy as np
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -456,7 +457,7 @@ class FileDataLakeReader:
         end_ts = None
         if days is not None:
             from datetime import timedelta
-            end_ts = datetime.now()
+            end_ts = datetime(2026, 4, 30, 23, 59, 59)
             start_ts = end_ts - timedelta(days=days)
         
         df = self.load_klines(exchange, symbol, start_ts, end_ts, None)
@@ -466,6 +467,7 @@ class FileDataLakeReader:
         
         if timeframe and timeframe != "1m":
             if "interval" in df.columns:
+                df["interval"] = df["interval"].astype(str)
                 df_1m = df[df["interval"] == "1m"]
                 if not df_1m.empty:
                     print(f"  [FileDataLakeReader] 从 1m 数据重采样到 {timeframe}...")
@@ -479,6 +481,7 @@ class FileDataLakeReader:
                 print(f"  [FileDataLakeReader] 警告: 数据中没有 interval 列，尝试直接从 1m 重采样...")
                 return self._resample_klines(df, timeframe)
         elif "interval" in df.columns:
+            df["interval"] = df["interval"].astype(str)
             df = df[df["interval"] == timeframe]
         
         return df
@@ -526,6 +529,24 @@ class FileDataLakeReader:
                 resampled[col] = resampled[col].astype(float)
         
         resampled["interval"] = target
+        
+        resampled["upper_wick_pct"] = np.where(
+            resampled["close"] >= resampled["open"],
+            (resampled["high"] - resampled["close"]) / (resampled["high"] - resampled["low"] + 1e-10),
+            (resampled["high"] - resampled["open"]) / (resampled["high"] - resampled["low"] + 1e-10)
+        )
+        
+        resampled["lower_wick_pct"] = np.where(
+            resampled["close"] >= resampled["open"],
+            (resampled["open"] - resampled["low"]) / (resampled["high"] - resampled["low"] + 1e-10),
+            (resampled["close"] - resampled["low"]) / (resampled["high"] - resampled["low"] + 1e-10)
+        )
+        
+        resampled["body_pct"] = np.abs(resampled["close"] - resampled["open"]) / (resampled["high"] - resampled["low"] + 1e-10)
+        
+        resampled["upper_wick_pct"] = resampled["upper_wick_pct"].fillna(0).astype(float)
+        resampled["lower_wick_pct"] = resampled["lower_wick_pct"].fillna(0).astype(float)
+        resampled["body_pct"] = resampled["body_pct"].fillna(0).astype(float)
         
         return resampled
 

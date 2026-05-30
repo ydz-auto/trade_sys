@@ -109,6 +109,22 @@ class RealizedVolZScoreFeature(TechnicalFeature):
         return pd.Series(np.nan, index=df.index)
 
 
+class VolumeZScoreFeature(TechnicalFeature):
+    name = "volume_zscore"
+    description = "成交量 ZScore（相对于历史分布）"
+
+    def compute(self, df: pd.DataFrame) -> pd.Series:
+        if "volume" not in df.columns:
+            return pd.Series(np.nan, index=df.index)
+        
+        vol = df["volume"]
+        vol_ma = vol.rolling(50).mean()
+        vol_std = vol.rolling(50).std()
+        
+        zscore = (vol - vol_ma) / vol_std
+        return zscore.fillna(0)
+
+
 class VolumeMaFeature(TechnicalFeature):
     name = "volume_ma"
     description = "成交量移动平均"
