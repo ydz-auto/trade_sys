@@ -201,6 +201,13 @@ class FeatureEngine:
             # 计算所有特征
             df = self._compute_all_features(df)
             
+            # 确保数据对多进程安全
+            try:
+                from infrastructure.utils.multiprocessing_utils import clean_dataframe_for_multiprocessing
+                df = clean_dataframe_for_multiprocessing(df)
+            except Exception as e:
+                print(f"  清理多进程数据失败（非致命）: {e}")
+            
             return df
 
         except Exception as e:

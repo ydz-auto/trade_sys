@@ -203,3 +203,25 @@ scripts/walkforward_results_fixed.json
 trades/
 walkforward_results_fixed.json
 walk_forward_results.json
+
+# Temporary test scripts
+backend/test_*.py
+backend/check_*.py
+backend/debug_*.py
+backend/minimal_test.py
+backend/small_test.py
+backend/quick_test_pipeline.py
+backend/discover_*.py
+backend/validate_*.py
+backend/*.txt
+backend/nul
+nul
+
+# Test reports
+backend/reports/*.json
+backend/reports/*.md
+
+# Qoder and Trae
+.qoder/
+.trae/
+backend/.trae/

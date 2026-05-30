@@ -204,6 +204,8 @@ class FileDataLakeReader:
         result = self._filter_by_time(result, start_ts, end_ts)
         if "timestamp" in result.columns:
             result = result.sort_values("timestamp").reset_index(drop=True)
+        # 清理多进程安全
+        result = self._clean_dataframe_for_multiprocessing(result)
         return result
 
     def _load_partitioned_parquet(
@@ -257,6 +259,8 @@ class FileDataLakeReader:
             df = self._filter_by_time(df, start_ts, end_ts, timestamp_col)
             if timestamp_col in df.columns:
                 df = df.sort_values(timestamp_col).reset_index(drop=True)
+            # 清理多进程安全
+            df = self._clean_dataframe_for_multiprocessing(df)
             return df
         except Exception:
             return pd.DataFrame()
@@ -359,6 +363,62 @@ class FileDataLakeReader:
             "funding": self.load_funding(exchange, symbol, start_ts, end_ts),
         }
 
+    def _convert_arrow_types(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        转换 pyarrow 类型为标准 pandas 类型，避免多进程传递问题
+        
+        解决 Windows 上 pyarrow 类型 + multiprocessing.spawn 导致的 Access Violation 问题
+        """
+        if df.empty:
+            return df
+        
+        df = df.copy()
+        
+        for col in df.columns:
+            # 转换 Arrow 字符串类型为标准字符串
+            if hasattr(df[col].dtype, '__module__') and 'pyarrow' in df[col].dtype.__module__:
+                try:
+                    df[col] = df[col].astype(str)
+                except Exception:
+                    pass
+            elif str(df[col].dtype).startswith('string[pyarrow]'):
+                try:
+                    df[col] = df[col].astype(str)
+                except Exception:
+                    pass
+            # 转换 Arrow 日期时间类型
+            elif str(df[col].dtype).startswith('timestamp') and hasattr(df[col].dtype, '__module__') and 'pyarrow' in df[col].dtype.__module__:
+                try:
+                    df[col] = pd.to_datetime(df[col])
+                except Exception:
+                    pass
+            # 确保所有 object 类型列安全
+            elif df[col].dtype == 'object':
+                try:
+                    # 尝试转换为字符串
+                    df[col] = df[col].astype(str)
+                except Exception:
+                    pass
+        
+        return df
+    
+    def _clean_dataframe_for_multiprocessing(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        清理 DataFrame 以确保在 Windows 多进程中安全传递
+        
+        包括:
+        - 转换 Arrow 类型
+        - 确保所有类型都是标准类型
+        - 避免 Access Violation (0xC0000005)
+        """
+        if df.empty:
+            return df
+        
+        df = df.copy()
+        df = self._convert_arrow_types(df)
+        
+        return df
+    
     def get_available_symbols(
         self,
         exchange: str,

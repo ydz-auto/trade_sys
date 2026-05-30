@@ -37,6 +37,8 @@ from research.alpha.features.matrix_adapter import get_research_feature_matrix
 from research.alpha.labels import compute_labels_from_df
 from research.alpha.regime_analysis import classify_regime
 from research.stability.analyzer import StabilityAnalyzer, generate_stability_report
+from research.stability.heatmap import print_ascii_heatmap
+from infrastructure.utils.multiprocessing_utils import clean_dataframe_for_multiprocessing
 
 
 def _torch_available() -> bool:
@@ -262,6 +264,8 @@ class AlphaPipeline:
                 if not any(source in col.lower() for source in self.exclude_sources)
             ]
             fm = fm[columns_to_keep]
+        # 确保 DataFrame 对多进程安全
+        fm = clean_dataframe_for_multiprocessing(fm)
         with self._fm_cache_lock:
             self._fm_cache[cache_key] = fm
         return fm.copy()
@@ -388,6 +392,8 @@ class AlphaPipeline:
     def _build_combo_feature(
         self, fm: pd.DataFrame, defn: AlphaDefinition
     ) -> pd.DataFrame:
+        if defn.primary_feature not in fm.columns:
+            return fm
         mask = pd.Series(True, index=fm.index)
         for feat_name, direction in defn.signal_direction_map.items():
             if feat_name not in fm.columns:
@@ -725,6 +731,9 @@ class AlphaPipeline:
             holding_bars + 6,
         ))
 
+        # 构建完整的 heatmap 数据用于 ASCII 输出
+        heatmap_results = []
+        
         def metric_2d_fn(thresh: float, hb: float) -> float:
             result = run_signal_test(
                 close, feature_vals, regime_labels,
@@ -733,13 +742,36 @@ class AlphaPipeline:
                 direction=direction,
                 taker_fee=self.taker_fee,
             )
-            return result.get("sharpe", 0.0) if not np.isnan(result.get("sharpe", 0.0)) else 0.0
+            # 保存 heatmap 结果
+            sharpe = result.get("sharpe", 0.0)
+            pf = result.get("profit_factor", 0.0)
+            trades = result.get("trades", 0)
+            win_rate = result.get("win_rate", 0.0)
+            avg_ret = result.get("avg_ret", 0.0)
+            
+            if np.isnan(sharpe):
+                sharpe = 0.0
+            if np.isnan(pf):
+                pf = 0.0
+                
+            heatmap_results.append({
+                "threshold": thresh,
+                "holding_bars": int(hb),
+                "sharpe": round(sharpe, 3),
+                "profit_factor": round(pf, 3),
+                "trades": trades,
+                "win_rate": round(win_rate, 3),
+                "avg_ret": round(avg_ret, 6),
+            })
+            
+            return sharpe if not np.isnan(sharpe) else 0.0
 
+        # 确保数据安全后启用多进程
         sweep_2d = analyzer.analyze_2d(
             "threshold", "holding_bars",
             threshold_range, holding_bars_range,
             metric_2d_fn,
-            enable_parallel=False,
+            enable_parallel=True,
         )
 
         regime_metrics = self._compute_regime_metrics(
@@ -761,6 +793,16 @@ class AlphaPipeline:
         stability_score = sweep_2d.overall_stability_score
         stability_report = generate_stability_report(sweep_2d)
 
+        # 输出 ASCII 热力图
+        if heatmap_results:
+            heatmap_df = pd.DataFrame(heatmap_results)
+            # 为了打印，我们需要 threshold_pct 列，这里我们使用简单的索引
+            # 确保长度匹配
+            if len(heatmap_df) > 0:
+                heatmap_df["threshold_pct"] = range(1, len(heatmap_df) + 1)
+                symbol_str = f"{defn.name}"
+                print_ascii_heatmap(heatmap_df, symbol_str)
+
         return StageResult(
             stage_name="parameter_stability",
             passed=overall_stable,
@@ -776,6 +818,7 @@ class AlphaPipeline:
                 "losing_regimes": cross_regime.losing_regimes,
                 "regime_concentration": cross_regime.regime_concentration,
                 "stability_report": stability_report.to_dict(),
+                "heatmap_data": heatmap_results,
             },
             message=(
                 f"1d={'stable' if is_1d_stable else 'unstable'}, "
@@ -852,6 +895,7 @@ class AlphaPipeline:
         if self.percentile_thresholds:
             percentile = self.percentile_thresholds[0]
 
+        # 确保数据安全后启用多进程
         wf_result = run_feature_walk_forward(
             close=close,
             feature_vals=feature_vals,
@@ -864,7 +908,7 @@ class AlphaPipeline:
             test_bars=test_bars,
             use_train_only_threshold=True,
             percentile=percentile,
-            enable_parallel=False,
+            enable_parallel=True,
         )
 
         if wf_result.total_windows == 0:
@@ -1036,6 +1080,89 @@ def main():
 
     from research.alpha.paper_trading_config import generate_paper_trading_configs
     generate_paper_trading_configs(result, tiers=["A", "B"])
+
+    # 运行 Correlation 分析
+    print(f"\n{'=' * 80}")
+    print("ALPHA CORRELATION ANALYSIS")
+    print(f"{'=' * 80}")
+    
+    try:
+        from research.alpha.correlation import (
+            AlphaReturnMatrixBuilder,
+            compute_alpha_correlation,
+            cluster_alphas,
+            count_independent_alphas,
+            generate_correlation_report,
+        )
+        
+        # 只对第一个 symbol 和 timeframe 进行 correlation 分析
+        if symbols and timeframes:
+            symbol = symbols[0]
+            timeframe = timeframes[0]
+            
+            print(f"\nBuilding return matrix for {symbol} {timeframe}...")
+            builder = AlphaReturnMatrixBuilder(
+                symbol=symbol,
+                exchange=args.exchange,
+                timeframe=timeframe,
+                days=args.days,
+                feature_source=args.feature_source,
+            )
+            
+            return_matrix = builder.build()
+            
+            if not return_matrix.empty:
+                print(f"Return matrix shape: {return_matrix.shape}")
+                
+                # 计算相关性
+                corr_matrix, abs_corr_matrix = compute_alpha_correlation(return_matrix)
+                
+                if not corr_matrix.empty:
+                    # 聚类
+                    clusters = cluster_alphas(corr_matrix)
+                    
+                    # 独立 Alpha 识别
+                    independent_result = count_independent_alphas(corr_matrix, threshold=0.7)
+                    
+                    # 生成报告
+                    from research.alpha.correlation.alpha_family_registry import (
+                        ALPHA_FAMILIES,
+                        match_clusters_to_families,
+                    )
+                    
+                    family_matches = match_clusters_to_families(clusters, ALPHA_FAMILIES)
+                    
+                    # 打印报告
+                    report = generate_correlation_report(
+                        return_matrix=return_matrix,
+                        corr_matrix=corr_matrix,
+                        clusters=clusters,
+                        independent_result=independent_result,
+                        family_matches=family_matches,
+                        symbol=symbol,
+                        corr_threshold=0.7,
+                    )
+                    print(report)
+                    
+                    # 保存文件
+                    corr_output_dir = Path(args.output_dir) / "correlation"
+                    corr_output_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    corr_matrix.to_csv(corr_output_dir / f"{symbol}_correlation_matrix.csv")
+                    abs_corr_matrix.to_csv(corr_output_dir / f"{symbol}_abs_correlation_matrix.csv")
+                    
+                    from research.alpha.correlation.report_generator import save_cluster_csv
+                    save_cluster_csv(clusters, independent_result, str(corr_output_dir), symbol=symbol)
+                    
+                    print(f"\nCorrelation analysis saved to: {corr_output_dir}")
+                else:
+                    print("No valid correlation matrix to analyze")
+            else:
+                print("No valid return matrix generated")
+    except Exception as e:
+        print(f"Correlation analysis failed: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
