@@ -5,7 +5,7 @@ logger = logging.getLogger(__name__)
 
 
 async def get_feature_matrix(symbol: str, timeframe: str = "1m") -> Dict[str, Any]:
-    from engines.compute.feature.feature_matrix import FeatureMatrix
+    from infrastructure.repositories.feature_matrix import FeatureMatrix
     fm = FeatureMatrix()
     return await fm.get_matrix(symbol, timeframe)
 
@@ -54,18 +54,15 @@ async def extract_historical_features(symbol: str, years: List[int], intervals: 
 
 
 async def get_correlation_service() -> Any:
-    from engines.compute.correlation.service import get_correlation_service
-    return await get_correlation_service()
+    raise NotImplementedError("correlation_runtime has been removed")
 
 
 async def get_projection_keys() -> Any:
-    from runtime.projection_runtime.state_keys import ProjectionKeys
-    return ProjectionKeys
+    raise NotImplementedError("projection_runtime has been removed")
 
 
 async def get_projection_channels() -> Any:
-    from runtime.projection_runtime.state_keys import ProjectionChannels
-    return ProjectionChannels
+    raise NotImplementedError("projection_runtime has been removed")
 
 
 def get_twitter_cookie_monitor() -> Any:
@@ -89,7 +86,7 @@ def get_strategy_discovery_engine(symbols: List[str] = None, **kwargs) -> Any:
 
 
 def get_feature_matrix_cls() -> Any:
-    from engines.compute.feature.feature_matrix import FeatureMatrix
+    from infrastructure.repositories.feature_matrix import FeatureMatrix
     return FeatureMatrix
 
 

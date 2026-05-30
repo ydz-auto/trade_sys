@@ -1,19 +1,15 @@
 """
 Config Index - 合并所有领域配置
+
+仅包含 infrastructure 层配置默认值。
+业务配置（trading, risk, strategy 等）由 application 层通过
+register_business_configs() 注入。
 """
 
 from typing import Dict, Any
 from infrastructure.config.enums import ConfigCategory
 
 from .core import SYSTEM_CONFIGS, SYSTEM_SCHEMAS
-from application.config.defaults.business.trading import TRADING_CONFIGS, TRADING_SCHEMAS
-from application.config.defaults.business.risk import RISK_CONFIGS, RISK_SCHEMAS
-from application.config.defaults.business.strategy import STRATEGY_CONFIGS, STRATEGY_SCHEMAS
-from application.config.defaults.business.market import MARKET_CONFIGS, MARKET_SCHEMAS
-from application.config.defaults.business.notification import NOTIFICATION_CONFIGS, NOTIFICATION_SCHEMAS
-from application.config.defaults.business.datasource import DATASOURCE_CONFIGS, DATASOURCE_SCHEMAS
-from application.config.defaults.business.approval import APPROVAL_CONFIGS, APPROVAL_SCHEMAS, SYMBOL_APPROVAL_CONFIGS
-from application.config.defaults.business.correlation import CORRELATION_CONFIGS, CORRELATION_SCHEMAS
 from .infrastructure.logging import LOGGING_CONFIGS, LOG_CONFIG, LOG_LEVELS, LOG_FORMAT
 from .infrastructure.monitoring import MONITORING_CONFIGS, SYSTEM_HEALTH_METRICS, TRADING_PERFORMANCE_METRICS, RISK_METRICS
 from .infrastructure.cache import CACHE_CONFIGS, CACHE_TTL, CACHE_DB_ALLOCATION, KEY_NAMING_CONVENTION, CACHE_KEY_PATTERNS, DEFAULT_TTL
@@ -28,16 +24,8 @@ from .infrastructure.external_apis import (
 )
 
 
-DEFAULT_CONFIGS: Dict[str, Any] = {
+INFRASTRUCTURE_CONFIGS: Dict[str, Any] = {
     **SYSTEM_CONFIGS,
-    **TRADING_CONFIGS,
-    **RISK_CONFIGS,
-    **STRATEGY_CONFIGS,
-    **MARKET_CONFIGS,
-    **NOTIFICATION_CONFIGS,
-    **DATASOURCE_CONFIGS,
-    **APPROVAL_CONFIGS,
-    **CORRELATION_CONFIGS,
     **LOGGING_CONFIGS,
     **MONITORING_CONFIGS,
     **CACHE_CONFIGS,
@@ -49,46 +37,66 @@ DEFAULT_CONFIGS: Dict[str, Any] = {
     **POOL_CONFIGS,
 }
 
-
-CONFIG_SCHEMAS: Dict[str, Dict] = {
+INFRASTRUCTURE_SCHEMAS: Dict[str, Dict] = {
     **SYSTEM_SCHEMAS,
-    **TRADING_SCHEMAS,
-    **RISK_SCHEMAS,
-    **STRATEGY_SCHEMAS,
-    **MARKET_SCHEMAS,
-    **NOTIFICATION_SCHEMAS,
-    **DATASOURCE_SCHEMAS,
-    **APPROVAL_SCHEMAS,
-    **CORRELATION_SCHEMAS,
     **MIDDLEWARE_SCHEMAS,
 }
 
 
-ALL_SCHEMAS: Dict[str, Dict] = CONFIG_SCHEMAS
+_business_configs: Dict[str, Any] = {}
+_business_schemas: Dict[str, Dict] = {}
+_business_categories: Dict[ConfigCategory, list] = {}
 
 
-CONFIG_CATEGORIES = {
-    ConfigCategory.SYSTEM: list(SYSTEM_SCHEMAS.keys()) if SYSTEM_SCHEMAS else [],
-    ConfigCategory.TRADING: list(TRADING_SCHEMAS.keys()) if TRADING_SCHEMAS else [],
-    ConfigCategory.RISK: list(RISK_SCHEMAS.keys()) if RISK_SCHEMAS else [],
-    ConfigCategory.STRATEGY: list(STRATEGY_SCHEMAS.keys()) if STRATEGY_SCHEMAS else [],
-    ConfigCategory.MARKET: list(MARKET_SCHEMAS.keys()) if MARKET_SCHEMAS else [],
-    ConfigCategory.NOTIFICATION: list(NOTIFICATION_SCHEMAS.keys()) if NOTIFICATION_SCHEMAS else [],
-    ConfigCategory.DATASOURCE: list(DATASOURCE_SCHEMAS.keys()) if DATASOURCE_SCHEMAS else [],
-    ConfigCategory.APPROVAL: list(APPROVAL_SCHEMAS.keys()) if APPROVAL_SCHEMAS else [],
-    ConfigCategory.LOGGING: list(LOGGING_CONFIGS.keys()),
-    ConfigCategory.MONITORING: list(MONITORING_CONFIGS.keys()),
-    ConfigCategory.CACHE: list(CACHE_CONFIGS.keys()),
-    ConfigCategory.API_GATEWAY: list(API_GATEWAY_CONFIGS.keys()),
-    ConfigCategory.ALERTING: list(ALERTING_CONFIGS.keys()),
-    ConfigCategory.MIDDLEWARE: list(MIDDLEWARE_CONFIGS.keys()),
-}
+def register_business_configs(
+    configs: Dict[str, Any],
+    schemas: Dict[str, Dict],
+    categories: Dict[ConfigCategory, list],
+) -> None:
+    global _business_configs, _business_schemas, _business_categories
+    _business_configs = configs
+    _business_schemas = schemas
+    _business_categories = categories
+
+
+def get_default_configs() -> Dict[str, Any]:
+    return {**INFRASTRUCTURE_CONFIGS, **_business_configs}
+
+
+def get_config_schemas() -> Dict[str, Dict]:
+    return {**INFRASTRUCTURE_SCHEMAS, **_business_schemas}
+
+
+def get_config_categories() -> Dict[ConfigCategory, list]:
+    categories = {
+        ConfigCategory.LOGGING: list(LOGGING_CONFIGS.keys()),
+        ConfigCategory.MONITORING: list(MONITORING_CONFIGS.keys()),
+        ConfigCategory.CACHE: list(CACHE_CONFIGS.keys()),
+        ConfigCategory.API_GATEWAY: list(API_GATEWAY_CONFIGS.keys()),
+        ConfigCategory.ALERTING: list(ALERTING_CONFIGS.keys()),
+        ConfigCategory.MIDDLEWARE: list(MIDDLEWARE_CONFIGS.keys()),
+    }
+    categories.update(_business_categories)
+    return categories
+
+
+DEFAULT_CONFIGS = INFRASTRUCTURE_CONFIGS
+CONFIG_SCHEMAS = INFRASTRUCTURE_SCHEMAS
+CONFIG_CATEGORIES = get_config_categories()
+
+ALL_SCHEMAS = CONFIG_SCHEMAS
 
 
 __all__ = [
     "DEFAULT_CONFIGS",
     "CONFIG_SCHEMAS",
     "CONFIG_CATEGORIES",
+    "INFRASTRUCTURE_CONFIGS",
+    "INFRASTRUCTURE_SCHEMAS",
+    "register_business_configs",
+    "get_default_configs",
+    "get_config_schemas",
+    "get_config_categories",
     "LOG_CONFIG",
     "LOG_LEVELS",
     "LOG_FORMAT",

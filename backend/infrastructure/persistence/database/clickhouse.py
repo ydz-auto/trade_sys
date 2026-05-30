@@ -15,7 +15,7 @@ from infrastructure.persistence.database.configs import ClickHouseConfig
 from infrastructure.logging import get_logger
 
 try:
-    from domain.schemas import CLICKHOUSE_SCHEMAS
+    from infrastructure.persistence.database.schemas.clickhouse import CLICKHOUSE_SCHEMAS
 except Exception:
     CLICKHOUSE_SCHEMAS = {}
 
@@ -35,12 +35,12 @@ _BASE_TABLES: Set[str] = {
 def _build_allowed_tables() -> Set[str]:
     allowed = set(_BASE_TABLES)
     try:
-        from infrastructure.storage.data_lake.schemas import DATA_LAKE_SCHEMAS
+        from infrastructure.persistence.database.schemas.data_lake import DATA_LAKE_SCHEMAS
         allowed.update(DATA_LAKE_SCHEMAS.keys())
     except Exception:
         pass
     try:
-        from domain.execution.schemas.data_lake import DATA_LAKE_TABLE_SCHEMAS
+        from infrastructure.persistence.database.schemas.data_lake import DATA_LAKE_TABLE_SCHEMAS
         allowed.update(DATA_LAKE_TABLE_SCHEMAS.keys())
     except Exception:
         pass

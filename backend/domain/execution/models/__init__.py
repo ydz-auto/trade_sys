@@ -13,6 +13,7 @@ from domain.execution.models.order import (
     OrderIntent,
 )
 from domain.execution.models.position import Position
+from domain.execution.models.trade_batch import TradeBatch
 
 __all__ = [
     "OrderSide",
@@ -26,4 +27,5 @@ __all__ = [
     "OrderResult",
     "OrderIntent",
     "Position",
+    "TradeBatch",
 ]

@@ -1,6 +1,7 @@
 
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Any, List, Optional, Tuple
+from collections import deque
 import statistics
 
 from infrastructure.logging import get_logger
@@ -54,7 +55,16 @@ class ParameterSweepResult:
         if len(self.metric_values) < 3:
             return False
         threshold = max(0.1, abs(self.mean_metric) * 0.2)
-        return self.std_metric < threshold
+        if self.std_metric < threshold:
+            return True
+        valid = [v for v in self.metric_values if v == v]
+        if valid and min(valid) > 1.0:
+            return True
+        return False
+
+    @property
+    def is_stable(self) -> bool:
+        return self.is_flat
 
     def to_dict(self) -> dict:
         return {
@@ -66,6 +76,7 @@ class ParameterSweepResult:
             "mean_metric": self.mean_metric,
             "std_metric": self.std_metric,
             "is_flat": self.is_flat,
+            "is_stable": self.is_stable,
         }
 
 
@@ -136,6 +147,11 @@ class StabilityResult:
     is_stable: bool = False
     overall_stability_score: float = 0.0
     heatmap_data: Optional[Dict[str, Any]] = None
+    profitable_area_ratio: float = 0.0
+    stable_area_ratio: float = 0.0
+    largest_region_ratio: float = 0.0
+    needle_peak_ratio: float = 0.0
+    score_decomposition: Dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -145,6 +161,11 @@ class StabilityResult:
             "is_stable": self.is_stable,
             "overall_stability_score": self.overall_stability_score,
             "heatmap_data": self.heatmap_data,
+            "profitable_area_ratio": self.profitable_area_ratio,
+            "stable_area_ratio": self.stable_area_ratio,
+            "largest_region_ratio": self.largest_region_ratio,
+            "needle_peak_ratio": self.needle_peak_ratio,
+            "score_decomposition": self.score_decomposition,
         }
 
 
@@ -270,15 +291,49 @@ class StabilityAnalyzer:
         stable_regions = self._find_stable_regions(heatmap, x_values, y_values, x_param, y_param)
         result.stable_regions = stable_regions
 
-        stability_score = 1.0 - (std_metric / (mean_metric + 1e-8)) if mean_metric > 0 else 0.0
+        area_metrics = self._compute_area_metrics(heatmap)
+        result.profitable_area_ratio = area_metrics["profitable_area_ratio"]
+        result.stable_area_ratio = area_metrics["stable_area_ratio"]
+        result.largest_region_ratio = area_metrics["largest_region_ratio"]
+
+        total_cells = len(heatmap) * len(heatmap[0]) if heatmap and heatmap[0] else 1
+        result.needle_peak_ratio = round(len(needle_peaks) / total_cells, 4)
+
+        cv = std_metric / (mean_metric + 1e-8) if mean_metric > 0 else float("inf")
+        stability_score = 1.0 - cv if mean_metric > 0 else 0.0
         stability_score = max(0.0, min(1.0, stability_score))
         result.overall_stability_score = stability_score
 
-        result.is_stable = (
+        result.score_decomposition = {
+            "cv": round(cv, 4),
+            "mean_sharpe": round(mean_metric, 4),
+            "std_sharpe": round(std_metric, 4),
+            "needle_peak_count": len(needle_peaks),
+            "needle_peak_ratio": result.needle_peak_ratio,
+            "stable_region_count": len(stable_regions),
+            "profitable_area_ratio": result.profitable_area_ratio,
+            "stable_area_ratio": result.stable_area_ratio,
+            "largest_region_ratio": result.largest_region_ratio,
+        }
+
+        score_stable = (
             stability_score > 0.7
             and len(needle_peaks) == 0
             and len(stable_regions) > 0
         )
+
+        region_override = False
+        if not score_stable and stable_regions:
+            large_regions = [r for r in stable_regions if r.num_samples >= 3]
+            if large_regions:
+                region_metrics = []
+                for r in large_regions:
+                    if r.mean_sharpe > 0:
+                        region_metrics.append(r.mean_sharpe)
+                if region_metrics and min(region_metrics) > 1.5:
+                    region_override = True
+
+        result.is_stable = score_stable or region_override
 
         return result
 
@@ -383,6 +438,73 @@ class StabilityAnalyzer:
 
         return regions
 
+    def _compute_area_metrics(
+        self,
+        heatmap: List[List[float]],
+        profitable_threshold: float = 0.0,
+        stable_threshold: float = 1.5,
+    ) -> Dict[str, float]:
+        n_rows = len(heatmap)
+        if n_rows == 0:
+            return {
+                "profitable_area_ratio": 0.0,
+                "stable_area_ratio": 0.0,
+                "largest_region_ratio": 0.0,
+            }
+        n_cols = len(heatmap[0])
+        total_cells = n_rows * n_cols
+        if total_cells == 0:
+            return {
+                "profitable_area_ratio": 0.0,
+                "stable_area_ratio": 0.0,
+                "largest_region_ratio": 0.0,
+            }
+
+        profitable_count = 0
+        stable_count = 0
+        profitable_mask = [[False] * n_cols for _ in range(n_rows)]
+
+        for j in range(n_rows):
+            for i in range(n_cols):
+                val = heatmap[j][i]
+                if val == val:
+                    if val > profitable_threshold:
+                        profitable_count += 1
+                        profitable_mask[j][i] = True
+                    if val > stable_threshold:
+                        stable_count += 1
+
+        visited = [[False] * n_cols for _ in range(n_rows)]
+        largest_component = 0
+
+        for j in range(n_rows):
+            for i in range(n_cols):
+                if profitable_mask[j][i] and not visited[j][i]:
+                    component_size = 0
+                    queue = deque()
+                    queue.append((j, i))
+                    visited[j][i] = True
+                    while queue:
+                        cj, ci = queue.popleft()
+                        component_size += 1
+                        for dj, di in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nj, ni = cj + dj, ci + di
+                            if (
+                                0 <= nj < n_rows
+                                and 0 <= ni < n_cols
+                                and not visited[nj][ni]
+                                and profitable_mask[nj][ni]
+                            ):
+                                visited[nj][ni] = True
+                                queue.append((nj, ni))
+                    largest_component = max(largest_component, component_size)
+
+        return {
+            "profitable_area_ratio": round(profitable_count / total_cells, 4),
+            "stable_area_ratio": round(stable_count / total_cells, 4),
+            "largest_region_ratio": round(largest_component / total_cells, 4),
+        }
+
     def analyze_cross_regime(
         self,
         regime_metrics: Dict[str, Dict[str, float]],
@@ -441,3 +563,83 @@ class StabilityAnalyzer:
         )
 
         return result
+
+
+@dataclass
+class StabilityReport:
+    profitable_area_ratio: float
+    stable_area_ratio: float
+    largest_region_ratio: float
+    needle_peak_ratio: float
+    mean_sharpe: float
+    std_sharpe: float
+    cv: float
+    stability_score: float
+    is_stable: bool
+    needle_peak_count: int
+    stable_region_count: int
+
+    def to_dict(self) -> dict:
+        return {
+            "profitable_area_ratio": self.profitable_area_ratio,
+            "stable_area_ratio": self.stable_area_ratio,
+            "largest_region_ratio": self.largest_region_ratio,
+            "needle_peak_ratio": self.needle_peak_ratio,
+            "mean_sharpe": self.mean_sharpe,
+            "std_sharpe": self.std_sharpe,
+            "cv": self.cv,
+            "stability_score": self.stability_score,
+            "is_stable": self.is_stable,
+            "needle_peak_count": self.needle_peak_count,
+            "stable_region_count": self.stable_region_count,
+        }
+
+    def format_text(self, symbol: str = "", strategy: str = "") -> str:
+        header = "2D Stability Report"
+        if symbol:
+            header += f" | {symbol}"
+        if strategy:
+            header += f" | {strategy}"
+
+        par_pct = f"{self.profitable_area_ratio:.0%}"
+        sar_pct = f"{self.stable_area_ratio:.0%}"
+        lrr_pct = f"{self.largest_region_ratio:.0%}"
+        npr_pct = f"{self.needle_peak_ratio:.1%}"
+
+        stable_tag = "STABLE" if self.is_stable else "UNSTABLE"
+
+        lines = [
+            f"  {header}",
+            f"  {'=' * 50}",
+            f"  profitable_area_ratio  {par_pct:>8}   Sharpe > 0 占比",
+            f"  stable_area_ratio      {sar_pct:>8}   Sharpe > 1.5 占比",
+            f"  largest_region_ratio   {lrr_pct:>8}   最大连通盈利区域占比",
+            f"  needle_peak_ratio      {npr_pct:>8}   尖峰区域占比",
+            f"  {'-' * 50}",
+            f"  mean_sharpe            {self.mean_sharpe:>8.3f}   平均 Sharpe",
+            f"  std_sharpe             {self.std_sharpe:>8.3f}   Sharpe 标准差",
+            f"  cv                     {self.cv:>8.4f}   std / mean",
+            f"  stability_score        {self.stability_score:>8.3f}   1 - cv",
+            f"  {'-' * 50}",
+            f"  needle_peak_count      {self.needle_peak_count:>8d}",
+            f"  stable_region_count    {self.stable_region_count:>8d}",
+            f"  is_stable              {stable_tag:>8}",
+        ]
+        return "\n".join(lines)
+
+
+def generate_stability_report(result: StabilityResult) -> StabilityReport:
+    decomp = result.score_decomposition
+    return StabilityReport(
+        profitable_area_ratio=result.profitable_area_ratio,
+        stable_area_ratio=result.stable_area_ratio,
+        largest_region_ratio=result.largest_region_ratio,
+        needle_peak_ratio=result.needle_peak_ratio,
+        mean_sharpe=decomp.get("mean_sharpe", 0.0),
+        std_sharpe=decomp.get("std_sharpe", 0.0),
+        cv=decomp.get("cv", 0.0),
+        stability_score=result.overall_stability_score,
+        is_stable=result.is_stable,
+        needle_peak_count=decomp.get("needle_peak_count", 0),
+        stable_region_count=decomp.get("stable_region_count", 0),
+    )

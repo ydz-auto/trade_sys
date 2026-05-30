@@ -10,6 +10,17 @@ from enum import Enum, auto
 from typing import Dict, Any, Optional
 
 
+class MarketRegime(str, Enum):
+    HIGH_VOLATILITY = "high_volatility"
+    LOW_VOLATILITY = "low_volatility"
+    TRENDING = "trending"
+    RANGING = "ranging"
+    LIQUIDATION_CASCADE = "liquidation_cascade"
+    NARRATIVE_BURST = "narrative_burst"
+    LIQUIDITY_DRAIN = "liquidity_drain"
+    UNKNOWN = "unknown"
+
+
 class RegimeType(str, Enum):
     """市场状态类型"""
     TRENDING_UP = "trending_up"

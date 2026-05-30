@@ -11,7 +11,7 @@ from infrastructure.persistence.database.clickhouse import get_clickhouse_manage
 from infrastructure.persistence.database.clickhouse import candle_to_clickhouse_row
 
 if TYPE_CHECKING:
-    from engines.compute.models.candle_model import Candle
+    from domain.event.base_event import Candle
 
 logger = get_logger("aggregation_service.clickhouse")
 
@@ -144,7 +144,7 @@ class ClickHouseWriter:
 
             candles = []
             for row in rows:
-                from engines.compute.models.candle_model import Candle as CandleModel
+                from domain.event.base_event import Candle as CandleModel
                 candles.append(CandleModel(
                     exchange=row[0],
                     symbol=row[1],

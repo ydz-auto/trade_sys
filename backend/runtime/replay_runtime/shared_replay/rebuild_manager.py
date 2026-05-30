@@ -1,6 +1,8 @@
 """
 Rebuild Manager - 重建管理器
 管理K线数据的重建和修复
+
+底层委托给 infrastructure.persistence.repository.market_data.kline_repository
 """
 
 from typing import Dict, List, Optional, Any
@@ -10,10 +12,13 @@ import asyncio
 import uuid
 
 from infrastructure.logging import get_logger
-from infrastructure.persistence.database.clickhouse import ClickHouseManager
+from infrastructure.persistence.repository.market_data.kline_repository import (
+    KlineRepository,
+    get_kline_repository,
+)
+from infrastructure.persistence.database.clickhouse import ClickHouseManager, candle_to_clickhouse_row
 
 from domain.event.base_event import Timeframe, Exchange, Candle
-from infrastructure.persistence.database.clickhouse import candle_to_clickhouse_row
 
 from runtime.replay_runtime.models.models import (
     RebuildTask,
@@ -28,7 +33,6 @@ logger = get_logger("shared.replay.rebuild_manager")
 
 @dataclass
 class RebuildConfig:
-    """重建配置"""
     batch_size: int = 1000
     max_concurrent_tasks: int = 3
     auto_detect_gaps: bool = True
@@ -36,19 +40,12 @@ class RebuildConfig:
 
 
 class RebuildManager:
-    """重建管理器
-
-    管理K线数据的重建，支持：
-    - 缺口检测
-    - 从低周期重建
-    - 从API恢复
-    - 插值填充
-    """
 
     def __init__(self, config: Optional[RebuildConfig] = None):
         self.config = config or RebuildConfig()
 
-        self.clickhouse: Optional[ClickHouseManager] = None
+        self._kline_repo: Optional[KlineRepository] = None
+        self._clickhouse: Optional[ClickHouseManager] = None
 
         self.tasks: Dict[str, RebuildTask] = {}
         self.running_tasks: Dict[str, asyncio.Task] = {}
@@ -57,8 +54,8 @@ class RebuildManager:
         self._running = False
 
     async def initialize(self):
-        """初始化"""
-        self.clickhouse = ClickHouseManager()
+        self._kline_repo = await get_kline_repository()
+        self._clickhouse = ClickHouseManager()
         self._running = True
         logger.info("RebuildManager initialized")
 
@@ -71,7 +68,6 @@ class RebuildManager:
         end_time: int,
         strategy: str = "rebuild",
     ) -> RebuildTask:
-        """创建重建任务"""
         task_id = f"rebuild_{exchange}_{symbol}_{timeframe}_{start_time}_{uuid.uuid4().hex[:8]}"
 
         task = RebuildTask(
@@ -91,7 +87,6 @@ class RebuildManager:
         return task
 
     async def start_task(self, task_id: str) -> bool:
-        """启动任务"""
         async with self._lock:
             task = self.tasks.get(task_id)
             if not task:
@@ -111,7 +106,6 @@ class RebuildManager:
             return True
 
     async def cancel_task(self, task_id: str) -> bool:
-        """取消任务"""
         async with self._lock:
             task = self.tasks.get(task_id)
             if not task:
@@ -126,7 +120,6 @@ class RebuildManager:
             return True
 
     async def _run_rebuild(self, task: RebuildTask):
-        """执行重建"""
         logger.info(f"Starting rebuild: {task.task_id}")
 
         try:
@@ -194,7 +187,6 @@ class RebuildManager:
         start_time: int,
         end_time: int,
     ) -> List[Any]:
-        """检测缺口"""
         from runtime.replay_runtime.detectors.gap_detector import GapDetector
         from runtime.replay_runtime.models.repair_models import GapInfo, GapStatus
 
@@ -207,7 +199,6 @@ class RebuildManager:
         return gaps
 
     async def _rebuild_gap(self, task: RebuildTask, gap: Any) -> bool:
-        """重建缺口"""
         try:
             if task.strategy == "rebuild":
                 return await self._rebuild_from_lower_timeframe(task, gap)
@@ -223,7 +214,6 @@ class RebuildManager:
             return False
 
     async def _rebuild_from_lower_timeframe(self, task: RebuildTask, gap: Any) -> bool:
-        """从低周期重建"""
         timeframe = Timeframe(task.timeframe)
 
         if timeframe == Timeframe.M1:
@@ -262,11 +252,9 @@ class RebuildManager:
             return False
 
     async def _restore_from_api(self, task: RebuildTask, gap: Any) -> bool:
-        """从API恢复"""
         return False
 
     async def _interpolate_gap(self, task: RebuildTask, gap: Any) -> bool:
-        """插值填充"""
         timeframe = Timeframe(task.timeframe)
 
         before = await self._get_nearest_candle(
@@ -315,7 +303,6 @@ class RebuildManager:
         return False
 
     def _get_lower_timeframe(self, tf: Timeframe) -> Optional[Timeframe]:
-        """获取更低的时间周期"""
         mapping = {
             Timeframe.M5: Timeframe.M1,
             Timeframe.M15: Timeframe.M1,
@@ -334,49 +321,31 @@ class RebuildManager:
         start_time: int,
         end_time: int,
     ) -> List[Candle]:
-        """获取K线"""
         try:
-            rows = await self.clickhouse.execute(
-                """
-                SELECT
-                    exchange, symbol, timeframe,
-                    open_time, close_time,
-                    open, high, low, close,
-                    volume, quote_volume, trade_count,
-                    is_closed
-                FROM candles
-                WHERE exchange = %(exchange)s
-                AND symbol = %(symbol)s
-                AND timeframe = %(timeframe)s
-                AND open_time >= %(start_time)s
-                AND open_time < %(end_time)s
-                ORDER BY open_time
-                """,
-                {
-                    "exchange": exchange,
-                    "symbol": symbol,
-                    "timeframe": timeframe,
-                    "start_time": start_time,
-                    "end_time": end_time,
-                }
+            raw = await self._kline_repo.fetch_klines(
+                exchange=exchange,
+                symbol=symbol,
+                timeframe=timeframe,
+                start_time=start_time,
+                end_time=end_time,
             )
 
             candles = []
-            for row in rows:
+            for row in raw:
                 candles.append(Candle(
-                    exchange=row[0],
-                    symbol=row[1],
-                    timeframe=Timeframe(row[2]),
-                    open_time=row[3],
-                    close_time=row[4],
-                    open=float(row[5]),
-                    high=float(row[6]),
-                    low=float(row[7]),
-                    close=float(row[8]),
-                    volume=float(row[9]),
-                    quote_volume=float(row[10]),
-                    trade_count=int(row[11]),
-                    is_closed=bool(row[12]),
+                    exchange=exchange,
+                    symbol=symbol,
+                    timeframe=Timeframe(timeframe),
+                    open_time=row["open_time"],
+                    close_time=row["close_time"],
+                    open=float(row["open"]),
+                    high=float(row["high"]),
+                    low=float(row["low"]),
+                    close=float(row["close"]),
+                    volume=float(row["volume"]),
+                    quote_volume=float(row["quote_volume"]),
+                    trade_count=int(row["trades"]),
+                    is_closed=True,
                 ))
             return candles
 
@@ -390,7 +359,6 @@ class RebuildManager:
         source_tf: Timeframe,
         target_tf: Timeframe,
     ) -> List[Candle]:
-        """聚合K线"""
         if not source_candles:
             return []
 
@@ -446,12 +414,11 @@ class RebuildManager:
         time: int,
         before: bool,
     ) -> Optional[Candle]:
-        """获取最近的K线"""
         try:
             op = "<" if before else ">"
             order = "DESC" if before else "ASC"
 
-            rows = await self.clickhouse.execute(
+            rows = await self._clickhouse.execute(
                 f"""
                 SELECT
                     exchange, symbol, timeframe,
@@ -498,13 +465,12 @@ class RebuildManager:
             return None
 
     async def _insert_candles(self, candles: List[Candle]):
-        """插入K线"""
         if not candles:
             return
 
         try:
             rows = [candle_to_clickhouse_row(c) for c in candles]
-            await self.clickhouse.execute(
+            await self._clickhouse.execute(
                 """
                 INSERT INTO candles (
                     exchange, symbol, timeframe,
@@ -527,26 +493,22 @@ class RebuildManager:
         start_time: int,
         end_time: int,
     ) -> bool:
-        """验证重建结果"""
         gaps = await self._detect_gaps(exchange, symbol, timeframe, start_time, end_time)
         return len(gaps) == 0
 
     async def get_task(self, task_id: str) -> Optional[RebuildTask]:
-        """获取任务"""
         return self.tasks.get(task_id)
 
     async def list_tasks(
         self,
         status: Optional[RebuildStatus] = None,
     ) -> List[RebuildTask]:
-        """列出任务"""
         tasks = list(self.tasks.values())
         if status:
             tasks = [t for t in tasks if t.status == status]
         return tasks
 
     def get_stats(self) -> RebuildStats:
-        """获取统计"""
         stats = RebuildStats()
 
         for task in self.tasks.values():
@@ -565,7 +527,6 @@ class RebuildManager:
         return stats
 
     async def shutdown(self):
-        """关闭"""
         self._running = False
 
         for task_id in list(self.running_tasks.keys()):
@@ -578,7 +539,6 @@ _rebuild_manager: Optional[RebuildManager] = None
 
 
 async def get_rebuild_manager(config: Optional[RebuildConfig] = None) -> RebuildManager:
-    """获取重建管理器实例"""
     global _rebuild_manager
     if _rebuild_manager is None:
         _rebuild_manager = RebuildManager(config)

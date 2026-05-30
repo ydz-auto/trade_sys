@@ -20,7 +20,7 @@ def main():
     symbols: List[str] = [s.strip() for s in args.symbols.split(",")]
     timeframes: List[str] = [t.strip() for t in args.timeframe.split(",")]
 
-    from runtime.pipeline.trade_flow_materialization_pipeline import TradeFlowMaterializationPipeline
+    from engines.compute.trade_flow.trade_flow_materialization_pipeline import TradeFlowMaterializationPipeline
     pipeline = TradeFlowMaterializationPipeline()
 
     for symbol in symbols:

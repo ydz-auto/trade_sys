@@ -15,6 +15,7 @@ Key Components:
 """
 
 from domain.market_state.state import (
+    MarketRegime,
     RegimeType,
     LiquidityState,
     PressureState,
@@ -47,7 +48,7 @@ from domain.market_state.layers import (
 )
 
 __all__ = [
-    # 状态枚举
+    "MarketRegime",
     "RegimeType",
     "LiquidityState",
     "PressureState",

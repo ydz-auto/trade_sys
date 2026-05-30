@@ -179,10 +179,10 @@ class WSGateway:
     async def _send_welcome(self, connection: WSConnection) -> None:
         channels = self._projection_channels
         if channels is None:
-            # ARCHITECTURE NOTE: infrastructure → runtime 反向依赖
-            # TODO: 应改为依赖注入，由调用方传入 ProjectionChannels
-            from runtime.projection_runtime.state_keys import ProjectionChannels
-            channels = ProjectionChannels
+            raise RuntimeError(
+                "WSGateway requires projection_channels to be injected. "
+                "Pass ProjectionChannels when constructing WSGateway."
+            )
 
         welcome = {
             "type": "welcome",
@@ -339,8 +339,10 @@ class WSGateway:
         try:
             keys = self._projection_keys
             if keys is None:
-                from runtime.projection_runtime.state_keys import ProjectionKeys
-                keys = ProjectionKeys
+                raise RuntimeError(
+                    "WSGateway requires projection_keys to be injected. "
+                    "Pass ProjectionKeys when constructing WSGateway."
+                )
             
             state = {}
             
@@ -368,8 +370,10 @@ class WSGateway:
     async def run_redis_subscriber(self) -> None:
         channels = self._projection_channels
         if channels is None:
-            from runtime.projection_runtime.state_keys import ProjectionChannels
-            channels = ProjectionChannels
+            raise RuntimeError(
+                "WSGateway requires projection_channels to be injected. "
+                "Pass ProjectionChannels when constructing WSGateway."
+            )
 
         if not self.redis:
             logger.warning("Redis not available, skipping pub/sub")
@@ -432,11 +436,19 @@ class WSGateway:
         }
 
 
-ws_gateway = WSGateway()
+ws_gateway: Optional[WSGateway] = None
 
 
-async def get_ws_gateway() -> WSGateway:
-    """获取 WS Gateway 单例"""
+async def get_ws_gateway(
+    projection_keys=None,
+    projection_channels=None,
+) -> WSGateway:
+    global ws_gateway
+    if ws_gateway is None:
+        ws_gateway = WSGateway(
+            projection_keys=projection_keys,
+            projection_channels=projection_channels,
+        )
     if not ws_gateway._running:
         await ws_gateway.initialize()
     return ws_gateway

@@ -10,6 +10,9 @@ from enum import Enum
 
 from .types import (
     StateType,
+    STATE_DEFAULTS,
+)
+from domain.state.types import (
     SystemState,
     SystemMode,
     SystemStatus,
@@ -20,7 +23,6 @@ from .types import (
     RiskState,
     StrategyState,
     PortfolioState,
-    STATE_DEFAULTS,
 )
 
 

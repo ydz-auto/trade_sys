@@ -12,7 +12,6 @@ Unified Feature API (Converged Version) - 统一特征服务API
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel
@@ -25,12 +24,11 @@ from application.queries.domain_queries import (
     get_historical_feature_materializer,
     get_materializer_feature_category_enum,
 )
+from infrastructure.storage.data_lake.path_utils import get_data_lake_root_cached
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/feature", tags=["Unified Feature Service"])
-
-DATA_LAKE_ROOT = Path(r"e:\00_crypto\00_code\backend\data_lake")
 
 
 class MaterializeRequest(BaseModel):
@@ -176,7 +174,7 @@ async def materialize_features(request: MaterializeRequest):
     try:
         logger.info(f"Materializing features for {request.symbol}")
         
-        materializer = get_historical_feature_materializer(DATA_LAKE_ROOT)
+        materializer = get_historical_feature_materializer(get_data_lake_root_cached())
         matrix = materializer.materialize_symbol(
             symbol=request.symbol,
             interval_ms=request.interval_ms,

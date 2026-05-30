@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from infrastructure.persistence.database.configs import DatabaseConfig
 
 try:
-    from domain.schemas import POSTGRESQL_SCHEMAS
+    from infrastructure.persistence.database.schemas.execution import EXECUTION_POSTGRESQL_SCHEMAS as POSTGRESQL_SCHEMAS
 except Exception:
     POSTGRESQL_SCHEMAS = {}
 

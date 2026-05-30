@@ -1,4 +1,4 @@
-﻿"""
+"""
 API Server - Main Entry Point
 
 架构：
@@ -19,8 +19,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from api import api_router
 
 from infrastructure.logging import get_logger
-from runtime.kernel.orchestrator import get_runtime_orchestrator
-from runtime.kernel.orchestrator.supervisor import get_runtime_supervisor, RuntimeSupervisor
+from application.workflows.orchestrator import get_runtime_orchestrator
+from application.workflows.orchestrator.supervisor import get_runtime_supervisor, RuntimeSupervisor
 from infrastructure.utilities.resilience.circuit_breaker import get_circuit_breaker_manager
 from infrastructure.messaging.subscription_manager import SubscriptionManager, TopicRegistry
 from infrastructure.utilities.priority_queue import PriorityEventQueue

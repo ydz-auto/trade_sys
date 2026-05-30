@@ -11,10 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 async def get_portfolio_state() -> Dict[str, Any]:
-    from runtime.portfolio_runtime import get_portfolio_runtime
-    runtime = get_portfolio_runtime()
-    if runtime and hasattr(runtime, 'get_state'):
-        return runtime.get_state()
+    # TODO: migrate to new runtime architecture - runtime.portfolio_runtime removed
+    # from runtime.portfolio_runtime import get_portfolio_runtime
+    # runtime = get_portfolio_runtime()
+    # if runtime and hasattr(runtime, 'get_state'):
+    #     return runtime.get_state()
     return {}
 
 
@@ -34,36 +35,40 @@ async def get_accounts() -> Dict[str, Any]:
 
 
 async def get_exposure() -> Dict[str, Any]:
-    from runtime.portfolio_runtime import get_portfolio_runtime
-    runtime = get_portfolio_runtime()
-    if runtime and hasattr(runtime, 'get_exposure_summary'):
-        return await runtime.get_exposure_summary()
+    # TODO: migrate to new runtime architecture - runtime.portfolio_runtime removed
+    # from runtime.portfolio_runtime import get_portfolio_runtime
+    # runtime = get_portfolio_runtime()
+    # if runtime and hasattr(runtime, 'get_exposure_summary'):
+    #     return await runtime.get_exposure_summary()
     return {}
 
 
 async def get_exposure_warnings() -> List[Dict[str, Any]]:
-    from runtime.portfolio_runtime import get_portfolio_runtime
-    runtime = get_portfolio_runtime()
-    if runtime and hasattr(runtime, 'get_exposure_warnings'):
-        return await runtime.get_exposure_warnings()
+    # TODO: migrate to new runtime architecture - runtime.portfolio_runtime removed
+    # from runtime.portfolio_runtime import get_portfolio_runtime
+    # runtime = get_portfolio_runtime()
+    # if runtime and hasattr(runtime, 'get_exposure_warnings'):
+    #     return await runtime.get_exposure_warnings()
     return []
 
 
 async def get_portfolio_metrics() -> Dict[str, Any]:
-    from runtime.portfolio_runtime import get_portfolio_runtime
-    runtime = get_portfolio_runtime()
-    if runtime and hasattr(runtime, 'get_portfolio_metrics'):
-        metrics = await runtime.get_portfolio_metrics()
-        if metrics and hasattr(metrics, 'to_dict'):
-            return metrics.to_dict()
+    # TODO: migrate to new runtime architecture - runtime.portfolio_runtime removed
+    # from runtime.portfolio_runtime import get_portfolio_runtime
+    # runtime = get_portfolio_runtime()
+    # if runtime and hasattr(runtime, 'get_portfolio_metrics'):
+    #     metrics = await runtime.get_portfolio_metrics()
+    #     if metrics and hasattr(metrics, 'to_dict'):
+    #         return metrics.to_dict()
     return {}
 
 
 async def get_risk_budget(daily_pnl: float = 0.0) -> Dict[str, float]:
-    from runtime.portfolio_runtime import get_portfolio_runtime
-    runtime = get_portfolio_runtime()
-    if runtime and hasattr(runtime, 'get_risk_budget'):
-        return await runtime.get_risk_budget(daily_pnl=daily_pnl)
+    # TODO: migrate to new runtime architecture - runtime.portfolio_runtime removed
+    # from runtime.portfolio_runtime import get_portfolio_runtime
+    # runtime = get_portfolio_runtime()
+    # if runtime and hasattr(runtime, 'get_risk_budget'):
+    #     return await runtime.get_risk_budget(daily_pnl=daily_pnl)
     return {}
 
 

@@ -11,7 +11,7 @@ from infrastructure.messaging.broker import get_broker
 from infrastructure.config.defaults.infrastructure.middleware import KAFKA_BOOTSTRAP_SERVERS
 
 if TYPE_CHECKING:
-    from engines.compute.models.candle_model import Candle
+    from domain.event.base_event import Candle
     from engines.compute.aggregation.compute import OrderBookFeature
 
 logger = get_logger("aggregation_service.publisher")

@@ -3,10 +3,12 @@ from datetime import datetime
 import asyncio
 
 from infrastructure.logging import get_logger
-from infrastructure.persistence.database.clickhouse import ClickHouseManager
+from infrastructure.persistence.repository.market_data.kline_repository import (
+    KlineRepository,
+    get_kline_repository,
+)
 
-from domain.event.base_event import Timeframe
-from engines.compute.models.candle_model import Candle
+from domain.event.base_event import Timeframe, Candle
 from runtime.replay_runtime.models.repair_models.repair_models import GapInfo, GapStatus, IntegrityReport
 
 logger = get_logger("repair_service.gap_detector")
@@ -14,10 +16,10 @@ logger = get_logger("repair_service.gap_detector")
 
 class GapDetector:
     def __init__(self):
-        self.clickhouse: Optional[ClickHouseManager] = None
+        self._kline_repo: Optional[KlineRepository] = None
 
     async def initialize(self):
-        self.clickhouse = ClickHouseManager()
+        self._kline_repo = await get_kline_repository()
 
     async def detect_gaps(
         self,
@@ -27,7 +29,7 @@ class GapDetector:
         start_time: int,
         end_time: int
     ) -> List[GapInfo]:
-        if not self.clickhouse:
+        if not self._kline_repo:
             return []
 
         candles = await self._fetch_candles(exchange, symbol, timeframe.value, start_time, end_time)
@@ -58,30 +60,13 @@ class GapDetector:
         end_time: int
     ) -> List[Dict]:
         try:
-            rows = await self.clickhouse.execute(
-                """
-                SELECT
-                    open_time,
-                    close_time,
-                    is_complete,
-                    missing_count
-                FROM candles
-                WHERE exchange = %(exchange)s
-                AND symbol = %(symbol)s
-                AND timeframe = %(timeframe)s
-                AND open_time >= %(start_time)s
-                AND open_time < %(end_time)s
-                ORDER BY open_time
-                """,
-                {
-                    "exchange": exchange,
-                    "symbol": symbol,
-                    "timeframe": timeframe,
-                    "start_time": start_time,
-                    "end_time": end_time
-                }
+            return await self._kline_repo.fetch_candles(
+                exchange=exchange,
+                symbol=symbol,
+                timeframe=timeframe,
+                start_time=start_time,
+                end_time=end_time,
             )
-            return rows
         except Exception as e:
             logger.error(f"Failed to fetch candles: {e}")
             return []
@@ -101,10 +86,10 @@ class GapDetector:
         expected_bucket = start_time
         prev_bucket = None
 
-        for row in candles:
-            candle_time = row[0]
-            is_complete = bool(row[2]) if len(row) > 2 else True
-            missing = int(row[3]) if len(row) > 3 else 0
+        for candle in candles:
+            candle_time = candle["open_time"]
+            is_complete = candle.get("is_complete", True)
+            missing = candle.get("missing_count", 0)
 
             if missing > 0:
                 gaps.append(GapInfo(
@@ -163,8 +148,8 @@ class GapDetector:
 
         bucket_size = timeframe.seconds * 1000
         total_buckets = (end_time - start_time) // bucket_size
-        complete_count = len([c for c in candles if len(c) > 2 and bool(c[2])]) - sum(
-            int(c[3]) if len(c) > 3 else 0 for c in candles
+        complete_count = len([c for c in candles if c.get("is_complete", True)]) - sum(
+            c.get("missing_count", 0) for c in candles
         )
         missing_count = total_buckets - complete_count
 

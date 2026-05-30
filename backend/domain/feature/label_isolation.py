@@ -19,9 +19,9 @@ from enum import Enum
 import pandas as pd
 import numpy as np
 
-from infrastructure.logging import get_logger
+import logging
 
-logger = get_logger("infrastructure.label_isolation")
+logger = logging.getLogger("infrastructure.label_isolation")
 
 
 class LabelType(Enum):

@@ -20,7 +20,7 @@ from pathlib import Path
 
 from infrastructure.logging import get_logger
 from runtime.replay_runtime.runtime import get_replay_runtime
-from runtime.kernel.context.session import SessionState
+from domain.context.kernel_context.session import SessionState
 
 logger = get_logger("optimization_backtest_adapter")
 
@@ -149,14 +149,15 @@ class OptimizationBacktestAdapter:
         self._replay_runtime = get_replay_runtime()
         
         try:
-            from runtime.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
-            from runtime.signal_runtime import get_signal_runtime
-            from runtime.execution_runtime import get_execution_runtime
-            
-            feature_config = FeatureConfig(mode=FeatureMode.REPLAY)
-            self._replay_runtime.attach_feature_runtime(get_feature_runtime(feature_config))
-            self._replay_runtime.attach_signal_runtime(get_signal_runtime())
-            self._replay_runtime.attach_execution_runtime(get_execution_runtime())
+            # TODO: migrate to new runtime architecture
+            # from runtime.feature_runtime import get_feature_runtime, FeatureConfig, FeatureMode
+            # from runtime.signal_runtime import get_signal_runtime
+            # from runtime.execution_runtime import get_execution_runtime
+            #
+            # feature_config = FeatureConfig(mode=FeatureMode.REPLAY)
+            # self._replay_runtime.attach_feature_runtime(get_feature_runtime(feature_config))
+            # self._replay_runtime.attach_signal_runtime(get_signal_runtime())
+            # self._replay_runtime.attach_execution_runtime(get_execution_runtime())
             
             logger.info("ReplayRuntime dependencies attached")
         except Exception as e:

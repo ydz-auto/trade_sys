@@ -26,10 +26,10 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from research.alpha.feature_matrix import build_feature_matrix_from_df
+from research.alpha.features.matrix import build_feature_matrix_from_df
 from research.alpha.labels import compute_labels_from_df
-from research.alpha.ic_analysis import compute_ic_table
-from research.alpha.funding_regime_signal import run_signal_test
+from research.alpha.ic.analysis import compute_ic_table
+from research.alpha.signals.funding_regime_signal import run_signal_test
 from research.stability.analyzer import StabilityAnalyzer
 from .short_features_registry import (
     ALL_SHORT_FEATURES,

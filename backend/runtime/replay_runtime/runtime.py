@@ -60,7 +60,7 @@ from domain.feature.infrastructure.warmup_determinism import (
     WarmupDeterminismManager,
     get_warmup_manager
 )
-from domain.event.infrastructure.event_ordering import (
+from domain.event.kernel_event.event_ordering import (
     EventOrderingDeterminism,
     get_event_ordering,
     create_deterministic_event

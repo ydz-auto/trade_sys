@@ -16,9 +16,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 import math
 
-from infrastructure.logging import get_logger
+import logging
 
-logger = get_logger("domain.risk.exposure")
+logger = logging.getLogger("domain.risk.exposure")
 
 
 class ExposureType(str, Enum):

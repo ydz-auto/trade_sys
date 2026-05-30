@@ -10,18 +10,20 @@ logger = logging.getLogger(__name__)
 
 
 async def get_feature_state() -> Dict[str, Any]:
-    from runtime.feature_runtime import get_feature_runtime
-    runtime = get_feature_runtime()
-    if runtime and hasattr(runtime, 'get_state'):
-        return runtime.get_state()
+    # TODO: migrate to new runtime architecture - runtime.feature_runtime removed
+    # from runtime.feature_runtime import get_feature_runtime
+    # runtime = get_feature_runtime()
+    # if runtime and hasattr(runtime, 'get_state'):
+    #     return runtime.get_state()
     return {}
 
 
 async def get_feature_matrix_state() -> Dict[str, Any]:
-    from runtime.feature_runtime.feature_matrix_runtime import get_feature_matrix_runtime
-    runtime = get_feature_matrix_runtime()
-    if runtime and hasattr(runtime, 'get_state'):
-        return runtime.get_state()
+    # TODO: migrate to new runtime architecture - runtime.feature_runtime removed
+    # from runtime.feature_runtime.feature_matrix_runtime import get_feature_matrix_runtime
+    # runtime = get_feature_matrix_runtime()
+    # if runtime and hasattr(runtime, 'get_state'):
+    #     return runtime.get_state()
     return {}
 
 

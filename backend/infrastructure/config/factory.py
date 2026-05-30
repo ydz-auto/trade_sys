@@ -112,21 +112,22 @@ class ConfigFactory:
     @classmethod
     def register_domain_config(cls, registry=None):
         """注册领域配置
-        
-        ARCHITECTURE NOTE: infrastructure → application 反向依赖
-        此处使用 lazy import + 可选 registry 参数。
-        TODO: 应改为依赖注入，调用方传入 registry 实例，不在 infrastructure 内部 import application。
-        """
-        config_manager = cls.get_runtime_config()
 
+        Args:
+            registry: 必须由调用方传入 DomainRegistry 实例，
+                      infrastructure 层不直接 import application。
+        """
         if registry is not None:
             domain_registry = registry
         elif cls._registry is not None:
             domain_registry = cls._registry
         else:
-            from application.registry import DomainRegistry
-            domain_registry = DomainRegistry
-            cls._registry = DomainRegistry
+            raise RuntimeError(
+                "ConfigFactory.register_domain_config requires a registry argument. "
+                "Pass DomainRegistry from the application layer."
+            )
+
+        config_manager = cls.get_runtime_config()
 
         for domain_name in domain_registry.get_all_domains():
             defaults = domain_registry.get_defaults(domain_name)
@@ -186,10 +187,14 @@ def get_datasource_config() -> DataSourceConfigManager:
     return ConfigFactory.get_datasource_config()
 
 
-def initialize_config():
+def initialize_config(registry=None):
     """
     初始化配置系统
     在应用启动时调用一次
+
+    Args:
+        registry: DomainRegistry 实例，必须由 application 层传入
     """
     ConfigFactory.get_infra_config()
-    ConfigFactory.register_domain_config()
+    if registry is not None:
+        ConfigFactory.register_domain_config(registry=registry)

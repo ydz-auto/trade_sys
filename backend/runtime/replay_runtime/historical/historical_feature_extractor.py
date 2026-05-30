@@ -15,10 +15,9 @@ import asyncio
 
 from infrastructure.logging import get_logger
 
-from engines.compute.models.candle_model import Candle
-from domain.event.base_event import Timeframe
+from domain.event.base_event import Candle, Timeframe, Trade
 from engines.compute.aggregation.compute import CandleWindow, apply_trade_to_window, build_candle_from_trade_window
-from engines.compute.models.trade_model import Trade, TradeBatch
+from domain.execution.models.trade_batch import TradeBatch
 
 logger = get_logger("historical_feature_extractor")
 

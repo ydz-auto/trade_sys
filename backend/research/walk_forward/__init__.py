@@ -27,6 +27,7 @@ from research.walk_forward.splitters import (
     create_splitter,
 )
 from research.walk_forward.engine import ResearchExecutionEngine
+from research.walk_forward.optimizer_adapter import WalkForwardOptimizer
 
 __all__ = [
     "TimeRange",
@@ -51,4 +52,5 @@ __all__ = [
     "EmbargoSplitter",
     "create_splitter",
     "ResearchExecutionEngine",
+    "WalkForwardOptimizer",
 ]

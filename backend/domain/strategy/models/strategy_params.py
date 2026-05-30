@@ -13,7 +13,7 @@ from enum import Enum
 from sqlalchemy import String, DateTime, ForeignKey, Numeric, Boolean, Index, Integer, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from infrastructure.persistence.database.sqlalchemy_base import Base
+from domain.persistence.base import Base
 
 
 class ParamSource(str, Enum):

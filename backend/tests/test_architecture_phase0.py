@@ -5,15 +5,16 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from runtime.kernel.authority import STATE_OWNERS, assert_state_owner, owns_state
-from runtime.kernel.authority.ownership_registry import OwnershipViolation, assert_known_state
-from runtime.contracts import RuntimeProtocol, to_immutable_event
-from runtime.kernel.guards.import_guard import check_import_boundaries, ImportViolation
+from domain.runtime_policy.authority import STATE_OWNERS, assert_state_owner, owns_state
+from domain.runtime_policy.authority.ownership_registry import OwnershipViolation, assert_known_state
+from runtime.kernel.runtime_container import RuntimeContainer
+from domain.event.contracts.event_adapter import to_immutable_event
+from domain.risk.guards.import_guard import check_import_boundaries, ImportViolation
 from infrastructure.messaging.schema.base_event import BaseEvent
 
 
 def test_runtime_protocol_is_runtime_checkable():
-    assert RuntimeProtocol is not None
+    assert RuntimeContainer is not None
 
 
 def test_ownership_registry_core_states():
@@ -262,32 +263,32 @@ def test_import_guard_no_services_layer_exists():
 
 
 def test_canonical_event_type_alias_exists():
-    from runtime.contracts.canonical_event import CanonicalEvent
+    from domain.event.contracts.canonical_event import CanonicalEvent
     assert CanonicalEvent is not None
 
 
 def test_validate_canonical_event_function_exists():
-    from runtime.contracts.canonical_event import validate_canonical_event
+    from domain.event.contracts.canonical_event import validate_canonical_event
     assert callable(validate_canonical_event)
 
 
 def test_compute_state_hash_function_exists():
-    from runtime.contracts.canonical_event import compute_state_hash
+    from domain.event.contracts.canonical_event import compute_state_hash
     assert callable(compute_state_hash)
 
 
 def test_isolation_manager_class_exists():
-    from runtime.kernel.namespace import IsolationManager
+    from application.registry.namespace import IsolationManager
     assert IsolationManager is not None
 
 
 def test_checkpoint_manager_class_exists():
-    from runtime.kernel.snapshot.checkpoint import CheckpointManager
+    from domain.state.snapshot.checkpoint import CheckpointManager
     assert CheckpointManager is not None
 
 
 def test_recovery_coordinator_class_exists():
-    from runtime.kernel.snapshot.recovery_coordinator import RecoveryCoordinator
+    from domain.state.snapshot.recovery_coordinator import RecoveryCoordinator
     assert RecoveryCoordinator is not None
 
 

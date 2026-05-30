@@ -7,7 +7,7 @@ def get_trading_modes() -> Dict[str, Any]:
 
 
 def get_trading_mode_manager() -> Any:
-    from runtime.trading_mode_manager import get_trading_mode_manager
+    from domain.trading_mode.trading_mode_manager import get_trading_mode_manager
     return get_trading_mode_manager()
 
 
@@ -72,7 +72,7 @@ def get_feature_category_enum() -> Any:
 
 
 def get_feature_matrix_info(symbol: str) -> Dict[str, Any]:
-    from domain.feature.feature_matrix import get_feature_matrix_store
+    from infrastructure.repositories.feature_matrix import get_feature_matrix_store
     store = get_feature_matrix_store()
     if store:
         return store.get_info(symbol)
@@ -80,12 +80,12 @@ def get_feature_matrix_info(symbol: str) -> Dict[str, Any]:
 
 
 def get_historical_feature_matrix(symbol: str, **kwargs) -> Any:
-    from domain.feature.feature_matrix import get_historical_feature_matrix
+    from infrastructure.repositories.feature_matrix import get_historical_feature_matrix
     return get_historical_feature_matrix(symbol=symbol, **kwargs)
 
 
 def get_available_features() -> Any:
-    from domain.feature.feature_matrix import get_available_features
+    from infrastructure.repositories.feature_matrix import get_available_features
     return get_available_features()
 
 
@@ -94,7 +94,7 @@ def get_materializer_status() -> Dict[str, Any]:
 
 
 def get_schema_registry() -> Any:
-    from domain.feature.materializer.schema_registry import get_schema_registry
+    from domain.feature.schema_registry import get_schema_registry
     return get_schema_registry()
 
 
@@ -104,7 +104,7 @@ def get_historical_feature_materializer(data_lake_root) -> Any:
 
 
 def get_materializer_feature_category_enum() -> Any:
-    from domain.feature.materializer.schema_registry import FeatureCategory
+    from domain.feature.schema_registry import FeatureCategory
     return FeatureCategory
 
 

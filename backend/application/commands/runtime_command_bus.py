@@ -14,8 +14,8 @@ import asyncio
 import uuid
 
 from domain.trading_mode import TradingMode
-from runtime.kernel.event import get_runtime_bus, MessageType
-from runtime.kernel.orchestrator import get_runtime_orchestrator
+from domain.event.kernel_event import get_runtime_bus, MessageType
+from application.workflows.orchestrator import get_runtime_orchestrator
 from infrastructure.logging import get_logger
 
 logger = get_logger("runtime.command")
@@ -238,7 +238,7 @@ class RuntimeCommandBus:
         return self._orchestrator.get_stats()
 
     async def _handle_health_check(self, command: RuntimeCommand) -> Dict[str, Any]:
-        from runtime.kernel.orchestrator import get_runtime_inspector
+        from application.workflows.orchestrator import get_runtime_inspector
         inspector = get_runtime_inspector()
         inspection = await inspector.inspect_all()
         return {

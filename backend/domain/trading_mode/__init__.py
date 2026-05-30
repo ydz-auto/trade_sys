@@ -11,8 +11,7 @@ Trading Mode - 交易模式领域定义
 - ModeTransitionRequest: 模式转换请求
 
 注意:
-- get_trading_mode_manager() 定义在 runtime/trading_mode_manager.py
-- 通过 lazy import 在本模块 re-export，保持向后兼容
+- get_trading_mode_manager() 定义在 domain/trading_mode/trading_mode_manager.py
 """
 from enum import Enum
 from typing import Dict, Optional

@@ -15,7 +15,7 @@ from typing import Optional, Dict, List, Any
 from dataclasses import dataclass, field
 
 from engines.compute.strategy.strategies import StrategySignal, ActionType
-from runtime.regime_runtime import MarketRegime
+from domain.market_state import MarketRegime
 from infrastructure.logging import get_logger
 
 logger = get_logger("confluence_engine")

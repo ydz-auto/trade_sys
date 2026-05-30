@@ -10,29 +10,49 @@
 
 使用方式：
     from infrastructure.config import get_config, get_exchange_credentials, get_llm_credentials
-    
+
     # 获取静态配置
     kafka_servers = await get_config("kafka.bootstrap_servers")
-    
+
     # 获取交易所配置
     binance_config = await get_exchange_credentials("binance")
-    
+
     # 获取 LLM 配置
     openai_config = await get_llm_credentials("openai")
-    
+
     # 获取策略参数
     weight = await get_config("strategy.momentum_weight")
-    
+
     # 获取 API URL
     api_url = await get_api_url("binance")
 """
 
 import os
 import logging
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Dict, Protocol, runtime_checkable
 from infrastructure.config.manager import get_config_manager
 
 logger = logging.getLogger("config.unified")
+
+
+@runtime_checkable
+class ConfigServiceProtocol(Protocol):
+    async def get_strategy_config(self) -> Dict[str, Any]: ...
+    async def get_exchange_config(self, exchange: str) -> Optional[Dict[str, Any]]: ...
+    async def get_llm_provider_config(self, provider: str) -> Optional[Dict[str, Any]]: ...
+    async def get_api_url(self, service: str) -> Optional[str]: ...
+
+
+_config_service: Optional[ConfigServiceProtocol] = None
+
+
+def set_config_service(service: ConfigServiceProtocol) -> None:
+    global _config_service
+    _config_service = service
+
+
+def get_injected_config_service() -> Optional[ConfigServiceProtocol]:
+    return _config_service
 
 
 # =============================================================================
@@ -76,7 +96,6 @@ API_URL_ENV = {
 # 默认值
 # =============================================================================
 
-# 从 external_apis.py 导入默认 API URL
 from infrastructure.config.defaults.infrastructure.external_apis import (
     BINANCE_REST_API,
     BINANCE_WS_URL,
@@ -120,104 +139,90 @@ DEFAULT_STRATEGY_CONFIG = {
 async def get_config(key: str, default: Any = None) -> Any:
     """
     统一配置获取接口
-    
+
     配置键格式：
     - 静态配置: `kafka.bootstrap_servers`, `redis.url`
     - 策略参数: `strategy.momentum_weight`
     - 动态配置: `exchange.{name}.api_key`, `llm.{provider}.api_key`
-    
+
     Args:
         key: 配置键
         default: 默认值
-    
+
     Returns:
         配置值
     """
-    # 1. 策略参数
     if key.startswith("strategy."):
         return await _get_strategy_config(key, default)
-    
-    # 2. API URL
+
     if key.endswith(".api_url") or key == "api_url":
         service = key.replace(".api_url", "").replace("api_url", "")
         return await get_api_url(service or None, default)
-    
-    # 3. 动态配置 (exchange.*, llm.*)
+
     if key.startswith("exchange."):
         return await _get_exchange_config(key, default)
-    
+
     if key.startswith("llm."):
         return await _get_llm_config(key, default)
-    
-    # 4. 静态配置 (ConfigManager)
+
     config_manager = get_config_manager()
     return config_manager.get(key, default)
 
 
 async def _get_strategy_config(key: str, default: Any = None) -> Any:
-    """获取策略配置
-    
-    ARCHITECTURE NOTE: infrastructure → application 反向依赖
-    此处使用 lazy import + try/except 降级到本地默认值。
-    TODO: 应改为依赖注入，由 application 层注入 ConfigService 实例。
-    """
-    try:
-        from application.queries.config_queries import get_config_service
-        
-        field = key.replace("strategy.", "")
-        service = get_config_service()
-        config = await service.get_strategy_config()
-        return config.get(field, default if default is not None else DEFAULT_STRATEGY_CONFIG.get(field))
-    except Exception as e:
-        logger.debug(f"Failed to get strategy config {key}: {e}")
-        field = key.replace("strategy.", "")
-        return default if default is not None else DEFAULT_STRATEGY_CONFIG.get(field)
+    field = key.replace("strategy.", "")
+
+    service = get_injected_config_service()
+    if service is not None:
+        try:
+            config = await service.get_strategy_config()
+            return config.get(field, default if default is not None else DEFAULT_STRATEGY_CONFIG.get(field))
+        except Exception as e:
+            logger.debug(f"Failed to get strategy config {key}: {e}")
+
+    return default if default is not None else DEFAULT_STRATEGY_CONFIG.get(field)
 
 
 async def _get_exchange_config(key: str, default: Any = None) -> Any:
-    try:
-        from application.queries.config_queries import get_config_service
+    service = get_injected_config_service()
+    if service is not None:
+        try:
+            parts = key.split(".")
+            if len(parts) < 3:
+                return default
 
-        parts = key.split(".")
-        if len(parts) < 3:
-            return default
-        
-        exchange = parts[1]
-        field = parts[2]
-        
-        service = get_config_service()
-        config = await service.get_exchange_config(exchange)
-        
-        if config and field in config:
-            return config[field]
-        
-        return default
-    except Exception as e:
-        logger.debug(f"Failed to get exchange config {key}: {e}")
-        return default
+            exchange = parts[1]
+            field = parts[2]
+
+            config = await service.get_exchange_config(exchange)
+
+            if config and field in config:
+                return config[field]
+        except Exception as e:
+            logger.debug(f"Failed to get exchange config {key}: {e}")
+
+    return default
 
 
 async def _get_llm_config(key: str, default: Any = None) -> Any:
-    try:
-        from application.queries.config_queries import get_config_service
+    service = get_injected_config_service()
+    if service is not None:
+        try:
+            parts = key.split(".")
+            if len(parts) < 3:
+                return default
 
-        parts = key.split(".")
-        if len(parts) < 3:
-            return default
-        
-        provider = parts[1]
-        field = parts[2]
-        
-        service = get_config_service()
-        config = await service.get_llm_provider_config(provider)
-        
-        if config and field in config:
-            return config[field]
-        
-        return default
-    except Exception as e:
-        logger.debug(f"Failed to get LLM config {key}: {e}")
-        return default
+            provider = parts[1]
+            field = parts[2]
+
+            config = await service.get_llm_provider_config(provider)
+
+            if config and field in config:
+                return config[field]
+        except Exception as e:
+            logger.debug(f"Failed to get LLM config {key}: {e}")
+
+    return default
 
 
 # =============================================================================
@@ -227,28 +232,26 @@ async def _get_llm_config(key: str, default: Any = None) -> Any:
 async def get_exchange_credentials(exchange: str) -> Optional[Dict[str, str]]:
     """
     获取交易所凭证
-    
+
     优先级：ConfigService > 环境变量
-    
+
     Args:
         exchange: 交易所名称 (binance, okx, bybit)
-    
+
     Returns:
         {'api_key': '...', 'secret': '...', 'api_url': '...', 'testnet': bool} 或 None
     """
     result = {}
 
-    try:
-        from application.queries.config_queries import get_config_service
+    service = get_injected_config_service()
+    if service is not None:
+        try:
+            config = await service.get_exchange_config(exchange)
+            if config:
+                result.update(config)
+        except Exception as e:
+            logger.debug(f"Failed to get exchange config from ConfigService: {e}")
 
-        service = get_config_service()
-        config = await service.get_exchange_config(exchange)
-        if config:
-            result.update(config)
-    except Exception as e:
-        logger.debug(f"Failed to get exchange config from ConfigService: {e}")
-    
-    # 2. 从环境变量获取（如果 ConfigService 没有）
     if not result.get("api_key"):
         env_keys = EXCHANGE_API_KEY_ENV.get(exchange, ())
         if env_keys:
@@ -257,100 +260,93 @@ async def get_exchange_credentials(exchange: str) -> Optional[Dict[str, str]]:
                 result["secret"] = os.environ.get(env_keys[1], "")
             if len(env_keys) > 2:
                 result["passphrase"] = os.environ.get(env_keys[2], "")
-    
-    # 3. 获取 API URL
+
     if not result.get("api_url"):
         result["api_url"] = await get_api_url(exchange)
-    
+
     return result if result.get("api_key") else None
 
 
 async def get_llm_credentials(provider: str) -> Optional[Dict[str, Any]]:
     """
     获取 LLM 凭证
-    
+
     优先级：ConfigService > 环境变量
-    
+
     Args:
         provider: 提供商名称 (openai, anthropic, zhipu)
-    
+
     Returns:
         {'api_key': '...', 'model': '...', 'api_url': '...'} 或 None
     """
     result = {}
 
-    try:
-        from application.queries.config_queries import get_config_service
+    service = get_injected_config_service()
+    if service is not None:
+        try:
+            config = await service.get_llm_provider_config(provider)
+            if config:
+                result.update(config)
+        except Exception as e:
+            logger.debug(f"Failed to get LLM config from ConfigService: {e}")
 
-        service = get_config_service()
-        config = await service.get_llm_provider_config(provider)
-        if config:
-            result.update(config)
-    except Exception as e:
-        logger.debug(f"Failed to get LLM config from ConfigService: {e}")
-    
-    # 2. 从环境变量获取 API Key（如果 ConfigService 没有）
     if not result.get("api_key"):
         env_name = LLM_API_KEY_ENV.get(provider)
         if env_name:
             result["api_key"] = os.environ.get(env_name, "")
-    
-    # 3. 获取 API URL
+
     if not result.get("api_url"):
         result["api_url"] = await get_api_url(provider)
-    
+
     return result if result.get("api_key") or provider == "ollama" else None
 
 
 async def get_api_url(service: str = None, default: str = None) -> str:
     """
     获取 API URL
-    
+
     优先级：ConfigService > 环境变量 > 默认值
-    
+
     Args:
         service: 服务名称 (如 'binance', 'openai', 'odaily')
         default: 默认值
-    
+
     Returns:
         API URL
     """
     if not service:
         return default or ""
 
-    try:
-        from application.queries.config_queries import get_config_service
+    cs = get_injected_config_service()
+    if cs is not None:
+        try:
+            url = await cs.get_api_url(service)
+            if url:
+                return url
+        except Exception as e:
+            logger.debug(f"Failed to get API URL from ConfigService: {e}")
 
-        cs = get_config_service()
-        url = await cs.get_api_url(service)
-        if url:
-            return url
-    except Exception as e:
-        logger.debug(f"Failed to get API URL from ConfigService: {e}")
-    
-    # 2. 从环境变量获取
     env_name = API_URL_ENV.get(service)
     if env_name:
         url = os.environ.get(env_name)
         if url:
             return url
-    
-    # 3. 返回默认值
+
     return default or DEFAULT_API_URLS.get(service, "")
 
 
 async def get_strategy_weights() -> Dict[str, float]:
     """
     获取策略权重配置
-    
+
     Returns:
         {'momentum_weight': 0.3, 'trend_weight': 0.3, ...}
     """
-    try:
-        from application.queries.config_queries import get_config_service
+    service = get_injected_config_service()
+    if service is not None:
+        try:
+            return await service.get_strategy_config()
+        except Exception as e:
+            logger.debug(f"Failed to get strategy config: {e}")
 
-        service = get_config_service()
-        return await service.get_strategy_config()
-    except Exception as e:
-        logger.debug(f"Failed to get strategy config: {e}")
-        return DEFAULT_STRATEGY_CONFIG.copy()
+    return DEFAULT_STRATEGY_CONFIG.copy()

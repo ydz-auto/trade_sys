@@ -1,6 +1,9 @@
 """
 SQLAlchemy Base - 关系型数据库 ORM 支持
 使用 SQLAlchemy 2.0 异步引擎
+
+Base 类已迁移至 domain.persistence.base，
+此模块保留 SQLAlchemyManager 和数据库会话管理。
 """
 
 from typing import AsyncGenerator, Optional
@@ -11,14 +14,10 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
     async_sessionmaker,
 )
-from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
+from domain.persistence.base import Base
 from infrastructure.persistence.database.configs import DatabaseConfig
-
-
-class Base(DeclarativeBase):
-    pass
 
 
 class SQLAlchemyManager:
@@ -33,7 +32,7 @@ class SQLAlchemyManager:
             f"{self.config.username}:{self.config.password}"
             f"@{self.config.host}:{self.config.port}/{self.config.database}"
         )
-        
+
         return create_async_engine(
             url,
             echo=self.config.echo,
@@ -55,8 +54,6 @@ class SQLAlchemyManager:
             expire_on_commit=False,
             autoflush=False,
         )
-
-        from domain.models import user, api_key, trading, strategy_params
 
         async with self._engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)

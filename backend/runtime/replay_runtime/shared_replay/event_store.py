@@ -1,6 +1,8 @@
 """
-Event Store - 事件存储
-提供事件溯源能力，支持回放和重建
+Event Store - 事件存储（Facade）
+
+提供事件溯源能力，支持回放和重建。
+底层委托给 infrastructure.persistence.repository.replay.event_store_repository。
 """
 
 from typing import Dict, List, Optional, Any, AsyncIterator
@@ -9,7 +11,10 @@ import asyncio
 import uuid
 
 from infrastructure.logging import get_logger
-from infrastructure.persistence.database.clickhouse import ClickHouseManager
+from infrastructure.persistence.repository.replay.event_store_repository import (
+    EventStoreRepository,
+    get_event_store_repository,
+)
 
 from runtime.replay_runtime.models.models import EventRecord, EventType, ReplayCheckpoint
 
@@ -17,48 +22,18 @@ logger = get_logger("shared.replay.event_store")
 
 
 class EventStore:
-    """事件存储
-
-    提供事件的持久化和检索能力
-    """
-
-    TABLE_NAME = "event_store"
 
     def __init__(self):
-        self.clickhouse: Optional[ClickHouseManager] = None
+        self._repo: Optional[EventStoreRepository] = None
         self._initialized = False
 
     async def initialize(self):
-        """初始化"""
         if self._initialized:
             return
 
-        self.clickhouse = ClickHouseManager()
-        await self._ensure_table()
+        self._repo = await get_event_store_repository()
         self._initialized = True
-        logger.info("EventStore initialized")
-
-    async def _ensure_table(self):
-        """确保表存在"""
-        create_sql = f"""
-        CREATE TABLE IF NOT EXISTS {self.TABLE_NAME} (
-            event_id String,
-            event_type String,
-            exchange String,
-            symbol String,
-            timestamp Int64,
-            sequence Int64,
-            partition Int32,
-            data String,
-            created_at Int64
-        ) ENGINE = MergeTree()
-        PARTITION BY toYYYYMM(fromUnixTimestamp64Milli(timestamp))
-        ORDER BY (exchange, symbol, event_type, timestamp, sequence)
-        """
-        try:
-            await self.clickhouse.execute(create_sql)
-        except Exception as e:
-            logger.warning(f"Table creation warning: {e}")
+        logger.info("EventStore initialized (delegating to EventStoreRepository)")
 
     async def append(
         self,
@@ -70,39 +45,17 @@ class EventStore:
         sequence: int = 0,
         partition: int = 0,
     ) -> str:
-        """追加事件"""
-        event_id = str(uuid.uuid4())
-
-        import json
-        data_json = json.dumps(data)
-
-        try:
-            await self.clickhouse.execute(
-                f"""
-                INSERT INTO {self.TABLE_NAME} (
-                    event_id, event_type, exchange, symbol,
-                    timestamp, sequence, partition, data, created_at
-                ) VALUES
-                """,
-                [{
-                    "event_id": event_id,
-                    "event_type": event_type.value,
-                    "exchange": exchange,
-                    "symbol": symbol,
-                    "timestamp": timestamp,
-                    "sequence": sequence,
-                    "partition": partition,
-                    "data": data_json,
-                    "created_at": int(datetime.now().timestamp() * 1000),
-                }]
-            )
-            return event_id
-        except Exception as e:
-            logger.error(f"Failed to append event: {e}")
-            raise
+        return await self._repo.append(
+            event_type=event_type.value,
+            exchange=exchange,
+            symbol=symbol,
+            timestamp=timestamp,
+            data=data,
+            sequence=sequence,
+            partition=partition,
+        )
 
     async def append_batch(self, events: List[EventRecord]) -> int:
-        """批量追加事件"""
         if not events:
             return 0
 
@@ -121,20 +74,7 @@ class EventStore:
                 "created_at": event.created_at,
             })
 
-        try:
-            await self.clickhouse.execute(
-                f"""
-                INSERT INTO {self.TABLE_NAME} (
-                    event_id, event_type, exchange, symbol,
-                    timestamp, sequence, partition, data, created_at
-                ) VALUES
-                """,
-                rows
-            )
-            return len(events)
-        except Exception as e:
-            logger.error(f"Failed to append batch: {e}")
-            raise
+        return await self._repo.append_batch(rows)
 
     async def read_events(
         self,
@@ -145,49 +85,29 @@ class EventStore:
         end_time: int,
         limit: int = 10000,
     ) -> List[EventRecord]:
-        """读取事件"""
-        try:
-            rows = await self.clickhouse.execute(
-                f"""
-                SELECT event_id, event_type, exchange, symbol,
-                       timestamp, sequence, partition, data, created_at
-                FROM {self.TABLE_NAME}
-                WHERE exchange = %(exchange)s
-                AND symbol = %(symbol)s
-                AND event_type = %(event_type)s
-                AND timestamp >= %(start_time)s
-                AND timestamp < %(end_time)s
-                ORDER BY timestamp, sequence
-                LIMIT %(limit)s
-                """,
-                {
-                    "exchange": exchange,
-                    "symbol": symbol,
-                    "event_type": event_type.value,
-                    "start_time": start_time,
-                    "end_time": end_time,
-                    "limit": limit,
-                }
-            )
+        raw_events = await self._repo.read_events(
+            exchange=exchange,
+            symbol=symbol,
+            event_type=event_type.value,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+        )
 
-            import json
-            events = []
-            for row in rows:
-                events.append(EventRecord(
-                    event_id=row[0],
-                    event_type=EventType(row[1]),
-                    exchange=row[2],
-                    symbol=row[3],
-                    timestamp=row[4],
-                    sequence=row[5],
-                    partition=row[6],
-                    data=json.loads(row[7]) if row[7] else {},
-                    created_at=row[8],
-                ))
-            return events
-        except Exception as e:
-            logger.error(f"Failed to read events: {e}")
-            return []
+        events = []
+        for raw in raw_events:
+            events.append(EventRecord(
+                event_id=raw["event_id"],
+                event_type=EventType(raw["event_type"]),
+                exchange=raw["exchange"],
+                symbol=raw["symbol"],
+                timestamp=raw["timestamp"],
+                sequence=raw["sequence"],
+                partition=raw["partition"],
+                data=raw["data"],
+                created_at=raw["created_at"],
+            ))
+        return events
 
     async def stream_events(
         self,
@@ -198,7 +118,6 @@ class EventStore:
         end_time: int,
         batch_size: int = 1000,
     ) -> AsyncIterator[List[EventRecord]]:
-        """流式读取事件"""
         current_time = start_time
 
         while current_time < end_time:
@@ -221,28 +140,11 @@ class EventStore:
         symbol: str,
         event_type: EventType,
     ) -> Optional[int]:
-        """获取最新时间戳"""
-        try:
-            rows = await self.clickhouse.execute(
-                f"""
-                SELECT max(timestamp) FROM {self.TABLE_NAME}
-                WHERE exchange = %(exchange)s
-                AND symbol = %(symbol)s
-                AND event_type = %(event_type)s
-                """,
-                {
-                    "exchange": exchange,
-                    "symbol": symbol,
-                    "event_type": event_type.value,
-                }
-            )
-
-            if rows and rows[0][0]:
-                return rows[0][0]
-            return None
-        except Exception as e:
-            logger.error(f"Failed to get latest timestamp: {e}")
-            return None
+        return await self._repo.get_latest_timestamp(
+            exchange=exchange,
+            symbol=symbol,
+            event_type=event_type.value,
+        )
 
     async def get_event_count(
         self,
@@ -252,48 +154,16 @@ class EventStore:
         start_time: int,
         end_time: int,
     ) -> int:
-        """获取事件数量"""
-        try:
-            rows = await self.clickhouse.execute(
-                f"""
-                SELECT count() FROM {self.TABLE_NAME}
-                WHERE exchange = %(exchange)s
-                AND symbol = %(symbol)s
-                AND event_type = %(event_type)s
-                AND timestamp >= %(start_time)s
-                AND timestamp < %(end_time)s
-                """,
-                {
-                    "exchange": exchange,
-                    "symbol": symbol,
-                    "event_type": event_type.value,
-                    "start_time": start_time,
-                    "end_time": end_time,
-                }
-            )
-
-            if rows:
-                return rows[0][0]
-            return 0
-        except Exception as e:
-            logger.error(f"Failed to get event count: {e}")
-            return 0
+        return await self._repo.get_event_count(
+            exchange=exchange,
+            symbol=symbol,
+            event_type=event_type.value,
+            start_time=start_time,
+            end_time=end_time,
+        )
 
     async def save_checkpoint(self, checkpoint: ReplayCheckpoint):
-        """保存检查点"""
-        try:
-            await self.clickhouse.execute(
-                """
-                INSERT INTO replay_checkpoints (
-                    checkpoint_id, replay_id, exchange, symbol, timeframe,
-                    last_timestamp, last_sequence, processed_count,
-                    created_at, metadata
-                ) VALUES
-                """,
-                [checkpoint.to_dict()]
-            )
-        except Exception as e:
-            logger.error(f"Failed to save checkpoint: {e}")
+        await self._repo.save_checkpoint(checkpoint.to_dict())
 
     async def load_checkpoint(
         self,
@@ -302,43 +172,27 @@ class EventStore:
         symbol: str,
         timeframe: str,
     ) -> Optional[ReplayCheckpoint]:
-        """加载检查点"""
-        try:
-            rows = await self.clickhouse.execute(
-                """
-                SELECT * FROM replay_checkpoints
-                WHERE replay_id = %(replay_id)s
-                AND exchange = %(exchange)s
-                AND symbol = %(symbol)s
-                AND timeframe = %(timeframe)s
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                {
-                    "replay_id": replay_id,
-                    "exchange": exchange,
-                    "symbol": symbol,
-                    "timeframe": timeframe,
-                }
-            )
+        raw = await self._repo.load_checkpoint(
+            replay_id=replay_id,
+            exchange=exchange,
+            symbol=symbol,
+            timeframe=timeframe,
+        )
 
-            if rows:
-                return ReplayCheckpoint(
-                    checkpoint_id=rows[0][0],
-                    replay_id=rows[0][1],
-                    exchange=rows[0][2],
-                    symbol=rows[0][3],
-                    timeframe=rows[0][4],
-                    last_timestamp=rows[0][5],
-                    last_sequence=rows[0][6],
-                    processed_count=rows[0][7],
-                    created_at=rows[0][8],
-                    metadata=rows[0][9] if len(rows[0]) > 9 else {},
-                )
-            return None
-        except Exception as e:
-            logger.error(f"Failed to load checkpoint: {e}")
-            return None
+        if raw:
+            return ReplayCheckpoint(
+                checkpoint_id=raw["checkpoint_id"],
+                replay_id=raw["replay_id"],
+                exchange=raw["exchange"],
+                symbol=raw["symbol"],
+                timeframe=raw["timeframe"],
+                last_timestamp=raw["last_timestamp"],
+                last_sequence=raw["last_sequence"],
+                processed_count=raw["processed_count"],
+                created_at=raw["created_at"],
+                metadata=raw.get("metadata", {}),
+            )
+        return None
 
     async def delete_events(
         self,
@@ -347,34 +201,18 @@ class EventStore:
         event_type: EventType,
         before_time: int,
     ) -> int:
-        """删除旧事件"""
-        try:
-            await self.clickhouse.execute(
-                f"""
-                ALTER TABLE {self.TABLE_NAME} DELETE
-                WHERE exchange = %(exchange)s
-                AND symbol = %(symbol)s
-                AND event_type = %(event_type)s
-                AND timestamp < %(before_time)s
-                """,
-                {
-                    "exchange": exchange,
-                    "symbol": symbol,
-                    "event_type": event_type.value,
-                    "before_time": before_time,
-                }
-            )
-            return 0
-        except Exception as e:
-            logger.error(f"Failed to delete events: {e}")
-            return 0
+        return await self._repo.delete_events(
+            exchange=exchange,
+            symbol=symbol,
+            event_type=event_type.value,
+            before_time=before_time,
+        )
 
 
 _event_store: Optional[EventStore] = None
 
 
 async def get_event_store() -> EventStore:
-    """获取事件存储实例"""
     global _event_store
     if _event_store is None:
         _event_store = EventStore()

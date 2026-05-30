@@ -1,4 +1,4 @@
-﻿from typing import Dict, List, Optional, Any, Tuple, Callable
+from typing import Dict, List, Optional, Any, Tuple, Callable
 from pathlib import Path
 import asyncio
 import torch

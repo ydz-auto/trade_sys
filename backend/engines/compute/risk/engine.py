@@ -1,4 +1,6 @@
-from typing import List, Optional, Callable
+from __future__ import annotations
+
+from typing import List
 from dataclasses import dataclass
 
 from domain.execution.models import OrderIntent, OrderRequest

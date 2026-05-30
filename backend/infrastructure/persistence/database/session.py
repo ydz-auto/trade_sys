@@ -1,4 +1,4 @@
-﻿"""
+"""
 Database Session Manager
 
 数据库会话管理
@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from sqlalchemy.pool import NullPool
 
 from infrastructure.persistence.database.configs import DatabaseConfig
-from infrastructure.persistence.database.sqlalchemy_base import Base
+from domain.persistence.base import Base
 
 logger = logging.getLogger(__name__)
 

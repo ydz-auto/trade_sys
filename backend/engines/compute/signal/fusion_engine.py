@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Optional, Any
 from dataclasses import dataclass, field
 
-from engines.compute.signal.buffer import EventBuffer
 from engines.compute.aggregation.aggregator import EventAggregator
 from engines.compute.signal.scorer import ScoringEngine
 
@@ -51,47 +50,24 @@ class FusionSignal:
 class FusionEngine:
     def __init__(
         self,
-        window_seconds: int = 300,
         min_events: int = 1,
         min_confidence: float = 0.4,
     ):
-        self.buffer = EventBuffer(window_seconds=window_seconds)
         self.aggregator = EventAggregator(min_events=min_events)
         self.scorer = ScoringEngine()
         self.min_confidence = min_confidence
-        self.last_signal_time: Optional[datetime] = None
-        self.signal_cooldown_seconds: int = 10
 
-    def add_event(self, event: Any) -> None:
-        if isinstance(event, dict):
-            event = FusionEvent(**event)
-        self.buffer.add(event)
-
-    def process(self, price_change: float = 0.0) -> list[FusionSignal]:
-        if self.buffer.is_empty:
+    def process(self, events: list, price_change: float = 0.0) -> list[FusionSignal]:
+        if not events:
             return []
 
-        now = datetime.utcnow()
-        if self.last_signal_time:
-            elapsed = (now - self.last_signal_time).total_seconds()
-            if elapsed < self.signal_cooldown_seconds:
-                return []
-
-        valid_events = self.buffer.get_valid()
-        if not valid_events:
-            return []
-
-        groups = self.aggregator.aggregate(valid_events)
+        groups = self.aggregator.aggregate(events)
 
         signals = []
         for group in groups:
             signal = self._generate_signal(group, price_change)
             if signal:
                 signals.append(signal)
-
-        if signals:
-            self.last_signal_time = now
-            self.buffer.clear()
 
         return signals
 
@@ -129,12 +105,3 @@ class FusionEngine:
         )
 
         return signal
-
-    def _cleanup_old_signals(self) -> None:
-        pass
-
-    def get_buffer_size(self) -> int:
-        return len(self.buffer)
-
-    def clear(self) -> None:
-        self.buffer.clear()
