@@ -444,6 +444,135 @@ class FileDataLakeReader:
                 symbols.append(item.name.replace("symbol=", ""))
         return sorted(symbols)
 
+    def read_klines(
+        self,
+        exchange: str,
+        symbol: str,
+        timeframe: Optional[str] = "1h",
+        days: Optional[int] = None,
+    ) -> pd.DataFrame:
+        """read_klines 是 load_klines 的别名（向后兼容）"""
+        start_ts = None
+        end_ts = None
+        if days is not None:
+            from datetime import timedelta
+            end_ts = datetime.now()
+            start_ts = end_ts - timedelta(days=days)
+        
+        df = self.load_klines(exchange, symbol, start_ts, end_ts, None)
+        
+        if df.empty:
+            return df
+        
+        if timeframe and timeframe != "1m":
+            if "interval" in df.columns:
+                df_1m = df[df["interval"] == "1m"]
+                if not df_1m.empty:
+                    print(f"  [FileDataLakeReader] 从 1m 数据重采样到 {timeframe}...")
+                    df_1m = self._resample_klines(df_1m, timeframe)
+                    return df_1m
+                else:
+                    existing_intervals = df["interval"].unique() if "interval" in df.columns else []
+                    print(f"  [FileDataLakeReader] 警告: 没有找到 1m 数据，现有 interval: {existing_intervals}")
+                    return pd.DataFrame()
+            else:
+                print(f"  [FileDataLakeReader] 警告: 数据中没有 interval 列，尝试直接从 1m 重采样...")
+                return self._resample_klines(df, timeframe)
+        elif "interval" in df.columns:
+            df = df[df["interval"] == timeframe]
+        
+        return df
+    
+    def _resample_klines(self, df: pd.DataFrame, target: str) -> pd.DataFrame:
+        """
+        将 K线数据从 1m 重采样到目标周期
+        
+        Args:
+            df: 1m K线数据
+            target: 目标周期，如 "1h", "4h", "1d"
+        
+        Returns:
+            重采样后的 K线数据
+        """
+        if df.empty:
+            return df
+        
+        df = df.copy()
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        for col in ["open", "high", "low", "close", "volume"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+        
+        resample_map = {
+            "3m": "3min", "5m": "5min", "15m": "15min", "30m": "30min",
+            "1h": "1h", "2h": "2h", "4h": "4h", "1d": "1D"
+        }
+        
+        window_str = resample_map.get(target, "1h")
+        
+        df = df.set_index("timestamp").sort_index()
+        resampled = df.resample(window_str).agg({
+            "open": "first",
+            "high": "max",
+            "low": "min",
+            "close": "last",
+            "volume": "sum"
+        }).dropna(subset=["close"])
+        
+        resampled = resampled.reset_index()
+        
+        for col in ["open", "high", "low", "close", "volume"]:
+            if col in resampled.columns:
+                resampled[col] = resampled[col].astype(float)
+        
+        resampled["interval"] = target
+        
+        return resampled
+
+    def read_funding(
+        self,
+        exchange: str,
+        symbol: str,
+        timeframe: Optional[str] = "1h",
+        klines: Optional[pd.DataFrame] = None,
+    ) -> pd.DataFrame:
+        """read_funding 是 load_funding 的别名（向后兼容）"""
+        start_ts = klines["timestamp"].min() if klines is not None and not klines.empty else None
+        end_ts = klines["timestamp"].max() if klines is not None and not klines.empty else None
+        return self.load_funding(exchange, symbol, start_ts, end_ts)
+
+    def read_open_interest(
+        self,
+        exchange: str,
+        symbol: str,
+        timeframe: Optional[str] = "1h",
+        klines: Optional[pd.DataFrame] = None,
+    ) -> pd.DataFrame:
+        """read_open_interest 是 load_oi 的别名（向后兼容）"""
+        start_ts = klines["timestamp"].min() if klines is not None and not klines.empty else None
+        end_ts = klines["timestamp"].max() if klines is not None and not klines.empty else None
+        return self.load_oi(exchange, symbol, start_ts, end_ts)
+
+    def read_orderbook(
+        self,
+        exchange: str,
+        symbol: str,
+        timeframe: Optional[str] = "1h",
+        klines: Optional[pd.DataFrame] = None,
+    ) -> pd.DataFrame:
+        """read_orderbook 当前返回空 DataFrame（占位符）"""
+        return pd.DataFrame()
+
+    def read_liquidations(
+        self,
+        exchange: str,
+        symbol: str,
+        timeframe: Optional[str] = "1h",
+        klines: Optional[pd.DataFrame] = None,
+    ) -> pd.DataFrame:
+        """read_liquidations 当前返回空 DataFrame（占位符）"""
+        return pd.DataFrame()
+
 
 _file_reader: Optional[FileDataLakeReader] = None
 

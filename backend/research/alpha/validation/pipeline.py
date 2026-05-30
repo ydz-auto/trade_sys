@@ -1063,7 +1063,7 @@ def main():
 
     result = pipeline.run(strategy_names)
 
-    from research.alpha.leaderboard import Leaderboard
+    from research.alpha.reporting.leaderboard import Leaderboard
     lb = Leaderboard(result)
     lb.print_summary()
     lb.print_table()
@@ -1075,10 +1075,10 @@ def main():
 
     print(f"\nLeaderboard saved to {output_path}")
 
-    from research.alpha.per_symbol_leaderboard import generate_from_pipeline_result
+    from research.alpha.reporting.per_symbol import generate_from_pipeline_result
     generate_from_pipeline_result(result)
 
-    from research.alpha.paper_trading_config import generate_paper_trading_configs
+    from research.alpha.reporting.paper_config import generate_paper_trading_configs
     generate_paper_trading_configs(result, tiers=["A", "B"])
 
     # 运行 Correlation 分析

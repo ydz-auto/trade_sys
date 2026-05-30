@@ -286,39 +286,39 @@ class FeatureEngine:
         return df
 
     def _compute_all_features(self, df):
-        """计算所有特征"""
-        # 首先计算基础特征
-        base_features = [
-            "ret_1", "ret_3", "ret_5", "ret_10", "ret_20",
-            "atr_pct", "atr_expansion", "trend_20", "slope",
-            "volatility_zscore", "rsi_14", "macd",
-        ]
+        """计算所有特征 - 使用Registry中的所有特征"""
+        all_feature_names = self.registry.list_all()
         
-        # 计算基础特征
-        df = self.compute(df, base_features)
+        if not all_feature_names:
+            print(f"  警告: Registry中没有注册的特征，尝试加载默认特征")
+            from engines.compute.feature.registry import _register_default_features
+            _register_default_features(self.registry)
+            all_feature_names = self.registry.list_all()
         
-        # 计算其他技术指标
-        tech_features = [
-            "ema_20", "ema_50", "sma_20", "sma_50", "sma_100",
-            "bb_upper", "bb_middle", "bb_lower", "bb_width",
-        ]
+        print(f"  开始计算 {len(all_feature_names)} 个特征...")
         
-        df = self.compute(df, tech_features)
+        computed = []
+        failed = []
         
-        # 计算市场特征
-        market_features = [
-            "funding_zscore", "oi_zscore", "oi_funding_divergence",
-            "leverage_crowdedness",
-        ]
+        for name in all_feature_names:
+            try:
+                feature = self.registry.get(name)
+                if feature is None:
+                    continue
+                    
+                series = feature.compute(df)
+                df[name] = series
+                computed.append(name)
+                
+            except Exception as e:
+                failed.append((name, str(e)))
         
-        df = self.compute(df, market_features)
-        
-        # 计算Alpha因子
-        alpha_features = [
-            "distance_from_ma20", "zscore_price", "breakout_strength",
-        ]
-        
-        df = self.compute(df, alpha_features)
+        if computed:
+            print(f"  ✓ 成功计算 {len(computed)}/{len(all_feature_names)} 个特征")
+        if failed:
+            print(f"  ✗ 计算失败 {len(failed)}/{len(all_feature_names)} 个特征:")
+            for name, err in failed[:5]:
+                print(f"    - {name}: {err}")
         
         return df
 
