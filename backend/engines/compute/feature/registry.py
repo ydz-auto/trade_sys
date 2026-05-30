@@ -141,8 +141,36 @@ def _register_default_features(registry: FeatureRegistry) -> None:
         LeverageRatioLongFeature, FundingOICombinedFeature, CrowdedLongScoreFeature,
         LiquidationRiskLongFeature, ShortSqueezeProbFeature, MarginUsageLongFeature,
     )
+    from engines.compute.feature.basic import (
+        Return1Feature, Return3Feature, Return5Feature, Return10Feature,
+        Return15Feature, Return20Feature, Return30Feature, Return60Feature,
+        ChangePctFeature, AtrPctFeature, AtrExpansionFeature,
+        RealizedVolZScoreFeature, VolumeMaFeature, VolumeRatioFeature,
+        Trend20Feature, Trend60Feature, SlopeFeature,
+        DrawdownFromHighFeature, DistanceFromHighFeature,
+        NewHigh60Feature, NewHigh20Feature, NewLow60Feature,
+        ParabolicRet10Feature, ParabolicRetZScoreFeature,
+        RangePctFeature, IsUpFeature, IsDownFeature,
+        VolatilitySpikeFeature, HighVolumeDeclineFeature, Return1hFeature,
+        MomentumOverheatFeature, BreakoutVolumeDecayFeature, DistanceFromMaFeature,
+        Return5PercentileFeature, VolumeSpikeUpFeature,
+    )
 
     default_features = [
+        # 基础特征
+        Return1Feature(), Return3Feature(), Return5Feature(), Return10Feature(),
+        Return15Feature(), Return20Feature(), Return30Feature(), Return60Feature(),
+        ChangePctFeature(), AtrPctFeature(), AtrExpansionFeature(),
+        RealizedVolZScoreFeature(), VolumeMaFeature(), VolumeRatioFeature(),
+        Trend20Feature(), Trend60Feature(), SlopeFeature(),
+        DrawdownFromHighFeature(), DistanceFromHighFeature(),
+        NewHigh60Feature(), NewHigh20Feature(), NewLow60Feature(),
+        ParabolicRet10Feature(), ParabolicRetZScoreFeature(),
+        RangePctFeature(), IsUpFeature(), IsDownFeature(),
+        VolatilitySpikeFeature(), HighVolumeDeclineFeature(), Return1hFeature(),
+        MomentumOverheatFeature(), BreakoutVolumeDecayFeature(), DistanceFromMaFeature(),
+        Return5PercentileFeature(), VolumeSpikeUpFeature(),
+
         # Technical
         RSI7Feature(),
         RSI14Feature(),
